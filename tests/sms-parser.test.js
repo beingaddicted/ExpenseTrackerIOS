@@ -930,4 +930,256 @@ describe("SMSParser", () => {
       expect(txn.mode).toBe("RTGS");
     });
   });
+
+  // ─── HDFC Multi-line "Sent Rs" Format (bug fix regression) ───
+  describe("parse — HDFC multi-line Sent Rs format", () => {
+    test("parses single HDFC Sent Rs multi-line SMS", () => {
+      const sms =
+        "Sent Rs.15000.00\nFrom HDFC Bank A/C *7782\nTo POORNIMA D/O VINAY DEV SH\nOn 05/04/26\nRef 646127679643\nNot You?\nCall 18002586161/SMS BLOCK UPI to 7308080808";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(15000);
+      expect(txn.type).toBe("debit");
+      expect(txn.bank).toBe("HDFC Bank");
+      expect(txn.date).toBe("2026-04-05");
+      expect(txn.merchant).toBe("POORNIMA D/O VINAY DEV SH");
+      expect(txn.refNumber).toBe("646127679643");
+      expect(txn.account).toBe("XX7782");
+      expect(txn.mode).toBe("UPI");
+    });
+
+    test("parses HDFC Sent Rs with CRLF line endings", () => {
+      const sms =
+        "Sent Rs.15000.00\r\nFrom HDFC Bank A/C *7782\r\nTo POORNIMA D/O VINAY DEV SH\r\nOn 05/04/26\r\nRef 646127679643\r\nNot You?\r\nCall 18002586161/SMS BLOCK UPI to 7308080808";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(15000);
+      expect(txn.type).toBe("debit");
+      expect(txn.bank).toBe("HDFC Bank");
+    });
+
+    test("parses HDFC Sent Rs with smaller amount", () => {
+      const sms =
+        "Sent Rs.250.00\nFrom HDFC Bank A/C *7782\nTo CHAI POINT\nOn 03/04/26\nRef 123456789012\nNot You?\nCall 18002586161/SMS BLOCK UPI to 7308080808";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(250);
+      expect(txn.merchant).toBe("CHAI POINT");
+      expect(txn.refNumber).toBe("123456789012");
+    });
+  });
+
+  // ─── Balance-only message rejection ───
+  describe("parse — balance-only messages", () => {
+    test("rejects balance inquiry", () => {
+      const sms =
+        "Your HDFC Bank a/c **4521 balance is Rs.23,151.50 as on 05-04-26";
+      const txn = SMSParser.parse(sms);
+      expect(txn).toBeNull();
+    });
+  });
+
+  // ─── Non-transaction SMS strong rejection ───
+  describe("isBankSMS — non-transaction SMS rejection", () => {
+    test("rejects OTP message with amount context", () => {
+      expect(
+        SMSParser.isBankSMS(
+          "Your OTP is 123456 for transaction of Rs.500 at Amazon",
+        ),
+      ).toBe(false);
+    });
+    test("rejects card blocked message", () => {
+      expect(
+        SMSParser.isBankSMS(
+          "Your card XX1234 has been blocked. Rs.500 transaction declined. Call 1800xxxxxx.",
+        ),
+      ).toBe(false);
+    });
+    test("rejects UPI PIN setup message", () => {
+      expect(
+        SMSParser.isBankSMS(
+          "Set the UPI PIN for your HDFC Bank account to start transacting. Rs.0",
+        ),
+      ).toBe(false);
+    });
+  });
+
+  // ─── isDuplicate — different ref numbers ───
+  describe("isDuplicate — ref number differentiation", () => {
+    const existing = [
+      {
+        id: "txn_REF111",
+        amount: 500,
+        date: "2026-04-01",
+        type: "debit",
+        merchant: "Swiggy",
+        bank: "HDFC Bank",
+        refNumber: "REF111",
+        rawSMS: "Rs.500 debited ref REF111",
+        parsedAt: "2026-04-01T10:00:00Z",
+      },
+    ];
+
+    test("different ref numbers are NOT duplicates", () => {
+      const newTxn = {
+        amount: 500,
+        date: "2026-04-01",
+        type: "debit",
+        merchant: "Swiggy",
+        bank: "HDFC Bank",
+        refNumber: "REF222",
+        rawSMS: "Rs.500 debited ref REF222",
+        parsedAt: "2026-04-01T10:01:00Z",
+      };
+      expect(SMSParser.isDuplicate(newTxn, existing)).toBe(false);
+    });
+  });
+
+  // ─── ATM Withdrawal ───
+  describe("parse — ATM withdrawal", () => {
+    test("ATM withdrawal detected as debit", () => {
+      const sms =
+        "Rs.5000 withdrawn from ATM, a/c XX6672 on 01-04-26. Avl bal Rs.13,350.00 -SBI";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(5000);
+      expect(txn.type).toBe("debit");
+      expect(txn.mode).toBe("ATM");
+    });
+  });
+
+  // ─── Account Number Extraction ───
+  describe("parse — account number extraction", () => {
+    test("extracts account from *NNNN format", () => {
+      const sms =
+        "Sent Rs.500.00\nFrom HDFC Bank A/C *7782\nTo TEST\nOn 01/04/26\nRef 111222333444";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.account).toBe("XX7782");
+    });
+    test("extracts account from **NNNN format", () => {
+      const sms = "Rs.500.00 debited from a/c **4521 on 01-04-26 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.account).toBe("XX4521");
+    });
+    test("extracts account from XXNNNN format", () => {
+      const sms =
+        "Your ICICI Bank Acct XX8834 has been debited with INR 500.00 on 01-04-26 for Test. Ref No 123456";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.account).toBe("XX8834");
+    });
+  });
+
+  // ─── Additional Category Detection ───
+  describe("detectCategory — additional categories", () => {
+    test("Education: Coursera", () => {
+      expect(SMSParser.detectCategory("to Coursera", "Coursera")).toBe(
+        "Education",
+      );
+    });
+    test("Insurance: LIC", () => {
+      expect(SMSParser.detectCategory("LIC premium payment", "LIC")).toBe(
+        "Insurance",
+      );
+    });
+    test("Investment: Zerodha", () => {
+      expect(SMSParser.detectCategory("to Zerodha", "Zerodha")).toBe(
+        "Investment",
+      );
+    });
+    test("EMI & Loans: EMI payment", () => {
+      expect(SMSParser.detectCategory("EMI deducted", "EMI")).toBe(
+        "EMI & Loans",
+      );
+    });
+    test("ATM: ATM withdrawal", () => {
+      expect(SMSParser.detectCategory("ATM withdrawal", "ATM")).toBe("ATM");
+    });
+    test("Subscription: subscription renewal", () => {
+      expect(
+        SMSParser.detectCategory("subscription payment", "Subscription"),
+      ).toBe("Subscription");
+    });
+    test("Salary: salary credit", () => {
+      expect(SMSParser.detectCategory("salary credited", "SALARY")).toBe(
+        "Salary",
+      );
+    });
+    test("Refund: refund processed", () => {
+      expect(SMSParser.detectCategory("refund processed", "REFUND")).toBe(
+        "Refund",
+      );
+    });
+  });
+
+  // ─── Balance Extraction ───
+  describe("parse — balance extraction", () => {
+    test("extracts Avl bal from HDFC format", () => {
+      const sms =
+        "Rs.500.00 debited from a/c **4521 on 01-04-26 to VPA test@ybl. Avl bal Rs.23,151.50 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.balance).toBe(23151.5);
+    });
+    test("extracts Bal: from SBI format", () => {
+      const sms =
+        "Dear Customer, Rs.150.00 has been debited from your SBI a/c XX6672 on 01-04-26 towards Test. UPI ref 123. Bal: Rs.18,350.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.balance).toBe(18350);
+    });
+    test("extracts Avl Bal INR from ICICI format", () => {
+      const sms =
+        "Your ICICI Bank Acct XX8834 has been debited with INR 500.00 on 01-04-26 for Test. Ref No 123. Avl Bal INR 39,731.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.balance).toBe(39731);
+    });
+    test("returns null balance when not present", () => {
+      const sms = "Rs.500.00 debited from a/c **4521 on 01-04-26 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.balance).toBeNull();
+    });
+  });
+
+  // ─── Reference Number Extraction ───
+  describe("parse — reference number extraction", () => {
+    test("extracts UPI ref no from parentheses", () => {
+      const sms =
+        "Rs.500.00 debited from a/c **4521 on 01-04-26 to VPA test@ybl(UPI ref no 412300001111). Avl bal Rs.5000.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.refNumber).toBe("412300001111");
+    });
+    test("extracts Ref No from ICICI format", () => {
+      const sms =
+        "Your ICICI Bank Acct XX8834 has been debited with INR 500.00 on 01-04-26. Ref No 512300009988. Avl Bal INR 5000.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.refNumber).toBe("512300009988");
+    });
+    test("extracts Ref from multi-line HDFC Sent format", () => {
+      const sms =
+        "Sent Rs.500.00\nFrom HDFC Bank A/C *7782\nTo TEST\nOn 01/04/26\nRef 646127679643";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.refNumber).toBe("646127679643");
+    });
+    test("extracts IMPS ref", () => {
+      const sms =
+        "INR 450.00 debited from ICICI Bank Acct XX8834 on 01-04-26. IMPS to Test ref 912300003322. Avl bal: INR 5000.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.refNumber).toBe("912300003322");
+    });
+    test("returns null ref when not present", () => {
+      const sms = "Rs.500.00 debited from a/c **4521 on 01-04-26 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.refNumber).toBeNull();
+    });
+  });
 });

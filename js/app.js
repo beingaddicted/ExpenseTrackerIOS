@@ -90,9 +90,23 @@ const App = (() => {
     setupEventListeners();
     populateCategorySelect();
     render();
+    loadVersion();
     if (location.protocol !== "file:") {
       registerSW();
     }
+  }
+
+  function loadVersion() {
+    fetch("version.json")
+      .then((r) => r.json())
+      .then((data) => {
+        const el = document.getElementById("appVersionLabel");
+        if (el && data.version) {
+          el.textContent =
+            "v" + data.version + " — All data stored locally on device";
+        }
+      })
+      .catch(() => {});
   }
 
   function registerSW() {
@@ -840,6 +854,10 @@ const App = (() => {
 
     // If we got multiple chunks, they probably had newlines — return them
     if (lineSplit.length > 1) return lineSplit.map((s) => s.trim());
+
+    // Single chunk — try parsing as one complete SMS before attempting boundary splits
+    // (boundary regex can incorrectly split mid-SMS bank references like "From HDFC Bank A/C")
+    if (SMSParser.parse(text.trim())) return [text.trim()];
 
     // No newlines or only one chunk — try to split on SMS boundary patterns
     // These are phrases that commonly START a new bank SMS when pasted without breaks

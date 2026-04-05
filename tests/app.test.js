@@ -505,3 +505,130 @@ describe("Export format validation", () => {
     expect(parsed.transactions).toHaveLength(1);
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// splitSMSText Logic Tests (replicates app.js splitSMSText)
+// Tests the text-splitting logic used for plain text file imports
+// ═══════════════════════════════════════════════════════════
+
+describe("splitSMSText logic — plain text import", () => {
+  // Replicate the splitSMSText logic from app.js for testing
+  function splitSMSText(text) {
+    const lineSplit = text
+      .split(
+        /\n\s*\n|\n(?=(?:Sent\s+Rs|Amt\s+(?:Sent|Credited|Debited)|Received\s+Rs|Rs\.?\s*[\d,]|INR\s*[\d,]|₹\s*[\d,]|Your\s+(?:a\/c|ac|account|card|mandate)|Dear\s+(?:Customer|Sir|Madam|User)|Alert:|ALERT:|(?:HDFC|ICICI|SBI|Axis|Kotak|DBS)\s*Bank[ \t]+(?:Acct?|A\/c|a\/c|Card|Dear|Your|Rs|INR)))/i,
+      )
+      .filter((s) => s.trim());
+
+    if (lineSplit.length > 1) return lineSplit.map((s) => s.trim());
+
+    // Single chunk — try parsing as one complete SMS before attempting boundary splits
+    if (SMSParser.parse(text.trim())) return [text.trim()];
+
+    const boundaryRe =
+      /(?=(?:Sent\s+Rs\.?|Amt\s+(?:Sent|Credited|Debited)|Received\s+Rs\.?|Dear (?:Customer|Sir|Madam|User)|Your (?:a\/c|ac |account|card|mandate)|Alert:|ALERT:|(?:HDFC|ICICI|SBI|Axis|Kotak|PNB|BOB|Yes|IndusInd|Federal|IDFC|Citi|IDBI|Canara|UCO|UNION|IOB|RBL|Bandhan|DBS|SC|HSBC|Baroda|Paytm)\s*(?:Bank)?\s*:?\s*(?:Your|Dear|A\/c|Ac |INR|Rs)|(?:Rs\.?|INR|₹)\s*[\d,]+\.?\d*\s+(?:debited|credited|spent|sent|received|withdrawn|charged|paid)|(?:Txn|Transaction|UPI txn)\s+of\s+(?:Rs\.?|INR|₹)))/gi;
+
+    const parts = text.split(boundaryRe).filter((s) => s.trim());
+    if (parts.length > 1) return parts.map((s) => s.trim());
+
+    return [text];
+  }
+
+  test("single HDFC Sent Rs multi-line SMS is NOT split (regression test)", () => {
+    const sms =
+      "Sent Rs.15000.00\nFrom HDFC Bank A/C *7782\nTo POORNIMA D/O VINAY DEV SH\nOn 05/04/26\nRef 646127679643\nNot You?\nCall 18002586161/SMS BLOCK UPI to 7308080808";
+    const parts = splitSMSText(sms);
+    expect(parts).toHaveLength(1);
+    const txn = SMSParser.parse(parts[0]);
+    expect(txn).not.toBeNull();
+    expect(txn.amount).toBe(15000);
+  });
+
+  test("single HDFC Sent Rs with CRLF is NOT split", () => {
+    const sms =
+      "Sent Rs.15000.00\r\nFrom HDFC Bank A/C *7782\r\nTo POORNIMA D/O VINAY DEV SH\r\nOn 05/04/26\r\nRef 646127679643\r\nNot You?\r\nCall 18002586161/SMS BLOCK UPI to 7308080808";
+    const parts = splitSMSText(sms);
+    expect(parts).toHaveLength(1);
+    const txn = SMSParser.parse(parts[0].trim());
+    expect(txn).not.toBeNull();
+  });
+
+  test("two SMS separated by blank line are split correctly", () => {
+    const sms1 =
+      "Sent Rs.15000.00\nFrom HDFC Bank A/C *7782\nTo PERSON A\nOn 05/04/26\nRef 111222333444";
+    const sms2 =
+      "Sent Rs.5000.00\nFrom HDFC Bank A/C *7782\nTo PERSON B\nOn 05/04/26\nRef 555666777888";
+    const combined = sms1 + "\n\n" + sms2;
+    const parts = splitSMSText(combined);
+    expect(parts).toHaveLength(2);
+    expect(SMSParser.parse(parts[0])).not.toBeNull();
+    expect(SMSParser.parse(parts[1])).not.toBeNull();
+  });
+
+  test("two SMS separated by newline before Sent Rs are split", () => {
+    const sms1 =
+      "Sent Rs.15000.00\nFrom HDFC Bank A/C *7782\nTo PERSON A\nOn 05/04/26\nRef 111222333444";
+    const sms2 =
+      "Sent Rs.5000.00\nFrom HDFC Bank A/C *7782\nTo PERSON B\nOn 05/04/26\nRef 555666777888";
+    const combined = sms1 + "\n" + sms2;
+    const parts = splitSMSText(combined);
+    expect(parts).toHaveLength(2);
+  });
+
+  test("single inline SMS is returned as one part", () => {
+    const sms =
+      "Rs.349.00 debited from a/c **4521 on 05-04-26 to VPA swiggy@axisbank(UPI ref no 412300001111). Avl bal Rs.23,151.50 -HDFC Bank";
+    const parts = splitSMSText(sms);
+    expect(parts).toHaveLength(1);
+    expect(SMSParser.parse(parts[0])).not.toBeNull();
+  });
+
+  test("single Dear Customer SMS is returned as one part", () => {
+    const sms =
+      "Dear Customer, Rs.150.00 has been debited from your SBI a/c XX6672 on 01-04-26 towards Uber. UPI ref 123. Bal: Rs.18,350.00";
+    const parts = splitSMSText(sms);
+    expect(parts).toHaveLength(1);
+    expect(SMSParser.parse(parts[0])).not.toBeNull();
+  });
+
+  test("non-bank text returns single chunk", () => {
+    const text = "Hello this is just a plain text message with no bank data";
+    const parts = splitSMSText(text);
+    expect(parts).toHaveLength(1);
+  });
+
+  test("each part of a split two-SMS file parses independently", () => {
+    const sms1 =
+      "Rs.349.00 debited from a/c **4521 on 05-04-26 to VPA swiggy@axisbank. Avl bal Rs.23,151.50 -HDFC Bank";
+    const sms2 =
+      "Dear Customer, Rs.150.00 has been debited from your SBI a/c XX6672 on 01-04-26 towards Uber. Bal: Rs.18,350.00";
+    const combined = sms1 + "\n\n" + sms2;
+    const parts = splitSMSText(combined);
+    expect(parts.length).toBeGreaterThanOrEqual(2);
+    parts.forEach((part) => {
+      const txn = SMSParser.parse(part.trim());
+      expect(txn).not.toBeNull();
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Version File Validation
+// ═══════════════════════════════════════════════════════════
+
+describe("version.json", () => {
+  let versionData;
+  beforeAll(() => {
+    versionData = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "..", "version.json"), "utf-8"),
+    );
+  });
+
+  test("has version field", () => {
+    expect(versionData).toHaveProperty("version");
+  });
+
+  test("version matches semver format", () => {
+    expect(versionData.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});
