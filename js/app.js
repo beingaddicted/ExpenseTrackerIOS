@@ -295,10 +295,8 @@ const App = (() => {
             }
           });
         } else {
-          // Try as plain text — one SMS per line or blank-line separated
-          const lines = text
-            .split(/\n\s*\n|\n(?=(?:Rs|INR|₹|Your|Dear|Alert))/i)
-            .filter((s) => s.trim());
+          // Try as plain text — smart split handles newlines and concatenated SMS
+          const lines = splitSMSText(text);
           lines.forEach((line) => {
             const txn = SMSParser.parse(line.trim());
             if (txn && !SMSParser.isDuplicate(txn, transactions)) {
@@ -821,13 +819,93 @@ const App = (() => {
   }
 
   // ─── Batch Import (text paste) ───
+  // ─── Smart SMS Splitter ───
+  // Handles: newline-separated, blank-line-separated, and no-newline concatenated SMS
+  function splitSMSText(text) {
+    // First try splitting by blank lines or newlines before known SMS-start keywords
+    const lineSplit = text
+      .split(/\n\s*\n|\n(?=(?:Rs\.?|INR|₹|Your|Dear|Alert|Amt|ALERT))/i)
+      .filter((s) => s.trim());
+
+    // If we got multiple chunks, they probably had newlines — return them
+    if (lineSplit.length > 1) return lineSplit.map((s) => s.trim());
+
+    // No newlines or only one chunk — try to split on SMS boundary patterns
+    // These are phrases that commonly START a new bank SMS when pasted without breaks
+    const boundaryRe =
+      /(?=(?:Dear (?:Customer|Sir|Madam|User)|Your (?:a\/c|ac |account|card)|Alert:|ALERT:|(?:HDFC|ICICI|SBI|Axis|Kotak|PNB|BOB|Yes|IndusInd|Federal|IDFC|Citi|IDBI|Canara|UCO|UNION|IOB|RBL|Bandhan|DBS|SC|HSBC|Baroda|Paytm)\s*(?:Bank)?\s*:?\s*(?:Your|Dear|A\/c|Ac |INR|Rs)|(?:Rs\.?|INR|₹)\s*[\d,]+\.?\d*\s+(?:debited|credited|spent|sent|received|withdrawn|charged|paid)|(?:Txn|Transaction|UPI txn)\s+of\s+(?:Rs\.?|INR|₹)))/gi;
+
+    const parts = text.split(boundaryRe).filter((s) => s.trim());
+    if (parts.length > 1) return parts.map((s) => s.trim());
+
+    // Still one chunk — try greedy: find all parseable SMS within the blob
+    // Walk through and try to parse progressively smaller substrings
+    return greedySplit(text);
+  }
+
+  function greedySplit(text) {
+    const results = [];
+    let remaining = text;
+
+    while (remaining.length > 20) {
+      // Try parsing the full remaining text first
+      let parsed = SMSParser.parse(remaining);
+      if (parsed) {
+        results.push(remaining);
+        break;
+      }
+
+      // Find the next potential SMS boundary by looking for amount patterns
+      // after the first one (skip the first ~30 chars to avoid matching at start)
+      let bestIdx = -1;
+      const amountRe = /(?:Rs\.?|INR|₹)\s*[\d,]+\.?\d*/gi;
+      let match;
+      let firstSkipped = false;
+      while ((match = amountRe.exec(remaining)) !== null) {
+        if (!firstSkipped) {
+          firstSkipped = true;
+          continue;
+        }
+        // Look backwards from this amount for a likely SMS start
+        const searchZone = remaining.substring(
+          Math.max(0, match.index - 80),
+          match.index,
+        );
+        const startMatch = searchZone.match(
+          /(?:Dear |Your |Alert:|ALERT:|Txn |Transaction |UPI |A\/c |Ac |Acct )/i,
+        );
+        if (startMatch) {
+          bestIdx =
+            Math.max(0, match.index - 80) + searchZone.indexOf(startMatch[0]);
+          break;
+        }
+        // If no clear start keyword, use this amount position as a heuristic boundary
+        // but only if the previous chunk would parse
+        const candidate = remaining.substring(0, match.index).trim();
+        if (candidate.length > 20 && SMSParser.parse(candidate)) {
+          bestIdx = match.index;
+          break;
+        }
+      }
+
+      if (bestIdx > 0) {
+        results.push(remaining.substring(0, bestIdx).trim());
+        remaining = remaining.substring(bestIdx).trim();
+      } else {
+        // Can't split further — push whatever is left
+        results.push(remaining.trim());
+        break;
+      }
+    }
+
+    return results.length > 0 ? results : [text];
+  }
+
   function batchParse() {
     const text = document.getElementById("batchInput").value.trim();
     if (!text) return;
 
-    const smsList = text
-      .split(/\n\s*\n|\n(?=(?:Rs|INR|₹|Your|Dear|Alert))/i)
-      .filter((s) => s.trim());
+    const smsList = splitSMSText(text);
     const results = SMSParser.parseBatch(smsList);
 
     let added = 0,
