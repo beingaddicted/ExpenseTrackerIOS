@@ -330,6 +330,56 @@
         </button>
       </div>
 
+      <!-- Enable Untrusted Shortcuts -->
+      <div
+        class="card"
+        style="border-color: var(--orange); background: #2a1a0a"
+      >
+        <div
+          class="card-title"
+          style="margin-bottom: 8px; color: var(--orange)"
+        >
+          ⚠️ Before You Download — Enable Untrusted Shortcuts
+        </div>
+        <div class="card-desc">
+          iOS blocks shortcut files from websites by default. You need to allow
+          them first — this is a <strong>one-time setting</strong>.
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              First, open the <strong>Shortcuts</strong> app and
+              <strong>run any shortcut once</strong> (e.g., a built-in one like
+              "Start Timer"). This unlocks the setting.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Go to <strong>Settings → Shortcuts</strong> → toggle ON
+              <strong>"Allow Untrusted Shortcuts"</strong> (or on iOS 16+:
+              <strong
+                >Settings → Shortcuts → Advanced → Allow Running Scripts / Allow
+                Sharing Large Shortcuts</strong
+              >).
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              Now come back here and tap the download button above. The file
+              will open in the Shortcuts app.
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Still can't open it?</strong> Scroll down to the
+          <strong>"Create It Manually"</strong> section — it takes 2 minutes and
+          works on every iOS version without any settings change.
+        </div>
+      </div>
+
       <div class="divider">After downloading</div>
 
       <!-- Setup steps -->
@@ -415,6 +465,114 @@
         <strong>📂</strong> → pick <strong>bank_sms.txt</strong> (or .json) from
         Files. The app parses all SMS, deduplicates, and adds new transactions.
         You can import the same file repeatedly — duplicates are auto-skipped.
+      </div>
+
+      <div class="divider">Can't open the file?</div>
+
+      <!-- Manual Creation Fallback -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-badge" style="background: var(--orange)"
+            >Fallback</span
+          >
+          <span class="card-title"
+            >Create It Manually (No Download Needed)</span
+          >
+        </div>
+        <div class="card-desc">
+          If the downloaded file won't open, build the exact same shortcut
+          yourself in 2 minutes. Works on <strong>every iOS version</strong> —
+          no settings changes required.
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              Open the <strong>Shortcuts</strong> app → tap
+              <strong>＋</strong> (top-right) → <strong>Add Action</strong>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Search for <strong>"Append to File"</strong> and tap it to add the
+              action.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              Configure the action:
+              <ul style="margin-top: 6px; padding-left: 16px; list-style: disc">
+                <li>
+                  <strong>Text</strong>: tap the field → select
+                  <strong>"Shortcut Input"</strong> from the variables (this
+                  passes the SMS text)
+                </li>
+                <li>
+                  <strong>File Path</strong>: type
+                  <code
+                    style="
+                      background: var(--bg-elevated);
+                      padding: 2px 6px;
+                      border-radius: 4px;
+                      font-size: 12px;
+                    "
+                    >Shortcuts/bank_sms.txt</code
+                  >
+                </li>
+                <li>Make sure <strong>"Make New Line"</strong> is turned ON</li>
+              </ul>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              Tap the shortcut name at the top → rename it to
+              <strong>"Save Bank SMS"</strong> → tap <strong>Done</strong>.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-text">
+              Now set up the automation trigger:
+              <ul style="margin-top: 6px; padding-left: 16px; list-style: disc">
+                <li>
+                  Go to <strong>Automation</strong> tab → tap
+                  <strong>＋</strong> →
+                  <strong>Create Personal Automation</strong>
+                </li>
+                <li>
+                  Choose <strong>Message</strong> →
+                  <strong>Sender Contains</strong> → type your bank ID (e.g.
+                  <code
+                    style="
+                      background: var(--bg-elevated);
+                      padding: 2px 6px;
+                      border-radius: 4px;
+                      font-size: 12px;
+                    "
+                    >HDFCBK</code
+                  >)
+                </li>
+                <li>
+                  Tap <strong>Next</strong> → <strong>Run Shortcut</strong> →
+                  select <strong>"Save Bank SMS"</strong>
+                </li>
+                <li>
+                  Turn <strong>OFF</strong> "Ask Before Running" →
+                  <strong>Done</strong>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>That's it!</strong> This is functionally identical to the
+          downloaded shortcut. Every bank SMS will be saved to
+          <strong>iCloud Drive → Shortcuts → bank_sms.txt</strong>
+          automatically.
+        </div>
       </div>
 
       <div class="divider">Install the App</div>
