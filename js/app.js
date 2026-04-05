@@ -831,9 +831,10 @@ const App = (() => {
   // Handles: newline-separated, blank-line-separated, and no-newline concatenated SMS
   function splitSMSText(text) {
     // First try splitting by blank lines or newlines before known SMS-start keywords
+    // Bank names require following transaction context (not standalone signatures like "Axis Bank" alone on a line)
     const lineSplit = text
       .split(
-        /\n\s*\n|\n(?=(?:Sent\s+Rs|Received\s+Rs|Rs\.?\s*[\d,]|INR\s*[\d,]|₹\s*[\d,]|Your\s+(?:a\/c|ac|account|card)|Dear\s+(?:Customer|Sir|Madam|User)|Alert:|ALERT:|Amt\s|(?:HDFC|ICICI|SBI|Axis|Kotak)\s*Bank))/i,
+        /\n\s*\n|\n(?=(?:Sent\s+Rs|Amt\s+(?:Sent|Credited|Debited)|Received\s+Rs|Rs\.?\s*[\d,]|INR\s*[\d,]|₹\s*[\d,]|Your\s+(?:a\/c|ac|account|card|mandate)|Dear\s+(?:Customer|Sir|Madam|User)|Alert:|ALERT:|(?:HDFC|ICICI|SBI|Axis|Kotak|DBS)\s*Bank[ \t]+(?:Acct?|A\/c|a\/c|Card|Dear|Your|Rs|INR)))/i,
       )
       .filter((s) => s.trim());
 
@@ -843,7 +844,7 @@ const App = (() => {
     // No newlines or only one chunk — try to split on SMS boundary patterns
     // These are phrases that commonly START a new bank SMS when pasted without breaks
     const boundaryRe =
-      /(?=(?:Sent\s+Rs\.?|Received\s+Rs\.?|Dear (?:Customer|Sir|Madam|User)|Your (?:a\/c|ac |account|card)|Alert:|ALERT:|(?:HDFC|ICICI|SBI|Axis|Kotak|PNB|BOB|Yes|IndusInd|Federal|IDFC|Citi|IDBI|Canara|UCO|UNION|IOB|RBL|Bandhan|DBS|SC|HSBC|Baroda|Paytm)\s*(?:Bank)?\s*:?\s*(?:Your|Dear|A\/c|Ac |INR|Rs)|(?:Rs\.?|INR|₹)\s*[\d,]+\.?\d*\s+(?:debited|credited|spent|sent|received|withdrawn|charged|paid)|(?:Txn|Transaction|UPI txn)\s+of\s+(?:Rs\.?|INR|₹)))/gi;
+      /(?=(?:Sent\s+Rs\.?|Amt\s+(?:Sent|Credited|Debited)|Received\s+Rs\.?|Dear (?:Customer|Sir|Madam|User)|Your (?:a\/c|ac |account|card|mandate)|Alert:|ALERT:|(?:HDFC|ICICI|SBI|Axis|Kotak|PNB|BOB|Yes|IndusInd|Federal|IDFC|Citi|IDBI|Canara|UCO|UNION|IOB|RBL|Bandhan|DBS|SC|HSBC|Baroda|Paytm)\s*(?:Bank)?\s*:?\s*(?:Your|Dear|A\/c|Ac |INR|Rs)|(?:Rs\.?|INR|₹)\s*[\d,]+\.?\d*\s+(?:debited|credited|spent|sent|received|withdrawn|charged|paid)|(?:Txn|Transaction|UPI txn)\s+of\s+(?:Rs\.?|INR|₹)))/gi;
 
     const parts = text.split(boundaryRe).filter((s) => s.trim());
     if (parts.length > 1) return parts.map((s) => s.trim());

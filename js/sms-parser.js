@@ -53,7 +53,12 @@ const SMSParser = (() => {
 
   // ─── Merchant/Payee Patterns ───
   const MERCHANT_PATTERNS = [
-    /(?:at|to|from|@|towards|for|paid to|transferred to|sent to|received from)\s+([A-Za-z0-9][\w\s\-&'.]{2,40}?)(?:\s+on|\s+ref|\s+via|\s+using|\s*\.|$)/i,
+    // HDFC "Sent Rs.X / To MERCHANT" multi-line format
+    /\nTo\s+([^\n]{2,50})\s*\nOn\s/i,
+    // Axis Bank "UPI/P2M/ref/MERCHANT" or "UPI/P2B/ref/MERCHANT" multi-line format
+    /UPI\/P2[MB]\/\d+\/(.{2,40})/i,
+    /(?:at|towards|for)\s+([A-Za-z0-9][\w\s\-&'.]{2,40}?)(?:\s+on|\s+ref|\s+via|\s+using|\s*\.|$)/i,
+    /(?:paid to|transferred to|sent to|received from)\s+([A-Za-z0-9][\w\s\-&'.]{2,40}?)(?:\s+on|\s+ref|\s+via|\s+using|\s*\.|$)/i,
     /(?:VPA|UPI)\s*:?\s*([a-zA-Z0-9._\-]+@[a-zA-Z]+)/i,
     /info:\s*([^\n.]+)/i,
     /to\s+VPA\s+([^\s]+)/i,
@@ -71,7 +76,7 @@ const SMSParser = (() => {
   // ─── Bank Detection Patterns ───
   const BANK_PATTERNS = [
     { bank: "HDFC Bank", patterns: [/HDFC/i, /hdfcbank/i] },
-    { bank: "ICICI Bank", patterns: [/ICICI/i, /icicibank/i] },
+    { bank: "ICICI Bank", patterns: [/(?<!@)\bICICI/i, /icicibank/i] },
     { bank: "SBI", patterns: [/\bSBI\b/i, /State Bank/i, /sbi\.co/i] },
     { bank: "Axis Bank", patterns: [/Axis\s*Bank/i, /axisbank/i] },
     { bank: "Kotak Mahindra", patterns: [/Kotak/i, /kotakbank/i] },
@@ -142,7 +147,7 @@ const SMSParser = (() => {
       /dr\b/i,
     ],
     credit: [
-      /credit/i,
+      /\bcredit(?!\s*card)/i,
       /credited/i,
       /received/i,
       /refund/i,
@@ -788,6 +793,11 @@ const SMSParser = (() => {
   }
 
   // ─── Extract Merchant ───
+  // Words that should not be treated as merchant names
+  const MERCHANT_BLACKLIST =
+    /^(?:clearance|Unknown|charges?|fees?|interest|penalty|tax|cess|service|processing|convenience|emi|mandate|subscription|insurance|reversal|refund|cashback|reward|otp|pin)$/i;
+  const PHONE_NUMBER_RE = /^\d{10,}$/;
+
   function extractMerchant(text) {
     for (const pattern of MERCHANT_PATTERNS) {
       const match = text.match(pattern);
@@ -795,7 +805,14 @@ const SMSParser = (() => {
         let merchant = match[1].trim();
         // Clean up merchant name
         merchant = merchant.replace(/\s+/g, " ").replace(/[{}]/g, "");
-        if (merchant.length > 2 && merchant.length < 50) {
+        // Trim trailing UPI Mandate reference
+        merchant = merchant.replace(/\s+for\s+UPI\s+Mandate\b.*/i, "").trim();
+        if (
+          merchant.length > 2 &&
+          merchant.length < 50 &&
+          !MERCHANT_BLACKLIST.test(merchant) &&
+          !PHONE_NUMBER_RE.test(merchant)
+        ) {
           return merchant;
         }
       }
@@ -831,12 +848,30 @@ const SMSParser = (() => {
     return "INR";
   }
 
+  // ─── Non-transaction SMS filter ───
+  const NON_TRANSACTION_RE =
+    /\b(?:OTP|PIN|password|IPIN|MPIN|CVV|one.?time|verification|verify|blocked|unblocked|locked|unlocked|activated|deactivated|registered|linked|unlinked|app download|set up|setup|login|log.?in|sign.?in|device|browser|new device|maintenance|replacement|request.{0,10}card|card.{0,10}dispatch|dispatch|dispatch|shipped|delivered|generated|reset|changed|updated|enabled|disabled|limit.{0,10}(?:set|changed|updated))\b/i;
+  const NON_TRANSACTION_STRONG_RE =
+    /\bOTP\s+(?:is|:|for)\b|\bPIN\s+(?:on|for|could)\b|\bblocked\b.*\bcard\b|\bcard\b.*\bblocked\b|\bset\s+(?:the\s+)?UPI\s+PIN\b|\bverify\s+your\s+mobile\b|\bIPIN\s*\(|\bregistered\s+your\s+new\s+device\b/i;
+
   // ─── Is Bank Transaction SMS? ───
   function isBankSMS(text) {
+    // Reject non-transaction messages (OTP, PIN, card blocked, etc.)
+    if (NON_TRANSACTION_STRONG_RE.test(text)) return false;
+
     const bankKeywords =
       /(?:debit|credit|debited|credited|a\/c|acct?|account|card|transaction|txn|balance|bal|UPI|NEFT|IMPS|RTGS|spent|purchase|paid|received|withdrawal|deposit|EMI|mandate|cheque|transfer|refund|cashback|ATM)/i;
     const amountPresent = AMOUNT_PATTERNS.some((p) => p.test(text));
-    return bankKeywords.test(text) && amountPresent;
+    if (!(bankKeywords.test(text) && amountPresent)) return false;
+
+    // Additional heuristic: if message looks like OTP/security alert, reject
+    if (
+      NON_TRANSACTION_RE.test(text) &&
+      !/debited|credited|spent|received|withdrawn|charged/i.test(text)
+    )
+      return false;
+
+    return true;
   }
 
   // ─── Main Parse Function ───
@@ -912,6 +947,15 @@ const SMSParser = (() => {
         newTxn.refNumber === existing.refNumber
       ) {
         return true;
+      }
+
+      // Different ref numbers = definitively different transactions
+      if (
+        newTxn.refNumber &&
+        existing.refNumber &&
+        newTxn.refNumber !== existing.refNumber
+      ) {
+        continue;
       }
 
       // Same amount + same date + same merchant + same type
