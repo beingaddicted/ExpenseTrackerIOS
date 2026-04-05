@@ -83,6 +83,8 @@ const App = (() => {
 
   // ─── Init ───
   async function init() {
+    // Initialize error logger (set your Google Apps Script URL to enable remote logging)
+    ErrorLogger.init(/* "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec" */);
     await openDB();
     await loadData();
     setupEventListeners();
@@ -318,6 +320,11 @@ const App = (() => {
           added > 0 ? "success" : "info",
         );
       } catch (err) {
+        ErrorLogger.log("file_import_error", {
+          message: err.message,
+          stack: err.stack,
+          fileName: file.name,
+        });
         showToast("Could not read file: " + err.message, "error");
       }
     };
@@ -775,6 +782,7 @@ const App = (() => {
 
     parsedTxn = SMSParser.parse(text);
     if (!parsedTxn) {
+      ErrorLogger.log("sms_parse_failure", { smsText: text.substring(0, 200) });
       showToast("Could not parse this SMS", "error");
       document.getElementById("parseResult").classList.remove("show");
       document.getElementById("btnConfirmParse").style.display = "none";
@@ -824,7 +832,9 @@ const App = (() => {
   function splitSMSText(text) {
     // First try splitting by blank lines or newlines before known SMS-start keywords
     const lineSplit = text
-      .split(/\n\s*\n|\n(?=(?:Rs\.?|INR|₹|Your|Dear|Alert|Amt|ALERT))/i)
+      .split(
+        /\n\s*\n|\n(?=(?:Sent\s+Rs|Received\s+Rs|Rs\.?\s*[\d,]|INR\s*[\d,]|₹\s*[\d,]|Your\s+(?:a\/c|ac|account|card)|Dear\s+(?:Customer|Sir|Madam|User)|Alert:|ALERT:|Amt\s|(?:HDFC|ICICI|SBI|Axis|Kotak)\s*Bank))/i,
+      )
       .filter((s) => s.trim());
 
     // If we got multiple chunks, they probably had newlines — return them
@@ -833,7 +843,7 @@ const App = (() => {
     // No newlines or only one chunk — try to split on SMS boundary patterns
     // These are phrases that commonly START a new bank SMS when pasted without breaks
     const boundaryRe =
-      /(?=(?:Dear (?:Customer|Sir|Madam|User)|Your (?:a\/c|ac |account|card)|Alert:|ALERT:|(?:HDFC|ICICI|SBI|Axis|Kotak|PNB|BOB|Yes|IndusInd|Federal|IDFC|Citi|IDBI|Canara|UCO|UNION|IOB|RBL|Bandhan|DBS|SC|HSBC|Baroda|Paytm)\s*(?:Bank)?\s*:?\s*(?:Your|Dear|A\/c|Ac |INR|Rs)|(?:Rs\.?|INR|₹)\s*[\d,]+\.?\d*\s+(?:debited|credited|spent|sent|received|withdrawn|charged|paid)|(?:Txn|Transaction|UPI txn)\s+of\s+(?:Rs\.?|INR|₹)))/gi;
+      /(?=(?:Sent\s+Rs\.?|Received\s+Rs\.?|Dear (?:Customer|Sir|Madam|User)|Your (?:a\/c|ac |account|card)|Alert:|ALERT:|(?:HDFC|ICICI|SBI|Axis|Kotak|PNB|BOB|Yes|IndusInd|Federal|IDFC|Citi|IDBI|Canara|UCO|UNION|IOB|RBL|Bandhan|DBS|SC|HSBC|Baroda|Paytm)\s*(?:Bank)?\s*:?\s*(?:Your|Dear|A\/c|Ac |INR|Rs)|(?:Rs\.?|INR|₹)\s*[\d,]+\.?\d*\s+(?:debited|credited|spent|sent|received|withdrawn|charged|paid)|(?:Txn|Transaction|UPI txn)\s+of\s+(?:Rs\.?|INR|₹)))/gi;
 
     const parts = text.split(boundaryRe).filter((s) => s.trim());
     if (parts.length > 1) return parts.map((s) => s.trim());
@@ -872,7 +882,7 @@ const App = (() => {
           match.index,
         );
         const startMatch = searchZone.match(
-          /(?:Dear |Your |Alert:|ALERT:|Txn |Transaction |UPI |A\/c |Ac |Acct )/i,
+          /(?:Sent |Received |Dear |Your |Alert:|ALERT:|Txn |Transaction |UPI |A\/c |Ac |Acct )/i,
         );
         if (startMatch) {
           bestIdx =
@@ -921,6 +931,12 @@ const App = (() => {
 
     if (added > 0) saveData();
     const unparsed = smsList.length - results.length;
+    if (unparsed > 0) {
+      ErrorLogger.log("batch_parse_failures", {
+        total: smsList.length,
+        failed: unparsed,
+      });
+    }
     document.getElementById("batchResults").innerHTML = `
       <div style="padding:12px;background:var(--bg-card);border-radius:10px;border:1px solid var(--border);font-size:13px">
         <div style="margin-bottom:4px">✅ <strong>${added}</strong> added</div>
@@ -1191,6 +1207,75 @@ const App = (() => {
           showToast("All data cleared", "info");
         }
       });
+
+    // Error Logs
+    document
+      .getElementById("settingErrorLogs")
+      .addEventListener("click", async () => {
+        const logs = await ErrorLogger.getAll();
+        const countEl = document.getElementById("errorLogCount");
+        const listEl = document.getElementById("errorLogList");
+        countEl.textContent = `${logs.length} error${logs.length !== 1 ? "s" : ""} logged`;
+        if (logs.length === 0) {
+          listEl.innerHTML =
+            '<div style="padding:16px;text-align:center;color:var(--text-secondary)">No errors recorded ✅</div>';
+        } else {
+          listEl.innerHTML = logs
+            .slice()
+            .reverse()
+            .map(
+              (l) =>
+                `<div style="padding:8px;border-bottom:1px solid var(--border)">
+              <div style="font-weight:600;color:var(--red)">${l.type}</div>
+              <div style="color:var(--text-secondary);font-size:11px">${new Date(l.timestamp).toLocaleString()}</div>
+              <div style="margin-top:4px;word-break:break-all">${l.details.message || l.details.smsText || JSON.stringify(l.details).substring(0, 150)}</div>
+            </div>`,
+            )
+            .join("");
+        }
+        openModal("modalErrorLogs");
+      });
+    document
+      .getElementById("btnExportErrorsJSON")
+      .addEventListener("click", async () => {
+        const json = await ErrorLogger.exportJSON();
+        downloadFile(json, "error-logs.json", "application/json");
+        showToast("Error logs exported as JSON!", "success");
+      });
+    document
+      .getElementById("btnExportErrorsTXT")
+      .addEventListener("click", async () => {
+        const logs = await ErrorLogger.getAll();
+        const txt = logs
+          .slice()
+          .reverse()
+          .map(
+            (l) =>
+              `[${l.timestamp}] ${l.type}\n${l.details.message || l.details.smsText || JSON.stringify(l.details)}\n${l.details.stack || ""}\nURL: ${l.url}\n`,
+          )
+          .join("\n---\n\n");
+        downloadFile(
+          txt || "No errors logged.",
+          "error-logs.txt",
+          "text/plain",
+        );
+        showToast("Error logs exported as TXT!", "success");
+      });
+    document
+      .getElementById("btnClearErrors")
+      .addEventListener("click", async () => {
+        if (confirm("Clear all error logs?")) {
+          await ErrorLogger.clearAll();
+          document.getElementById("errorLogCount").textContent =
+            "0 errors logged";
+          document.getElementById("errorLogList").innerHTML =
+            '<div style="padding:16px;text-align:center;color:var(--text-secondary)">No errors recorded ✅</div>';
+          showToast("Error logs cleared", "info");
+        }
+      });
+    document
+      .getElementById("btnCloseErrorLogs")
+      .addEventListener("click", () => closeModal("modalErrorLogs"));
 
     // Close modals on overlay click
     document.querySelectorAll(".modal-overlay").forEach((overlay) => {

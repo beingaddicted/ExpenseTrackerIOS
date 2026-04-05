@@ -10,6 +10,7 @@ const ASSETS = [
   "./js/app.js",
   "./js/sms-parser.js",
   "./js/charts.js",
+  "./js/error-logger.js",
   "./js/shortcut-generator.js",
   "./manifest.json",
   "./data/expenses.json",

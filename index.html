@@ -251,6 +251,17 @@
           </div>
         </div>
         <div class="settings-group">
+          <div class="settings-group-title">Diagnostics</div>
+          <div class="settings-item" id="settingErrorLogs">
+            <div class="settings-icon">📝</div>
+            <div class="settings-info">
+              <div class="settings-label">Error Logs</div>
+              <div class="settings-desc">View and export error reports</div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div class="settings-group">
           <div class="settings-group-title">About</div>
           <div class="settings-item">
             <div class="settings-icon">ℹ️</div>
@@ -665,6 +676,66 @@
       </div>
     </div>
 
+    <!-- ═══ Modal: Error Logs ═══ -->
+    <div class="modal-overlay" id="modalErrorLogs">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Error Logs</div>
+        <div
+          id="errorLogCount"
+          style="
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+          "
+        ></div>
+        <div
+          id="errorLogList"
+          style="
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            margin-bottom: 12px;
+          "
+        ></div>
+        <div style="display: flex; gap: 8px">
+          <button
+            type="button"
+            class="btn-primary"
+            id="btnExportErrorsJSON"
+            style="flex: 1"
+          >
+            📋 JSON
+          </button>
+          <button
+            type="button"
+            class="btn-primary"
+            id="btnExportErrorsTXT"
+            style="flex: 1"
+          >
+            📄 TXT
+          </button>
+          <button
+            type="button"
+            class="btn-secondary"
+            id="btnClearErrors"
+            style="flex: 1"
+          >
+            🗑️ Clear
+          </button>
+        </div>
+        <button
+          type="button"
+          class="btn-secondary"
+          id="btnCloseErrorLogs"
+          style="margin-top: 12px"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <script src="js/error-logger.js"></script>
     <script src="js/sms-parser.js"></script>
     <script src="js/charts.js"></script>
     <script src="js/app.js"></script>
