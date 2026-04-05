@@ -298,280 +298,389 @@
         </div>
       </div>
 
-      <!-- Option A: Simple Text (Recommended) -->
+      <div class="divider">Part 1 — Create the Shortcut</div>
+
+      <!-- Step A: Create the shortcut -->
       <div class="card">
         <div class="card-header">
-          <span class="card-badge green">Recommended</span>
-          <span class="card-title">Simple Text File</span>
+          <span class="card-badge green">Step A</span>
+          <span class="card-title">Create "Save Bank SMS" Shortcut</span>
         </div>
         <div class="card-desc">
-          Appends each bank SMS as a new line to <strong>bank_sms.txt</strong>.
-          Simplest setup — works perfectly with the app's smart parser.
-        </div>
-        <button class="btn btn-green" id="btnDownloadSimple">
-          <span class="btn-icon">⬇️</span>
-          Download Shortcut (.txt version)
-        </button>
-      </div>
-
-      <!-- Option B: JSON Format -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-badge">Advanced</span>
-          <span class="card-title">JSON Format</span>
-        </div>
-        <div class="card-desc">
-          Builds a structured JSON file with message, sender & timestamp. Better
-          metadata but same end result in the app.
-        </div>
-        <button class="btn btn-primary" id="btnDownloadJSON">
-          <span class="btn-icon">⬇️</span>
-          Download Shortcut (.json version)
-        </button>
-      </div>
-
-      <!-- Enable Untrusted Shortcuts -->
-      <div
-        class="card"
-        style="border-color: var(--orange); background: #2a1a0a"
-      >
-        <div
-          class="card-title"
-          style="margin-bottom: 8px; color: var(--orange)"
-        >
-          ⚠️ Before You Download — Enable Untrusted Shortcuts
-        </div>
-        <div class="card-desc">
-          iOS blocks shortcut files from websites by default. You need to allow
-          them first — this is a <strong>one-time setting</strong>.
+          This shortcut saves the incoming SMS text to a file. You'll build it
+          once — it takes about 1 minute.
         </div>
         <div class="steps">
           <div class="step">
             <div class="step-num">1</div>
             <div class="step-text">
-              First, open the <strong>Shortcuts</strong> app and
-              <strong>run any shortcut once</strong> (e.g., a built-in one like
-              "Start Timer"). This unlocks the setting.
+              Open the <strong>Shortcuts</strong> app on your iPhone. If you
+              don't have it, download it free from the App Store.
             </div>
           </div>
           <div class="step">
             <div class="step-num">2</div>
             <div class="step-text">
-              Go to <strong>Settings → Shortcuts</strong> → toggle ON
-              <strong>"Allow Untrusted Shortcuts"</strong> (or on iOS 16+:
-              <strong
-                >Settings → Shortcuts → Advanced → Allow Running Scripts / Allow
-                Sharing Large Shortcuts</strong
-              >).
+              Tap the <strong>Shortcuts</strong> tab at the bottom (not
+              Automation), then tap the <strong>＋</strong> button in the
+              top-right corner to create a new shortcut.
             </div>
           </div>
           <div class="step">
             <div class="step-num">3</div>
             <div class="step-text">
-              Now come back here and tap the download button above. The file
-              will open in the Shortcuts app.
-            </div>
-          </div>
-        </div>
-        <div class="note">
-          <strong>Still can't open it?</strong> Scroll down to the
-          <strong>"Create It Manually"</strong> section — it takes 2 minutes and
-          works on every iOS version without any settings change.
-        </div>
-      </div>
-
-      <div class="divider">After downloading</div>
-
-      <!-- Setup steps -->
-      <div class="card">
-        <div class="card-title" style="margin-bottom: 14px">
-          ⚡ Complete Setup (2 min)
-        </div>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-text">
-              <strong>Open the downloaded file</strong> — iOS will ask to add it
-              to the Shortcuts app. Tap <strong>Add Shortcut</strong>.
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-text">
-              Open <strong>Shortcuts</strong> app →
-              <strong>Automation</strong> tab → tap <strong>＋</strong> →
-              <strong>Create Personal Automation</strong>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-text">
-              Choose <strong>Message</strong> trigger →
-              <strong>Sender Contains</strong> → add your bank IDs:
-              <div class="bank-ids" id="bankIds">
-                <span class="bank-id" data-id="HDFCBK">HDFCBK</span>
-                <span class="bank-id" data-id="ICICIB">ICICIB</span>
-                <span class="bank-id" data-id="SBIBNK">SBIBNK</span>
-                <span class="bank-id" data-id="AXISBK">AXISBK</span>
-                <span class="bank-id" data-id="KOTAKB">KOTAKB</span>
-                <span class="bank-id" data-id="PNBSMS">PNBSMS</span>
-                <span class="bank-id" data-id="YESBK">YESBK</span>
-                <span class="bank-id" data-id="INDUSBK">INDUSBK</span>
-                <span class="bank-id" data-id="FEDBNK">FEDBNK</span>
-                <span class="bank-id" data-id="IDFCFB">IDFCFB</span>
-                <span class="bank-id" data-id="CANBNK">CANBNK</span>
-                <span class="bank-id" data-id="BOBTXN">BOBTXN</span>
-              </div>
-              <div class="note" style="margin-top: 8px">
-                <strong>Tap any ID</strong> to copy it. Add only the banks you
-                use.
-              </div>
+              You'll see the shortcut editor. Tap
+              <strong>"Add Action"</strong> — a search sheet appears.
             </div>
           </div>
           <div class="step">
             <div class="step-num">4</div>
             <div class="step-text">
-              Set the action to <strong>Run Shortcut</strong> → choose
-              <strong>"Save Bank SMS"</strong> (the one you just installed)
+              In the search bar at the top, type <strong>"Append"</strong>.
+              You'll see <strong>"Append to Text File"</strong> in the results.
+              Tap it to add it.
+              <div class="note" style="margin-top: 8px">
+                <strong>Can't find it?</strong> Try searching "Append to File"
+                or just "Text File". On some iOS versions it may appear as
+                "Append to File" under Documents.
+              </div>
             </div>
           </div>
           <div class="step">
             <div class="step-num">5</div>
             <div class="step-text">
-              Turn <strong>OFF</strong> "Ask Before Running" → tap
-              <strong>Done</strong>
-            </div>
-          </div>
-        </div>
-
-        <div class="note">
-          <strong>All done!</strong> Every bank SMS will auto-save to
-          <strong>iCloud Drive → Shortcuts → bank_sms</strong> file. Open the
-          Expense Tracker app → tap 📂 → select the file to import.
-        </div>
-      </div>
-
-      <!-- Copy All Bank IDs -->
-      <button
-        class="btn btn-outline"
-        id="btnCopyAll"
-        style="margin-bottom: 16px"
-      >
-        📋 Copy All Bank IDs
-      </button>
-
-      <div class="note" style="margin-top: 0">
-        <strong>How import works:</strong> Open the app → tap
-        <strong>📂</strong> → pick <strong>bank_sms.txt</strong> (or .json) from
-        Files. The app parses all SMS, deduplicates, and adds new transactions.
-        You can import the same file repeatedly — duplicates are auto-skipped.
-      </div>
-
-      <div class="divider">Can't open the file?</div>
-
-      <!-- Manual Creation Fallback -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-badge" style="background: var(--orange)"
-            >Fallback</span
-          >
-          <span class="card-title"
-            >Create It Manually (No Download Needed)</span
-          >
-        </div>
-        <div class="card-desc">
-          If the downloaded file won't open, build the exact same shortcut
-          yourself in 2 minutes. Works on <strong>every iOS version</strong> —
-          no settings changes required.
-        </div>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-text">
-              Open the <strong>Shortcuts</strong> app → tap
-              <strong>＋</strong> (top-right) → <strong>Add Action</strong>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-text">
-              Search for <strong>"Append to File"</strong> and tap it to add the
-              action.
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-text">
-              Configure the action:
-              <ul style="margin-top: 6px; padding-left: 16px; list-style: disc">
+              Now configure the action. You'll see it has blue/grey tappable
+              fields:
+              <ul
+                style="
+                  margin-top: 8px;
+                  padding-left: 16px;
+                  list-style: disc;
+                  line-height: 2;
+                "
+              >
                 <li>
-                  <strong>Text</strong>: tap the field → select
-                  <strong>"Shortcut Input"</strong> from the variables (this
-                  passes the SMS text)
+                  Tap the <strong>"Text"</strong> field (where it says what to
+                  append). Tap <strong>"Shortcut Input"</strong> from the
+                  variable suggestions above the keyboard. This passes the SMS
+                  message body into the shortcut.
                 </li>
                 <li>
-                  <strong>File Path</strong>: type
+                  Tap the <strong>file path</strong> field. Type exactly:
                   <code
                     style="
                       background: var(--bg-elevated);
-                      padding: 2px 6px;
+                      padding: 2px 8px;
                       border-radius: 4px;
                       font-size: 12px;
+                      color: var(--accent-light);
                     "
-                    >Shortcuts/bank_sms.txt</code
+                    >bank_sms.txt</code
+                  >
+                  <br /><span style="font-size: 11px; color: var(--text-muted)"
+                    >The file will be created automatically in iCloud Drive →
+                    Shortcuts folder.</span
                   >
                 </li>
-                <li>Make sure <strong>"Make New Line"</strong> is turned ON</li>
+                <li>
+                  If you see a <strong>"Make New Line"</strong> or
+                  <strong>"Append on New Line"</strong> toggle — make sure it's
+                  <strong>ON</strong> (it usually is by default).
+                </li>
               </ul>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">6</div>
+            <div class="step-text">
+              Tap the shortcut name at the very top (it might say "New Shortcut"
+              or show a dropdown arrow). <strong>Rename it</strong> to:
+              <div style="margin-top: 6px">
+                <code
+                  style="
+                    background: var(--bg-elevated);
+                    padding: 6px 12px;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    color: var(--accent-light);
+                    display: inline-block;
+                  "
+                  >Save Bank SMS</code
+                >
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">7</div>
+            <div class="step-text">
+              Tap <strong>Done</strong> (top-right). Your shortcut is saved. You
+              can see it in the Shortcuts tab.
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Test it:</strong> Go back to the Shortcuts tab, tap
+          <strong>"Save Bank SMS"</strong>, type any text when prompted, then
+          check <strong>Files app → iCloud Drive → Shortcuts</strong> — you
+          should see <strong>bank_sms.txt</strong> with your text.
+        </div>
+      </div>
+
+      <div class="divider">Part 2 — Set Up SMS Automation</div>
+
+      <!-- Step B: Create the automation trigger -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-badge">Step B</span>
+          <span class="card-title">Auto-Trigger on Bank SMS</span>
+        </div>
+        <div class="card-desc">
+          Now you'll tell iOS to run your shortcut automatically every time a
+          bank SMS arrives. This is the key step.
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              In the <strong>Shortcuts</strong> app, tap the
+              <strong>Automation</strong> tab at the bottom.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Tap the <strong>＋</strong> button in the top-right corner (or if
+              this is your first automation, you may see a "Create Personal
+              Automation" button directly).
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              Tap <strong>"Create Personal Automation"</strong> if you see the
+              option. Then scroll down and tap <strong>"Message"</strong> under
+              the Communication section.
             </div>
           </div>
           <div class="step">
             <div class="step-num">4</div>
             <div class="step-text">
-              Tap the shortcut name at the top → rename it to
-              <strong>"Save Bank SMS"</strong> → tap <strong>Done</strong>.
+              Configure the Message trigger — use
+              <strong>"Message Contains"</strong> instead of Sender (iOS strips
+              hyphens from sender IDs, making them unreliable):
+              <ul
+                style="
+                  margin-top: 8px;
+                  padding-left: 16px;
+                  list-style: disc;
+                  line-height: 2;
+                "
+              >
+                <li>Leave <strong>"Sender"</strong> empty.</li>
+                <li>
+                  Tap <strong>"Message Contains"</strong> → type
+                  <code
+                    style="
+                      background: var(--bg-elevated);
+                      padding: 2px 8px;
+                      border-radius: 4px;
+                      font-size: 13px;
+                      color: var(--accent-light);
+                    "
+                    >debit</code
+                  >
+                </li>
+              </ul>
+              <div
+                class="note"
+                style="margin-top: 8px; border-color: var(--accent)"
+              >
+                <strong>This catches all debit SMS</strong> (UPI, NEFT, IMPS,
+                card swipes). The keyword "debit" matches "debited", "debit
+                card", "debit of Rs." etc.
+              </div>
             </div>
           </div>
           <div class="step">
             <div class="step-num">5</div>
+            <div class="step-text">Tap <strong>Next</strong>.</div>
+          </div>
+          <div class="step">
+            <div class="step-num">6</div>
             <div class="step-text">
-              Now set up the automation trigger:
-              <ul style="margin-top: 6px; padding-left: 16px; list-style: disc">
+              You'll see options for what action to perform. Tap
+              <strong>"New Blank Automation"</strong> or
+              <strong>"Add Action"</strong>.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">7</div>
+            <div class="step-text">
+              In the action search, type <strong>"Run"</strong> and select
+              <strong>"Run Shortcut"</strong>.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">8</div>
+            <div class="step-text">
+              Tap the blue <strong>"Shortcut"</strong> placeholder text → select
+              <strong>"Save Bank SMS"</strong> (the one you created in Part 1).
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">9</div>
+            <div class="step-text">
+              Tap <strong>Next</strong>. On the summary screen:
+              <ul
+                style="
+                  margin-top: 8px;
+                  padding-left: 16px;
+                  list-style: disc;
+                  line-height: 2;
+                "
+              >
                 <li>
-                  Go to <strong>Automation</strong> tab → tap
-                  <strong>＋</strong> →
-                  <strong>Create Personal Automation</strong>
+                  Turn <strong>OFF</strong> the
+                  <strong>"Ask Before Running"</strong> toggle — this lets it
+                  run silently in the background without a popup every time.
                 </li>
                 <li>
-                  Choose <strong>Message</strong> →
-                  <strong>Sender Contains</strong> → type your bank ID (e.g.
-                  <code
-                    style="
-                      background: var(--bg-elevated);
-                      padding: 2px 6px;
-                      border-radius: 4px;
-                      font-size: 12px;
-                    "
-                    >HDFCBK</code
-                  >)
-                </li>
-                <li>
-                  Tap <strong>Next</strong> → <strong>Run Shortcut</strong> →
-                  select <strong>"Save Bank SMS"</strong>
-                </li>
-                <li>
-                  Turn <strong>OFF</strong> "Ask Before Running" →
-                  <strong>Done</strong>
+                  If you see <strong>"Notify When Run"</strong>, you can turn it
+                  off too (optional — keeping it on gives you a small
+                  confirmation banner).
                 </li>
               </ul>
             </div>
           </div>
+          <div class="step">
+            <div class="step-num">10</div>
+            <div class="step-text">
+              Tap <strong>Done</strong>. Your first automation is set.
+            </div>
+          </div>
+        </div>
+        <div class="note" style="border-color: var(--green)">
+          <strong style="color: var(--green)"
+            >Now create 3 more automations!</strong
+          ><br />
+          Repeat the exact same steps above for each of these keywords (one
+          automation per keyword):
+          <div class="bank-ids" style="margin-top: 8px">
+            <span
+              class="bank-id"
+              data-id="credit"
+              style="font-size: 13px; padding: 6px 10px"
+              >credit</span
+            >
+            <span
+              class="bank-id"
+              data-id="sent"
+              style="font-size: 13px; padding: 6px 10px"
+              >sent</span
+            >
+            <span
+              class="bank-id"
+              data-id="spent"
+              style="font-size: 13px; padding: 6px 10px"
+              >spent</span
+            >
+          </div>
+          <div
+            style="
+              margin-top: 8px;
+              font-size: 12px;
+              color: var(--text-secondary);
+              line-height: 1.6;
+            "
+          >
+            • <strong>debit</strong> → catches "debited", "debit card", all
+            outgoing transactions<br />
+            • <strong>credit</strong> → catches "credited", "credit card",
+            salary, refunds<br />
+            • <strong>sent</strong> → catches "sent", UPI transfers with "sent
+            to" phrasing<br />
+            • <strong>spent</strong> → catches "spent on", "spent at", card
+            purchase alerts
+          </div>
+        </div>
+        <div class="note" style="margin-top: 8px">
+          <strong>Why 4 separate automations?</strong> iOS only allows one
+          "Message Contains" value per automation. These 4 keywords together
+          cover 99% of Indian bank transaction SMS while ignoring OTPs, balance
+          checks, promos, and other junk. The app's parser handles any
+          duplicates or non-transaction messages automatically.
+        </div>
+        <div class="note" style="margin-top: 8px; border-color: var(--accent)">
+          <strong>Want even more coverage?</strong> Optionally create
+          automations for:
+          <div class="bank-ids" style="margin-top: 6px">
+            <span class="bank-id" data-id="withdrawn">withdrawn</span>
+            <span class="bank-id" data-id="purchased">purchased</span>
+            <span class="bank-id" data-id="received">received</span>
+            <span class="bank-id" data-id="transferred">transferred</span>
+            <span class="bank-id" data-id="payment">payment</span>
+          </div>
+          <div
+            style="margin-top: 6px; font-size: 11px; color: var(--text-muted)"
+          >
+            Tap any keyword to copy. The 4 main keywords (debit + credit + sent
+            + spent) cover most cases.
+          </div>
+        </div>
+      </div>
+
+      <div class="divider">Part 3 — Import into the App</div>
+
+      <!-- Import instructions -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-badge green">Step C</span>
+          <span class="card-title">Import SMS into Expense Tracker</span>
+        </div>
+        <div class="card-desc">
+          Once you have some bank SMS collected, import them into the app. Do
+          this whenever you want — weekly, monthly, or anytime.
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              Open <strong>Expense Tracker</strong> from your Home Screen (or
+              Safari).
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Tap the <strong>📂 Import</strong> button.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              The iOS file picker opens. Navigate to:
+              <strong>iCloud Drive → Shortcuts → bank_sms.txt</strong>
+              <div class="note" style="margin-top: 8px">
+                <strong>Don't see the Shortcuts folder?</strong> Tap "Browse" at
+                the bottom of the Files picker → iCloud Drive. The Shortcuts
+                folder is created automatically when the shortcut first saves a
+                file.
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              Select the file. The app parses every SMS — extracting
+              <strong>amount, merchant, category, date, bank</strong> — and adds
+              them as transactions. Duplicates are automatically skipped.
+            </div>
+          </div>
         </div>
         <div class="note">
-          <strong>That's it!</strong> This is functionally identical to the
-          downloaded shortcut. Every bank SMS will be saved to
-          <strong>iCloud Drive → Shortcuts → bank_sms.txt</strong>
-          automatically.
+          <strong>You can import the same file repeatedly</strong> — the app
+          deduplicates by matching amount + date + merchant + reference number.
+          No double entries ever.
         </div>
       </div>
 
@@ -800,10 +909,59 @@
           <div class="step">
             <div class="step-num">?</div>
             <div class="step-text">
-              <strong>Shortcut not triggering?</strong> — Go to Shortcuts →
-              Automation → check your SMS automation is enabled and "Ask Before
-              Running" is <strong>OFF</strong>. Also verify the sender ID
-              matches exactly (e.g., HDFCBK not HDFC).
+              <strong>Automation not triggering?</strong> Check these in order:
+              <ul
+                style="
+                  margin-top: 6px;
+                  padding-left: 16px;
+                  list-style: disc;
+                  line-height: 2;
+                "
+              >
+                <li>
+                  <strong>Keyword issue:</strong> Make sure your automation uses
+                  <strong>"Message Contains"</strong> with exactly
+                  <code
+                    style="
+                      background: var(--bg-elevated);
+                      padding: 2px 6px;
+                      border-radius: 4px;
+                      font-size: 11px;
+                    "
+                    >debited</code
+                  >
+                  or
+                  <code
+                    style="
+                      background: var(--bg-elevated);
+                      padding: 2px 6px;
+                      border-radius: 4px;
+                      font-size: 11px;
+                    "
+                    >credited</code
+                  >. Don't use "Sender" — iOS strips hyphens from sender IDs.
+                </li>
+                <li>
+                  <strong>"Ask Before Running" is ON:</strong> Go to Shortcuts →
+                  Automation → tap your automation → make sure "Ask Before
+                  Running" is <strong>OFF</strong>.
+                </li>
+                <li>
+                  <strong>Automation is disabled:</strong> In the Automation
+                  tab, check the toggle next to your automation is
+                  green/enabled.
+                </li>
+                <li>
+                  <strong>Focus mode blocking:</strong> If you have Focus/DND
+                  active, it may suppress automations. Try disabling Focus
+                  temporarily.
+                </li>
+                <li>
+                  <strong>Test manually first:</strong> Open Shortcuts → tap
+                  "Save Bank SMS" → type any text → confirm a file appears in
+                  Files → iCloud Drive → Shortcuts.
+                </li>
+              </ul>
             </div>
           </div>
           <div class="step">
@@ -839,7 +997,6 @@
 
     <div class="toast" id="toast"></div>
 
-    <script src="js/shortcut-generator.js"></script>
     <script>
       function showToast(msg) {
         var t = document.getElementById("toast");
@@ -850,52 +1007,18 @@
         }, 2000);
       }
 
-      // Download buttons
-      document
-        .getElementById("btnDownloadSimple")
-        .addEventListener("click", function () {
-          var shortcut = ShortcutGenerator.buildSimpleShortcut();
-          ShortcutGenerator.download(shortcut, "Save Bank SMS.shortcut");
-          showToast("✅ Shortcut downloaded!");
-        });
-
-      document
-        .getElementById("btnDownloadJSON")
-        .addEventListener("click", function () {
-          var shortcut = ShortcutGenerator.buildJSONShortcut();
-          ShortcutGenerator.download(shortcut, "Save Bank SMS JSON.shortcut");
-          showToast("✅ Shortcut downloaded!");
-        });
-
       // Copy individual bank IDs
-      document
-        .getElementById("bankIds")
-        .addEventListener("click", function (e) {
-          var el = e.target.closest(".bank-id");
-          if (!el) return;
-          var id = el.dataset.id;
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(id).then(function () {
-              showToast("📋 Copied: " + id);
-            });
-          }
-        });
-
-      // Copy all bank IDs
-      document
-        .getElementById("btnCopyAll")
-        .addEventListener("click", function () {
-          var ids = [];
-          document.querySelectorAll(".bank-id").forEach(function (el) {
-            ids.push(el.dataset.id);
+      // Copy any tappable keyword/bank-id badge (event delegation on document)
+      document.addEventListener("click", function (e) {
+        var el = e.target.closest(".bank-id");
+        if (!el) return;
+        var id = el.dataset.id;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(id).then(function () {
+            showToast("📋 Copied: " + id);
           });
-          var text = ids.join(", ");
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(text).then(function () {
-              showToast("📋 All IDs copied!");
-            });
-          }
-        });
+        }
+      });
     </script>
   </body>
 </html>

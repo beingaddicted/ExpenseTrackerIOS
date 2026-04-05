@@ -96,6 +96,17 @@ const App = (() => {
   function registerSW() {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
+
+      // Listen for version update messages from service worker
+      navigator.serviceWorker.addEventListener("message", (event) => {
+        if (event.data && event.data.type === "VERSION_UPDATED") {
+          showToast(
+            "App updated to v" + event.data.version + " — reloading…",
+            "success",
+          );
+          setTimeout(() => window.location.reload(), 1500);
+        }
+      });
     }
   }
 
@@ -273,6 +284,16 @@ const App = (() => {
               }
             }
           });
+        } else if (!data && looksLikeCSV(text)) {
+          // CSV re-import (exported by this app)
+          parseExportedCSV(text).forEach((txn) => {
+            if (!SMSParser.isDuplicate(txn, transactions)) {
+              transactions.unshift(txn);
+              added++;
+            } else {
+              skipped++;
+            }
+          });
         } else {
           // Try as plain text — one SMS per line or blank-line separated
           const lines = text
@@ -303,6 +324,71 @@ const App = (() => {
       }
     };
     reader.readAsText(file);
+  }
+
+  // ─── CSV Import Helpers ───
+  function looksLikeCSV(text) {
+    const first = text.split("\n")[0] || "";
+    return /^"?Date"?,"?Type"?/i.test(first.trim());
+  }
+
+  function parseCSVRow(line) {
+    const cols = [];
+    let cur = "",
+      inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else if (ch === '"') inQuotes = false;
+        else cur += ch;
+      } else {
+        if (ch === '"') inQuotes = true;
+        else if (ch === ",") {
+          cols.push(cur);
+          cur = "";
+        } else cur += ch;
+      }
+    }
+    cols.push(cur);
+    return cols;
+  }
+
+  function parseExportedCSV(text) {
+    const lines = text.split("\n").filter((l) => l.trim());
+    if (lines.length < 2) return [];
+    const headers = parseCSVRow(lines[0]).map((h) => h.trim().toLowerCase());
+    const results = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseCSVRow(lines[i]);
+      const row = {};
+      headers.forEach((h, idx) => {
+        row[h] = (cols[idx] || "").trim();
+      });
+      const amt = parseFloat(row.amount);
+      if (!amt || amt <= 0) continue;
+      results.push({
+        id: "txn_import_" + Date.now().toString(36) + "_" + i,
+        date: row.date || new Date().toISOString().split("T")[0],
+        type: row.type === "credit" ? "credit" : "debit",
+        amount: amt,
+        currency: row.currency || "INR",
+        merchant: row.merchant || "Unknown",
+        category: row.category || "Other",
+        mode: row.mode || "Unknown",
+        bank: row.bank || "Unknown",
+        account: row.account || null,
+        refNumber: row.reference || null,
+        balance: null,
+        rawSMS: null,
+        sender: null,
+        parsedAt: new Date().toISOString(),
+        source: row.source || "csv-import",
+      });
+    }
+    return results;
   }
 
   // ─── Filtering ───
@@ -831,13 +917,15 @@ const App = (() => {
   }
 
   // ─── Toast ───
+  let _toastTimer = null;
   function showToast(msg, type = "info") {
     const toast = document.getElementById("toast");
     const icons = { success: "✅", error: "❌", info: "ℹ️" };
     document.getElementById("toastIcon").textContent = icons[type] || "ℹ️";
     document.getElementById("toastMsg").textContent = msg;
     toast.className = `toast ${type} show`;
-    setTimeout(() => toast.classList.remove("show"), 3000);
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => toast.classList.remove("show"), 3000);
   }
 
   // ─── Category Select ───
@@ -966,6 +1054,9 @@ const App = (() => {
     document
       .getElementById("settingLoadFile")
       .addEventListener("click", () => fileInput.click());
+    document
+      .getElementById("settingImportData")
+      .addEventListener("click", () => fileInput.click());
     fileInput.addEventListener("change", (e) => {
       if (e.target.files[0]) handleFileImport(e.target.files[0]);
       e.target.value = ""; // allow re-selecting same file
@@ -996,22 +1087,6 @@ const App = (() => {
     document
       .getElementById("btnCloseShortcut")
       .addEventListener("click", () => closeModal("modalShortcut"));
-
-    // Shortcut download buttons
-    document
-      .getElementById("btnDownloadSimpleShortcut")
-      .addEventListener("click", () => {
-        const shortcut = ShortcutGenerator.buildSimpleShortcut();
-        ShortcutGenerator.download(shortcut, "Save Bank SMS.shortcut");
-        showToast("Shortcut downloaded!", "success");
-      });
-    document
-      .getElementById("btnDownloadJSONShortcut")
-      .addEventListener("click", () => {
-        const shortcut = ShortcutGenerator.buildJSONShortcut();
-        ShortcutGenerator.download(shortcut, "Save Bank SMS JSON.shortcut");
-        showToast("Shortcut downloaded!", "success");
-      });
 
     // Batch text import
     document

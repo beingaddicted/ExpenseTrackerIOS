@@ -1153,6 +1153,8 @@ body {
     top: calc(20px + var(--safe-top));
     left: 50%;
     transform: translateX(-50%) translateY(-100px);
+    opacity: 0;
+    pointer-events: none;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -1164,11 +1166,13 @@ body {
     align-items: center;
     gap: 8px;
     box-shadow: var(--shadow);
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
 .toast.show {
     transform: translateX(-50%) translateY(0);
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .toast.success { border-color: var(--green); }
