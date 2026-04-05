@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="ExpenseTrack" />
+    <meta name="theme-color" content="#0f0f23" />
+    <title>Expense Tracker</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <!-- Hidden file input for JSON import -->
+    <input
+      type="file"
+      id="fileInput"
+      accept=".json,.txt"
+      style="display: none"
+    />
+    <!-- Toast -->
+    <div id="toast" class="toast">
+      <span id="toastIcon"></span><span id="toastMsg"></span>
+    </div>
+
+    <!-- ═══ Page: Dashboard ═══ -->
+    <div id="page-dashboard" class="page active">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-top">
+          <h1 class="header-title">Expenses</h1>
+          <div class="header-actions">
+            <button
+              class="icon-btn"
+              id="btnLoadFile"
+              aria-label="Load SMS File"
+              style="
+                background: linear-gradient(
+                  135deg,
+                  var(--accent),
+                  var(--purple)
+                );
+                color: white;
+                border-color: var(--accent);
+                font-size: 16px;
+              "
+            >
+              📂
+            </button>
+            <button class="icon-btn" id="btnSearch" aria-label="Search">
+              🔍
+            </button>
+            <button class="icon-btn" id="btnParseSMS" aria-label="Parse SMS">
+              💬
+            </button>
+          </div>
+        </div>
+        <div class="month-selector">
+          <button class="month-nav" id="prevMonth" aria-label="Previous month">
+            ‹
+          </button>
+          <span class="month-label" id="monthLabel">April 2026</span>
+          <button class="month-nav" id="nextMonth" aria-label="Next month">
+            ›
+          </button>
+        </div>
+      </header>
+
+      <!-- Search Bar -->
+      <div class="search-bar" id="searchBar">
+        <div class="search-input-wrap">
+          <span class="search-icon">🔍</span>
+          <input
+            type="text"
+            class="search-input"
+            id="searchInput"
+            placeholder="Search transactions..."
+          />
+        </div>
+      </div>
+
+      <!-- Summary Cards -->
+      <section class="summary-section">
+        <div class="summary-cards">
+          <div class="summary-card expense">
+            <div class="summary-icon">📉</div>
+            <div class="summary-label">Spent</div>
+            <div class="summary-amount" id="totalExpense">₹0</div>
+            <div class="summary-count" id="expenseCount">0 transactions</div>
+          </div>
+          <div class="summary-card income">
+            <div class="summary-icon">📈</div>
+            <div class="summary-label">Income</div>
+            <div class="summary-amount" id="totalIncome">₹0</div>
+            <div class="summary-count" id="incomeCount">0 transactions</div>
+          </div>
+          <div class="summary-card total">
+            <div>
+              <div class="summary-label">Net Balance</div>
+              <div class="summary-amount" id="netBalance">₹0</div>
+            </div>
+            <div class="summary-icon">💰</div>
+          </div>
+        </div>
+        <div class="quick-stats" id="quickStats"></div>
+      </section>
+
+      <!-- Category Donut Chart -->
+      <section class="charts-section">
+        <div class="chart-container">
+          <div class="chart-header">
+            <span class="chart-title">By Category</span>
+          </div>
+          <div class="donut-chart" id="donutChart"></div>
+        </div>
+
+        <!-- Daily Bar Chart -->
+        <div class="chart-container">
+          <div class="chart-header">
+            <span class="chart-title">Daily Spending</span>
+          </div>
+          <div class="bar-chart" id="barChart"></div>
+        </div>
+      </section>
+
+      <!-- Filter -->
+      <div class="filter-bar" id="filterBar">
+        <button class="filter-chip active" data-filter="all">All</button>
+        <button class="filter-chip" data-filter="debit">Expenses</button>
+        <button class="filter-chip" data-filter="credit">Income</button>
+      </div>
+
+      <!-- Transactions -->
+      <section class="transactions-section">
+        <div class="section-header">
+          <span class="section-title">Transactions</span>
+          <button class="section-action" id="btnExport">Export ↗</button>
+        </div>
+        <div id="transactionsList"></div>
+      </section>
+    </div>
+
+    <!-- ═══ Page: Analytics ═══ -->
+    <div id="page-analytics" class="page">
+      <header class="header">
+        <div class="header-top">
+          <h1 class="header-title">Analytics</h1>
+        </div>
+      </header>
+      <div class="analytics-grid" id="analyticsGrid">
+        <!-- Top Categories -->
+        <div class="analytics-card">
+          <div class="analytics-card-title">📊 Top Categories</div>
+          <div class="top-list" id="topCategories"></div>
+        </div>
+        <!-- Top Merchants -->
+        <div class="analytics-card">
+          <div class="analytics-card-title">🏪 Top Merchants</div>
+          <div class="top-list" id="topMerchants"></div>
+        </div>
+        <!-- Monthly Trend -->
+        <div class="analytics-card">
+          <div class="analytics-card-title">📈 Monthly Trend (6 months)</div>
+          <div class="bar-chart" id="trendChart" style="height: 140px"></div>
+        </div>
+        <!-- By Payment Mode -->
+        <div class="analytics-card">
+          <div class="analytics-card-title">💳 By Payment Mode</div>
+          <div class="top-list" id="topModes"></div>
+        </div>
+        <!-- By Bank/Account -->
+        <div class="analytics-card">
+          <div class="analytics-card-title">🏦 By Bank</div>
+          <div class="top-list" id="topBanks"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Page: Settings ═══ -->
+    <div id="page-settings" class="page">
+      <header class="header">
+        <div class="header-top">
+          <h1 class="header-title">Settings</h1>
+        </div>
+      </header>
+      <div class="settings-list">
+        <div class="settings-group">
+          <div class="settings-group-title">Import</div>
+          <div class="settings-item" id="settingLoadFile">
+            <div class="settings-icon">📂</div>
+            <div class="settings-info">
+              <div class="settings-label">Load SMS JSON File</div>
+              <div class="settings-desc">
+                Pick the file created by iOS Shortcut
+              </div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+          <div class="settings-item" id="settingShortcut">
+            <div class="settings-icon">📱</div>
+            <div class="settings-info">
+              <div class="settings-label">Setup iOS Shortcut</div>
+              <div class="settings-desc">
+                How to auto-save bank SMS to a file
+              </div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-title">Data</div>
+          <div class="settings-item" id="settingExport">
+            <div class="settings-icon">📤</div>
+            <div class="settings-info">
+              <div class="settings-label">Export Data</div>
+              <div class="settings-desc">Download as CSV or JSON</div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+          <div class="settings-item" id="settingImport">
+            <div class="settings-icon">📥</div>
+            <div class="settings-info">
+              <div class="settings-label">Import SMS Batch</div>
+              <div class="settings-desc">Paste multiple SMS at once</div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+          <div class="settings-item" id="settingClear">
+            <div class="settings-icon">🗑️</div>
+            <div class="settings-info">
+              <div class="settings-label">Clear All Data</div>
+              <div class="settings-desc">Remove all stored transactions</div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-title">About</div>
+          <div class="settings-item">
+            <div class="settings-icon">ℹ️</div>
+            <div class="settings-info">
+              <div class="settings-label">Expense Tracker PWA</div>
+              <div class="settings-desc">
+                v1.0 — All data stored locally on device
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Bottom Navigation ═══ -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-page="dashboard">
+        <span class="nav-icon">🏠</span>
+        <span>Home</span>
+      </button>
+      <button class="nav-item" data-page="analytics">
+        <span class="nav-icon">📊</span>
+        <span>Analytics</span>
+      </button>
+      <button class="nav-add" id="btnAdd" aria-label="Add transaction">
+        +
+      </button>
+      <button class="nav-item" id="navPaste">
+        <span class="nav-icon">💬</span>
+        <span>Paste SMS</span>
+      </button>
+      <button class="nav-item" data-page="settings">
+        <span class="nav-icon">⚙️</span>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <!-- ═══ Modal: Add Transaction ═══ -->
+    <div class="modal-overlay" id="modalAdd">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Add Transaction</div>
+        <form id="formAdd" autocomplete="off">
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <div class="type-toggle">
+              <button
+                type="button"
+                class="type-btn debit active"
+                data-type="debit"
+              >
+                Expense
+              </button>
+              <button type="button" class="type-btn credit" data-type="credit">
+                Income
+              </button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Amount</label>
+            <input
+              type="number"
+              class="form-input"
+              id="addAmount"
+              placeholder="0.00"
+              step="0.01"
+              min="0"
+              required
+              inputmode="decimal"
+            />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Date</label>
+              <input type="date" class="form-input" id="addDate" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select class="form-select" id="addCategory"></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Merchant / Description</label>
+            <input
+              type="text"
+              class="form-input"
+              id="addMerchant"
+              placeholder="e.g. Swiggy, Amazon"
+              maxlength="100"
+            />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Payment Mode</label>
+              <select class="form-select" id="addMode">
+                <option value="UPI">UPI</option>
+                <option value="Credit Card">Credit Card</option>
+                <option value="Debit Card">Debit Card</option>
+                <option value="Net Banking">Net Banking</option>
+                <option value="Cash">Cash</option>
+                <option value="NEFT">NEFT</option>
+                <option value="IMPS">IMPS</option>
+                <option value="Wallet">Wallet</option>
+                <option value="Auto Pay">Auto Pay</option>
+                <option value="EMI">EMI</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Bank</label>
+              <input
+                type="text"
+                class="form-input"
+                id="addBank"
+                placeholder="e.g. HDFC"
+                maxlength="50"
+              />
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">Add Transaction</button>
+          <button type="button" class="btn-secondary" id="btnCancelAdd">
+            Cancel
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: Parse SMS ═══ -->
+    <div class="modal-overlay" id="modalParse">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Parse Bank SMS</div>
+        <div class="form-group">
+          <label class="form-label">Paste SMS message</label>
+          <textarea
+            class="form-textarea sms-input-area"
+            id="smsInput"
+            placeholder="Paste bank transaction SMS here..."
+          ></textarea>
+        </div>
+        <button type="button" class="btn-primary" id="btnParseSMSAction">
+          Parse & Add
+        </button>
+        <div class="duplicate-warning" id="dupWarning">
+          ⚠️ <span>This transaction already exists!</span>
+        </div>
+        <div class="parse-result" id="parseResult">
+          <div class="parse-result-row">
+            <span class="parse-result-label">Type</span
+            ><span class="parse-result-value" id="prType"></span>
+          </div>
+          <div class="parse-result-row">
+            <span class="parse-result-label">Amount</span
+            ><span class="parse-result-value" id="prAmount"></span>
+          </div>
+          <div class="parse-result-row">
+            <span class="parse-result-label">Merchant</span
+            ><span class="parse-result-value" id="prMerchant"></span>
+          </div>
+          <div class="parse-result-row">
+            <span class="parse-result-label">Category</span
+            ><span class="parse-result-value" id="prCategory"></span>
+          </div>
+          <div class="parse-result-row">
+            <span class="parse-result-label">Date</span
+            ><span class="parse-result-value" id="prDate"></span>
+          </div>
+          <div class="parse-result-row">
+            <span class="parse-result-label">Bank</span
+            ><span class="parse-result-value" id="prBank"></span>
+          </div>
+          <div class="parse-result-row">
+            <span class="parse-result-label">Mode</span
+            ><span class="parse-result-value" id="prMode"></span>
+          </div>
+          <div class="parse-result-row">
+            <span class="parse-result-label">Account</span
+            ><span class="parse-result-value" id="prAccount"></span>
+          </div>
+          <div class="parse-result-row">
+            <span class="parse-result-label">Reference</span
+            ><span class="parse-result-value" id="prRef"></span>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="btn-primary"
+          id="btnConfirmParse"
+          style="display: none; margin-top: 12px"
+        >
+          Confirm & Save
+        </button>
+        <button type="button" class="btn-secondary" id="btnCancelParse">
+          Cancel
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: Transaction Detail ═══ -->
+    <div class="modal-overlay" id="modalDetail">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="detail-header">
+          <div class="detail-amount" id="detailAmount"></div>
+          <div class="detail-merchant" id="detailMerchant"></div>
+        </div>
+        <div class="detail-grid" id="detailGrid"></div>
+        <div class="detail-sms" id="detailSMS"></div>
+        <button
+          type="button"
+          class="btn-secondary"
+          style="margin-top: 16px"
+          id="btnToggleInvalid"
+        >
+          Mark as Invalid
+        </button>
+        <button
+          type="button"
+          class="btn-secondary"
+          style="margin-top: 8px; color: var(--red); border-color: var(--red)"
+          id="btnDeleteTxn"
+        >
+          Delete Transaction
+        </button>
+        <button type="button" class="btn-secondary" id="btnCloseDetail">
+          Close
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: Export ═══ -->
+    <div class="modal-overlay" id="modalExport">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Export Data</div>
+        <div class="export-options">
+          <button class="export-btn" id="exportCSV">
+            <span class="export-icon">📄</span>CSV
+          </button>
+          <button class="export-btn" id="exportJSON">
+            <span class="export-icon">📋</span>JSON
+          </button>
+        </div>
+        <button
+          type="button"
+          class="btn-secondary"
+          id="btnCloseExport"
+          style="margin-top: 16px"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: Shortcut Instructions (Local File) ═══ -->
+    <div class="modal-overlay" id="modalShortcut">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">📱 iOS Shortcut Setup</div>
+        <p
+          style="
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+          "
+        >
+          This Shortcut auto-saves every bank SMS to a JSON file in your
+          <strong>Files</strong> app. Then open this app and tap 📂 to load that
+          file.
+        </p>
+        <div class="shortcut-info">
+          <div class="shortcut-step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              Open <strong>Shortcuts</strong> app →
+              <strong>Automation</strong> tab → <strong>＋</strong> →
+              <strong>Create Personal Automation</strong>
+            </div>
+          </div>
+          <div class="shortcut-step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Choose <strong>Message</strong> →
+              <strong>Sender Contains</strong> → add your bank IDs:<br /><em
+                >HDFCBK, ICICIB, SBIBNK, AXISBK, KOTAKB, PNBSMS, YESBK</em
+              >
+            </div>
+          </div>
+          <div class="shortcut-step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              Add these actions in order (see code block below)
+            </div>
+          </div>
+          <div class="shortcut-step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              Turn <strong>OFF</strong> "Ask Before Running" → Done!
+            </div>
+          </div>
+          <div class="shortcut-step">
+            <div class="step-num">5</div>
+            <div class="step-text">
+              Open this app anytime → tap <strong>📂</strong> → pick
+              <strong>bank_sms.json</strong> from Files
+            </div>
+          </div>
+        </div>
+
+        <p
+          style="
+            font-size: 12px;
+            color: var(--accent-light);
+            margin: 12px 0 4px;
+            font-weight: 600;
+          "
+        >
+          Shortcut Actions:
+        </p>
+        <div class="code-block">
+          Action 1: Text ───────────────────────── {"message":"[Shortcut
+          Input]","sender":"[Sender]","timestamp":"[Current Date]"} Action 2:
+          Get File ───────────────────────── File: Shortcuts/bank_sms.json (If
+          Not Found → skip to Action 5) Action 3: Get Text from [File]
+          ───────────────────────── Action 4: Text ─────────────────────────
+          (Check if file was empty or had content) If old text starts with
+          {"messages": → Replace closing ]} with: ,{new entry}]} Else → go to
+          Action 5 Action 5 (first time / fallback): Text
+          ───────────────────────── {"messages":[{entry from Action 1}]} Action
+          6: Save File ───────────────────────── Save to:
+          Shortcuts/bank_sms.json (Ask Where: OFF, Overwrite: ON)
+        </div>
+
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px">
+          <strong>Simpler alternative:</strong> Use a Shortcut that just appends
+          each SMS as a new line to a <strong>.txt</strong> file. This app can
+          also parse plain-text files with one SMS per line.
+        </p>
+        <div class="code-block">
+          Simple version (append text): ───────────────────────── Action 1:
+          Append Text Text: [Shortcut Input] File: Shortcuts/bank_sms.txt Make
+          New Line: ON Then load the .txt file in this app → 📂
+        </div>
+
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px">
+          <strong>Tip:</strong> The app auto-deduplicates, so loading the same
+          file twice won't create duplicates.
+        </p>
+        <button
+          type="button"
+          class="btn-secondary"
+          id="btnCloseShortcut"
+          style="margin-top: 16px"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: Batch Import ═══ -->
+    <div class="modal-overlay" id="modalImport">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Batch Import SMS</div>
+        <div class="form-group">
+          <label class="form-label"
+            >Paste multiple SMS messages (one per line, or separated by blank
+            lines)</label
+          >
+          <textarea
+            class="form-textarea"
+            id="batchInput"
+            style="min-height: 150px"
+            placeholder="Paste multiple bank SMS messages here..."
+          ></textarea>
+        </div>
+        <button type="button" class="btn-primary" id="btnBatchParse">
+          Parse All
+        </button>
+        <div id="batchResults" style="margin-top: 12px"></div>
+        <button
+          type="button"
+          class="btn-secondary"
+          id="btnCloseBatch"
+          style="margin-top: 12px"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <script src="js/sms-parser.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>
