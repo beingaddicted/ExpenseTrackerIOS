@@ -32,9 +32,9 @@ const SMSParser = (() => {
 
   // ─── Date Extraction Patterns ───
   const DATE_PATTERNS = [
+    /(\d{4}[-\/]\d{2}[-\/]\d{2})/, // yyyy-mm-dd (must come before dd-mm-yyyy to avoid false captures)
     /(\d{2}[-\/]\d{2}[-\/]\d{2,4})/, // dd-mm-yyyy or dd/mm/yyyy
     /(\d{2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{2,4})/i, // 01 Jan 2025
-    /(\d{4}[-\/]\d{2}[-\/]\d{2})/, // yyyy-mm-dd
     /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{1,2},?\s*\d{2,4})/i, // Jan 01, 2025
     /(\d{1,2}\/\d{1,2}\/\d{2,4})/, // M/D/YY or MM/DD/YYYY
     /on\s+(\d{2}-\d{2}-\d{4})/i,
@@ -652,16 +652,22 @@ const SMSParser = (() => {
       const match = text.match(pattern);
       if (match) {
         let dateStr = match[1];
-        let parsed = new Date(dateStr);
+        let parsed;
 
-        // Handle dd-mm-yyyy format (Indian)
-        if (isNaN(parsed.getTime())) {
-          const parts = dateStr.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})/);
-          if (parts) {
-            let year = parseInt(parts[3]);
-            if (year < 100) year += 2000;
-            parsed = new Date(year, parseInt(parts[2]) - 1, parseInt(parts[1]));
-          }
+        // Always try manual dd-mm-yyyy / dd-mm-yy parsing first (Indian format)
+        const ddmmParts = dateStr.match(
+          /^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/,
+        );
+        if (ddmmParts) {
+          let year = parseInt(ddmmParts[3]);
+          if (year < 100) year += 2000;
+          parsed = new Date(
+            year,
+            parseInt(ddmmParts[2]) - 1,
+            parseInt(ddmmParts[1]),
+          );
+        } else {
+          parsed = new Date(dateStr);
         }
 
         // Handle ddMonyyyy format (01Jan2025)
@@ -699,11 +705,18 @@ const SMSParser = (() => {
           parsed.getFullYear() > 2000 &&
           parsed.getFullYear() < 2050
         ) {
-          return parsed.toISOString().split("T")[0];
+          const yyyy = parsed.getFullYear();
+          const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+          const dd = String(parsed.getDate()).padStart(2, "0");
+          return `${yyyy}-${mm}-${dd}`;
         }
       }
     }
-    return new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
   }
 
   // ─── Parse Account Number ───

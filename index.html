@@ -587,6 +587,54 @@
           New Line: ON Then load the .txt file in this app → 📂
         </div>
 
+        <div
+          style="
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 16px;
+          "
+        >
+          <button
+            type="button"
+            class="btn-primary"
+            id="btnDownloadSimpleShortcut"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 6px;
+            "
+          >
+            ⬇️ Download Shortcut (.txt version)
+          </button>
+          <button
+            type="button"
+            class="btn-secondary"
+            id="btnDownloadJSONShortcut"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 6px;
+              border: 1.5px solid var(--border);
+            "
+          >
+            ⬇️ Download Shortcut (.json version)
+          </button>
+          <a
+            href="install-shortcut.html"
+            style="
+              text-align: center;
+              font-size: 13px;
+              color: var(--accent-light);
+              margin-top: 4px;
+            "
+          >
+            Full install guide with all bank IDs →
+          </a>
+        </div>
+
         <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px">
           <strong>Tip:</strong> The app auto-deduplicates, so loading the same
           file twice won't create duplicates.
@@ -595,7 +643,7 @@
           type="button"
           class="btn-secondary"
           id="btnCloseShortcut"
-          style="margin-top: 16px"
+          style="margin-top: 12px"
         >
           Close
         </button>
@@ -636,6 +684,7 @@
 
     <script src="js/sms-parser.js"></script>
     <script src="js/charts.js"></script>
+    <script src="js/shortcut-generator.js"></script>
     <script src="js/app.js"></script>
   </body>
 </html>

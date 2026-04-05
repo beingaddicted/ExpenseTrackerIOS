@@ -1,0 +1,26 @@
+{
+  "name": "expensetrackerios",
+  "version": "1.0.0",
+  "description": "",
+  "main": "sw.js",
+  "scripts": {
+    "test": "jest --verbose"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beingaddicted/ExpenseTrackerIOS.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/beingaddicted/ExpenseTrackerIOS/issues"
+  },
+  "homepage": "https://github.com/beingaddicted/ExpenseTrackerIOS#readme",
+  "devDependencies": {
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0",
+    "jsdom": "^29.0.1"
+  }
+}

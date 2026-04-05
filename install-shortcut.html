@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#0f0f23" />
+    <title>Install Bank SMS Shortcut</title>
+    <style>
+      :root {
+        --bg: #0f0f23;
+        --bg-card: #1a1a2e;
+        --bg-elevated: #222244;
+        --text: #e2e8f0;
+        --text-secondary: #94a3b8;
+        --text-muted: #64748b;
+        --accent: #6366f1;
+        --accent-light: #818cf8;
+        --green: #22c55e;
+        --red: #ef4444;
+        --orange: #f97316;
+        --border: #2d2d4a;
+        --radius: 16px;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100dvh;
+        padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+        -webkit-font-smoothing: antialiased;
+      }
+      .container {
+        max-width: 480px;
+        margin: 0 auto;
+        padding: 24px 0 40px;
+      }
+      .hero {
+        text-align: center;
+        margin-bottom: 28px;
+      }
+      .hero-icon {
+        font-size: 56px;
+        margin-bottom: 12px;
+      }
+      .hero h1 {
+        font-size: 22px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .hero p {
+        font-size: 14px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+      }
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .card-badge {
+        background: var(--accent);
+        color: white;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .card-badge.green {
+        background: var(--green);
+      }
+      .card-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .card-desc {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+        margin-bottom: 16px;
+      }
+      .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 14px;
+        border: none;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          transform 0.15s,
+          opacity 0.15s;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .btn:active {
+        transform: scale(0.97);
+        opacity: 0.85;
+      }
+      .btn-primary {
+        background: linear-gradient(135deg, var(--accent), #4f46e5);
+        color: white;
+      }
+      .btn-green {
+        background: linear-gradient(135deg, var(--green), #16a34a);
+        color: white;
+      }
+      .btn-outline {
+        background: transparent;
+        border: 1.5px solid var(--border);
+        color: var(--text);
+      }
+      .btn-icon {
+        font-size: 18px;
+      }
+      .divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 20px 0;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .divider::before,
+      .divider::after {
+        content: "";
+        flex: 1;
+        border-top: 1px solid var(--border);
+      }
+      .steps {
+        margin-top: 16px;
+      }
+      .step {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .step-num {
+        flex-shrink: 0;
+        width: 28px;
+        height: 28px;
+        background: var(--bg-elevated);
+        border: 1.5px solid var(--accent);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--accent-light);
+      }
+      .step-text {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+        padding-top: 4px;
+      }
+      .step-text strong {
+        color: var(--text);
+      }
+      .bank-ids {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .bank-id {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-family: "SF Mono", "Menlo", monospace;
+        color: var(--accent-light);
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .bank-id:active {
+        background: var(--accent);
+        color: white;
+      }
+      .note {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+        margin-top: 12px;
+      }
+      .note strong {
+        color: var(--orange);
+      }
+      .checkmark {
+        color: var(--green);
+      }
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(80px);
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 10px 20px;
+        border-radius: 12px;
+        font-size: 13px;
+        font-weight: 500;
+        opacity: 0;
+        transition:
+          transform 0.3s,
+          opacity 0.3s;
+        z-index: 999;
+        pointer-events: none;
+      }
+      .toast.show {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+      }
+      .how-it-works {
+        margin-top: 8px;
+      }
+      .how-it-works .flow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin: 12px 0 4px;
+        flex-wrap: wrap;
+      }
+      .flow-icon {
+        font-size: 20px;
+      }
+      .flow-arrow {
+        color: var(--text-muted);
+        font-size: 16px;
+      }
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--accent-light);
+        font-size: 14px;
+        text-decoration: none;
+        margin-bottom: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <a href="index.html" class="back-link">← Back to App</a>
+
+      <div class="hero">
+        <div class="hero-icon">📲</div>
+        <h1>Install Bank SMS Shortcut</h1>
+        <p>
+          Auto-save every bank transaction SMS to a file.<br />
+          Then load it into Expense Tracker — that's it.
+        </p>
+        <div class="how-it-works">
+          <div class="flow">
+            <span class="flow-icon">💬</span> Bank SMS
+            <span class="flow-arrow">→</span>
+            <span class="flow-icon">⚡</span> Shortcut
+            <span class="flow-arrow">→</span>
+            <span class="flow-icon">📄</span> File
+            <span class="flow-arrow">→</span>
+            <span class="flow-icon">📊</span> App
+          </div>
+        </div>
+      </div>
+
+      <!-- Option A: Simple Text (Recommended) -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-badge green">Recommended</span>
+          <span class="card-title">Simple Text File</span>
+        </div>
+        <div class="card-desc">
+          Appends each bank SMS as a new line to <strong>bank_sms.txt</strong>.
+          Simplest setup — works perfectly with the app's smart parser.
+        </div>
+        <button class="btn btn-green" id="btnDownloadSimple">
+          <span class="btn-icon">⬇️</span>
+          Download Shortcut (.txt version)
+        </button>
+      </div>
+
+      <!-- Option B: JSON Format -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-badge">Advanced</span>
+          <span class="card-title">JSON Format</span>
+        </div>
+        <div class="card-desc">
+          Builds a structured JSON file with message, sender & timestamp. Better
+          metadata but same end result in the app.
+        </div>
+        <button class="btn btn-primary" id="btnDownloadJSON">
+          <span class="btn-icon">⬇️</span>
+          Download Shortcut (.json version)
+        </button>
+      </div>
+
+      <div class="divider">After downloading</div>
+
+      <!-- Setup steps -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 14px">
+          ⚡ Complete Setup (2 min)
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              <strong>Open the downloaded file</strong> — iOS will ask to add it
+              to the Shortcuts app. Tap <strong>Add Shortcut</strong>.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Open <strong>Shortcuts</strong> app →
+              <strong>Automation</strong> tab → tap <strong>＋</strong> →
+              <strong>Create Personal Automation</strong>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              Choose <strong>Message</strong> trigger →
+              <strong>Sender Contains</strong> → add your bank IDs:
+              <div class="bank-ids" id="bankIds">
+                <span class="bank-id" data-id="HDFCBK">HDFCBK</span>
+                <span class="bank-id" data-id="ICICIB">ICICIB</span>
+                <span class="bank-id" data-id="SBIBNK">SBIBNK</span>
+                <span class="bank-id" data-id="AXISBK">AXISBK</span>
+                <span class="bank-id" data-id="KOTAKB">KOTAKB</span>
+                <span class="bank-id" data-id="PNBSMS">PNBSMS</span>
+                <span class="bank-id" data-id="YESBK">YESBK</span>
+                <span class="bank-id" data-id="INDUSBK">INDUSBK</span>
+                <span class="bank-id" data-id="FEDBNK">FEDBNK</span>
+                <span class="bank-id" data-id="IDFCFB">IDFCFB</span>
+                <span class="bank-id" data-id="CANBNK">CANBNK</span>
+                <span class="bank-id" data-id="BOBTXN">BOBTXN</span>
+              </div>
+              <div class="note" style="margin-top: 8px">
+                <strong>Tap any ID</strong> to copy it. Add only the banks you
+                use.
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              Set the action to <strong>Run Shortcut</strong> → choose
+              <strong>"Save Bank SMS"</strong> (the one you just installed)
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-text">
+              Turn <strong>OFF</strong> "Ask Before Running" → tap
+              <strong>Done</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>All done!</strong> Every bank SMS will auto-save to
+          <strong>iCloud Drive → Shortcuts → bank_sms</strong> file. Open the
+          Expense Tracker app → tap 📂 → select the file to import.
+        </div>
+      </div>
+
+      <!-- Copy All Bank IDs -->
+      <button
+        class="btn btn-outline"
+        id="btnCopyAll"
+        style="margin-bottom: 16px"
+      >
+        📋 Copy All Bank IDs
+      </button>
+
+      <div class="note" style="margin-top: 0">
+        <strong>How import works:</strong> Open the app → tap
+        <strong>📂</strong> → pick <strong>bank_sms.txt</strong> (or .json) from
+        Files. The app parses all SMS, deduplicates, and adds new transactions.
+        You can import the same file repeatedly — duplicates are auto-skipped.
+      </div>
+
+      <div class="divider">Install the App</div>
+
+      <!-- PWA Install from Safari -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 6px">
+          🏠 Add to Home Screen (Safari)
+        </div>
+        <div class="card-desc">
+          Install Expense Tracker as a full-screen app on your iPhone or iPad.
+          It works just like a native app — with its own icon, splash screen,
+          and no browser UI.
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              Open <strong>Safari</strong> on your iPhone/iPad and navigate to
+              the Expense Tracker URL. <br />
+              <span style="color: var(--orange); font-size: 12px"
+                >⚠️ This only works in Safari — Chrome/Firefox on iOS don't
+                support Add to Home Screen.</span
+              >
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Tap the <strong>Share button</strong>
+              <span style="font-size: 16px">⬆️</span> at the bottom of Safari
+              (the square with an arrow pointing up).
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              Scroll down in the share sheet and tap
+              <strong>"Add to Home Screen"</strong>
+              <span style="font-size: 16px">➕</span>.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              You'll see a preview with the app name and icon. Tap
+              <strong>Add</strong> in the top-right corner.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-text">
+              The app icon now appears on your Home Screen. Tap it to launch —
+              it opens <strong>full-screen without any browser bars</strong>.
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Why Safari?</strong> Apple only allows PWA installation
+          through Safari. When installed, the app gets its own entry in the App
+          Switcher, can receive push notifications (iOS 16.4+), and stores data
+          independently from Safari.
+        </div>
+      </div>
+
+      <div class="divider">Using Offline</div>
+
+      <!-- Offline Usage Guide -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 6px">
+          📡 How Offline Mode Works
+        </div>
+        <div class="card-desc">
+          Expense Tracker is a fully offline-capable PWA. Once loaded, it works
+          without any internet connection — no server, no cloud, no accounts.
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              <strong>First visit caches everything</strong> — when you open the
+              app for the first time, the Service Worker downloads all files
+              (HTML, CSS, JS, icons) and stores them locally on your device.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              <strong>All data stays on your device</strong> — transactions are
+              saved in your browser's IndexedDB. Nothing is ever sent to a
+              server. Your financial data never leaves your phone.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              <strong>Works in airplane mode</strong> — open the app from your
+              Home Screen anytime. Browse transactions, view charts, search,
+              filter — everything works without WiFi or cellular data.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              <strong>Import files offline too</strong> — the SMS parser runs
+              entirely in JavaScript on your device. You can import bank_sms.txt
+              even without internet. Just open Files → pick the file → done.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-text">
+              <strong>Export anytime</strong> — tap the export button to
+              download your data as CSV or JSON. Works offline. Use it for
+              spreadsheets, budgeting apps, or backup.
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Tip:</strong> After installing to Home Screen, open the app
+          once while online to ensure all assets are cached. After that, it's
+          fully offline forever — until you manually clear Safari website data.
+        </div>
+      </div>
+
+      <!-- Quick Reference -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 6px">
+          🔄 Daily Workflow
+        </div>
+        <div class="card-desc">
+          Here's how it all comes together once you've set everything up:
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div
+              class="step-num"
+              style="
+                background: var(--green);
+                border-color: var(--green);
+                color: white;
+              "
+            >
+              ✓
+            </div>
+            <div class="step-text">
+              <strong>Bank sends you an SMS</strong> — debit, credit, UPI, NEFT,
+              card swipe, anything.
+            </div>
+          </div>
+          <div class="step">
+            <div
+              class="step-num"
+              style="
+                background: var(--green);
+                border-color: var(--green);
+                color: white;
+              "
+            >
+              ✓
+            </div>
+            <div class="step-text">
+              <strong>iOS Shortcut auto-saves it</strong> — the automation
+              triggers silently in the background, appending the SMS text to
+              your bank_sms file in iCloud Drive.
+            </div>
+          </div>
+          <div class="step">
+            <div
+              class="step-num"
+              style="
+                background: var(--green);
+                border-color: var(--green);
+                color: white;
+              "
+            >
+              ✓
+            </div>
+            <div class="step-text">
+              <strong>Open the app whenever you want</strong> — tap 📂, select
+              bank_sms.txt from Files. The parser extracts amount, merchant,
+              category, date, bank — everything.
+            </div>
+          </div>
+          <div class="step">
+            <div
+              class="step-num"
+              style="
+                background: var(--green);
+                border-color: var(--green);
+                color: white;
+              "
+            >
+              ✓
+            </div>
+            <div class="step-text">
+              <strong>See your spending at a glance</strong> — charts, filters,
+              search, category breakdowns. All offline, all private, all on your
+              device.
+            </div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Pro tip:</strong> Import weekly or monthly — it's up to you.
+          The app deduplicates automatically so you'll never get double entries
+          even if you import the same file multiple times.
+        </div>
+      </div>
+
+      <!-- Troubleshooting -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 6px">
+          🛠️ Troubleshooting
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">?</div>
+            <div class="step-text">
+              <strong>"Add to Home Screen" not showing?</strong> — Make sure
+              you're using <strong>Safari</strong>, not Chrome or an in-app
+              browser. Also check Settings → Safari → Advanced → ensure "Web
+              Inspector" isn't blocking PWAs.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">?</div>
+            <div class="step-text">
+              <strong>Shortcut not triggering?</strong> — Go to Shortcuts →
+              Automation → check your SMS automation is enabled and "Ask Before
+              Running" is <strong>OFF</strong>. Also verify the sender ID
+              matches exactly (e.g., HDFCBK not HDFC).
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">?</div>
+            <div class="step-text">
+              <strong>File not found when importing?</strong> — The shortcut
+              saves to <strong>iCloud Drive → Shortcuts</strong> folder. In the
+              Files app, browse to "iCloud Drive → Shortcuts → bank_sms.txt".
+              Make sure iCloud Drive is enabled in Settings.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">?</div>
+            <div class="step-text">
+              <strong>App not working offline?</strong> — Open it once while
+              connected to the internet so the Service Worker can cache all
+              files. Then it works offline. If still broken, delete the Home
+              Screen icon and re-add it from Safari.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">?</div>
+            <div class="step-text">
+              <strong>Lost my data?</strong> — Data lives in IndexedDB. Clearing
+              Safari website data or resetting the phone will erase it. Use the
+              <strong>export</strong> feature regularly to back up to CSV/JSON
+              files.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="js/shortcut-generator.js"></script>
+    <script>
+      function showToast(msg) {
+        var t = document.getElementById("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        setTimeout(function () {
+          t.classList.remove("show");
+        }, 2000);
+      }
+
+      // Download buttons
+      document
+        .getElementById("btnDownloadSimple")
+        .addEventListener("click", function () {
+          var shortcut = ShortcutGenerator.buildSimpleShortcut();
+          ShortcutGenerator.download(shortcut, "Save Bank SMS.shortcut");
+          showToast("✅ Shortcut downloaded!");
+        });
+
+      document
+        .getElementById("btnDownloadJSON")
+        .addEventListener("click", function () {
+          var shortcut = ShortcutGenerator.buildJSONShortcut();
+          ShortcutGenerator.download(shortcut, "Save Bank SMS JSON.shortcut");
+          showToast("✅ Shortcut downloaded!");
+        });
+
+      // Copy individual bank IDs
+      document
+        .getElementById("bankIds")
+        .addEventListener("click", function (e) {
+          var el = e.target.closest(".bank-id");
+          if (!el) return;
+          var id = el.dataset.id;
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(id).then(function () {
+              showToast("📋 Copied: " + id);
+            });
+          }
+        });
+
+      // Copy all bank IDs
+      document
+        .getElementById("btnCopyAll")
+        .addEventListener("click", function () {
+          var ids = [];
+          document.querySelectorAll(".bank-id").forEach(function (el) {
+            ids.push(el.dataset.id);
+          });
+          var text = ids.join(", ");
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(function () {
+              showToast("📋 All IDs copied!");
+            });
+          }
+        });
+    </script>
+  </body>
+</html>

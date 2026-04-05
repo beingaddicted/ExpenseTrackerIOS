@@ -166,3 +166,7 @@ const Charts = (() => {
     COLORS,
   };
 })();
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = Charts;
+}

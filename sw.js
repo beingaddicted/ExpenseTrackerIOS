@@ -1,13 +1,15 @@
-const CACHE_NAME = "expense-tracker-v2";
+const CACHE_NAME = "expense-tracker-v3";
 
 // Build asset list relative to service worker scope
 const ASSETS = [
   "./",
   "./index.html",
+  "./install-shortcut.html",
   "./css/style.css",
   "./js/app.js",
   "./js/sms-parser.js",
   "./js/charts.js",
+  "./js/shortcut-generator.js",
   "./manifest.json",
   "./data/expenses.json",
 ];

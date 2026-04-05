@@ -997,6 +997,22 @@ const App = (() => {
       .getElementById("btnCloseShortcut")
       .addEventListener("click", () => closeModal("modalShortcut"));
 
+    // Shortcut download buttons
+    document
+      .getElementById("btnDownloadSimpleShortcut")
+      .addEventListener("click", () => {
+        const shortcut = ShortcutGenerator.buildSimpleShortcut();
+        ShortcutGenerator.download(shortcut, "Save Bank SMS.shortcut");
+        showToast("Shortcut downloaded!", "success");
+      });
+    document
+      .getElementById("btnDownloadJSONShortcut")
+      .addEventListener("click", () => {
+        const shortcut = ShortcutGenerator.buildJSONShortcut();
+        ShortcutGenerator.download(shortcut, "Save Bank SMS JSON.shortcut");
+        showToast("Shortcut downloaded!", "success");
+      });
+
     // Batch text import
     document
       .getElementById("settingImport")
