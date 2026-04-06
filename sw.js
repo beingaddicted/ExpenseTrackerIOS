@@ -14,6 +14,7 @@ const ASSETS = [
   "./js/shortcut-generator.js",
   "./manifest.json",
   "./data/expenses.json",
+  "./data/ShortCuts/BankSMS.js",
   "./version.json",
 ];
 
