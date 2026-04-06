@@ -842,8 +842,19 @@ const App = (() => {
 
   // ─── Batch Import (text paste) ───
   // ─── Smart SMS Splitter ───
-  // Handles: newline-separated, blank-line-separated, and no-newline concatenated SMS
+  // Handles: newline-separated, blank-line-separated, no-newline concatenated SMS,
+  // and exportSms.txt format ("YYYY-MM-DD [HH:MM] | SMS body" per line)
   function splitSMSText(text) {
+    // Detect exportSms.txt format: lines prefixed with "YYYY-MM-DD [HH:MM] | "
+    const exportLineRe = /\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?\s*\|/;
+    if (exportLineRe.test(text)) {
+      const chunks = text
+        .split(/(?=\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?\s*\|)/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      if (chunks.length > 1) return chunks;
+    }
+
     // First try splitting by blank lines or newlines before known SMS-start keywords
     // Bank names require following transaction context (not standalone signatures like "Axis Bank" alone on a line)
     const lineSplit = text

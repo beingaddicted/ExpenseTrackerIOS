@@ -34,7 +34,7 @@ const SMSParser = (() => {
   const DATE_PATTERNS = [
     /(\d{4}[-\/]\d{2}[-\/]\d{2})/, // yyyy-mm-dd (must come before dd-mm-yyyy to avoid false captures)
     /(\d{2}[-\/]\d{2}[-\/]\d{2,4})/, // dd-mm-yyyy or dd/mm/yyyy
-    /(\d{2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{2,4})/i, // 01 Jan 2025
+    /(\d{1,2}[-\s]*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*\d{2,4})/i, // 01 Jan 2025 or 05-Apr-26
     /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\d{1,2},?\s*\d{2,4})/i, // Jan 01, 2025
     /(\d{1,2}\/\d{1,2}\/\d{2,4})/, // M/D/YY or MM/DD/YYYY
     /on\s+(\d{2}-\d{2}-\d{4})/i,
@@ -632,6 +632,41 @@ const SMSParser = (() => {
       type: "credit",
     },
 
+    // ── Wallet Transfers ──
+    {
+      regex: /(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+transferred\s+to\s+/i,
+      type: "debit",
+    },
+
+    // ── Payment Confirmations ──
+    {
+      regex:
+        /(?:your\s+)?payment\s+(?:of\s+)?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:is\s+)?successful/i,
+      type: "debit",
+    },
+    {
+      regex:
+        /payment\s+(?:of\s+)?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:is\s+)?successful/i,
+      type: "debit",
+    },
+    {
+      regex:
+        /(?:your\s+)?payment\(?[^)]*\)?\s*(?:of\s+)?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:for|is)/i,
+      type: "debit",
+    },
+    {
+      regex:
+        /thank\s+you\s+for\s+(?:your\s+)?payment\s+of\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)/i,
+      type: "debit",
+    },
+
+    // ── Refund Initiated ──
+    {
+      regex:
+        /refund\s+of\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:has\s+been\s+)?initiated/i,
+      type: "credit",
+    },
+
     // ── Balance Check ──
     {
       regex:
@@ -675,10 +710,10 @@ const SMSParser = (() => {
           parsed = new Date(dateStr);
         }
 
-        // Handle ddMonyyyy format (01Jan2025)
+        // Handle ddMonyyyy format (01Jan2025, 05-Apr-26, 01 Jan 2025)
         if (isNaN(parsed.getTime())) {
           const parts = dateStr.match(
-            /(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*(\d{2,4})/i,
+            /(\d{1,2})[-\s]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2,4})/i,
           );
           if (parts) {
             let year = parseInt(parts[3]);
@@ -860,14 +895,16 @@ const SMSParser = (() => {
     if (NON_TRANSACTION_STRONG_RE.test(text)) return false;
 
     const bankKeywords =
-      /(?:debit|credit|debited|credited|a\/c|acct?|account|card|transaction|txn|balance|bal|UPI|NEFT|IMPS|RTGS|spent|purchase|paid|received|withdrawal|deposit|EMI|mandate|cheque|transfer|refund|cashback|ATM)/i;
+      /(?:debit|credit|debited|credited|a\/c|acct?|account|card|transaction|txn|balance|bal|UPI|NEFT|IMPS|RTGS|spent|purchase|payment|paid|received|withdrawal|deposit|EMI|mandate|cheque|transfer|transferred|refund|cashback|ATM)/i;
     const amountPresent = AMOUNT_PATTERNS.some((p) => p.test(text));
     if (!(bankKeywords.test(text) && amountPresent)) return false;
 
     // Additional heuristic: if message looks like OTP/security alert, reject
     if (
       NON_TRANSACTION_RE.test(text) &&
-      !/debited|credited|spent|received|withdrawn|charged/i.test(text)
+      !/debited|credited|spent|received|withdrawn|charged|transferred|payment|refund/i.test(
+        text,
+      )
     )
       return false;
 

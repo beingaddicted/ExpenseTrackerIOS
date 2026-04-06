@@ -298,6 +298,149 @@
         </div>
       </div>
 
+      <div class="divider">Bulk Export — Get All Past SMS</div>
+
+      <!-- Bulk Export -->
+      <div class="card" style="border-color: var(--green)">
+        <div class="card-header">
+          <span class="card-badge green">Recommended First</span>
+          <span class="card-title">Bulk Export Historical SMS</span>
+        </div>
+        <div class="card-desc">
+          Export <strong>all</strong> your past bank SMS in one go — years of
+          transactions extracted automatically. This uses
+          <strong>Scriptable</strong> (free app) to process every day since
+          2020. Run this first, then set up real-time automation below.
+        </div>
+
+        <a
+          href="https://www.icloud.com/shortcuts/eb49974416914b54995b1e0b34d28263"
+          class="btn btn-green"
+          style="text-decoration: none; margin-bottom: 12px"
+        >
+          <span class="btn-icon">⬇️</span> Install Bulk Export Shortcut
+        </a>
+
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              Install
+              <strong
+                ><a
+                  href="https://apps.apple.com/app/scriptable/id1405459188"
+                  style="color: var(--accent-light)"
+                  >Scriptable</a
+                ></strong
+              >
+              from the App Store (free).
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Open Scriptable → tap <strong>＋</strong> → paste the
+              <strong>BankSMS.js</strong> script → rename to
+              <strong>BankSMS</strong> → Done.
+              <div class="note" style="margin-top: 8px">
+                Get the script from your Expense Tracker's
+                <code
+                  style="
+                    background: var(--bg-elevated);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    color: var(--accent-light);
+                  "
+                  >data/ShortCuts/BankSMS.js</code
+                >
+                file.
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              Tap the <strong>"Install Bulk Export Shortcut"</strong> button
+              above → <strong>Add Shortcut</strong> when prompted.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              Open <strong>Shortcuts</strong> app → tap the shortcut to run it.
+              It will process every day from 2020 to today.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-text">
+              When done, find the output at:
+              <strong
+                >Files → iCloud Drive → Scriptable → expense tracker →
+                exportSms.txt</strong
+              >
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">6</div>
+            <div class="step-text">
+              Open <strong>Expense Tracker</strong> → tap
+              <strong>📂 Import</strong> → select
+              <strong>exportSms.txt</strong>. All transactions are parsed and
+              added automatically.
+            </div>
+          </div>
+        </div>
+
+        <div class="note" style="border-color: var(--green)">
+          <strong style="color: var(--green)">Crash safe:</strong> If the
+          shortcut crashes mid-run (large history), just re-run it — it
+          automatically resumes from where it stopped. No duplicates.
+        </div>
+        <div class="note" style="margin-top: 8px">
+          <strong>Want to change the start date?</strong> Edit
+          <code
+            style="
+              background: var(--bg-elevated);
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-size: 11px;
+              color: var(--accent-light);
+            "
+            >DEFAULT_START</code
+          >
+          in BankSMS.js (default: 2020-01-01).
+        </div>
+      </div>
+
+      <div class="divider">Or Build It Manually</div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 6px">
+          🔧 Manual 9-Action Shortcut
+        </div>
+        <div class="card-desc">
+          If you prefer to build the bulk export shortcut yourself instead of
+          using the install link above, follow the
+          <a href="data/ShortCuts/README.md" style="color: var(--accent-light)"
+            >step-by-step guide</a
+          >
+          to create all 9 actions manually.
+        </div>
+      </div>
+
+      <div class="divider">Real-Time — Auto-Save New SMS</div>
+
+      <div class="card" style="padding: 14px 20px">
+        <div class="card-desc" style="margin-bottom: 0">
+          <strong style="color: var(--text)">⬇️ Bulk export</strong> gets your
+          past SMS. The sections below set up
+          <strong style="color: var(--text)">real-time capture</strong> so every
+          new bank SMS is saved automatically going forward.
+        </div>
+      </div>
+
       <div class="divider">Part 1 — Create the Shortcut</div>
 
       <!-- Step A: Create the shortcut -->

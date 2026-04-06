@@ -124,7 +124,8 @@ describe("SMSParser", () => {
       expect(SMSParser.parseDate("date 2026-04-05")).toBe("2026-04-05");
     });
     test("defaults to today for no date", () => {
-      const today = new Date().toISOString().split("T")[0];
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       expect(SMSParser.parseDate("no date here amount Rs 500")).toBe(today);
     });
   });
