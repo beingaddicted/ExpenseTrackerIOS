@@ -1973,6 +1973,22 @@ const App = (() => {
       : "Food & Dining, Shopping, Transport, Travel, Bills & Utilities, Entertainment, Health, Education, Insurance, Investment, EMI & Loans, Rent, Groceries, Salary, Transfer, ATM, Subscription, Cashback & Rewards, Refund, Tax, Credit Card Payment, Savings, Other";
   }
 
+  function parseAIBatchResponse(raw) {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const m = raw.match(/\[[\s\S]*\]/);
+      parsed = m ? JSON.parse(m[0]) : [];
+    }
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === "object") {
+      const arrVal = Object.values(parsed).find(v => Array.isArray(v));
+      if (arrVal) return arrVal;
+    }
+    return [];
+  }
+
   function buildAIPrompt({ mode, smsContent }) {
     const catList = getAICategoryList();
 
@@ -2477,43 +2493,35 @@ ${footer}`;
       try {
         const raw = await callAI(prompt);
         consecutiveErrors = 0;
-        let results;
-        try {
-          results = JSON.parse(raw);
-        } catch {
-          const m = raw.match(/\[[\s\S]*\]/);
-          results = m ? JSON.parse(m[0]) : [];
-        }
-        if (Array.isArray(results)) {
-          const matched = new Set();
-          results.forEach((r) => {
-            const idx = (r.i || r.index || 0) - 1;
-            if (idx >= 0 && idx < batch.length) {
-              matched.add(idx);
-              const txn = batch[idx];
-              if (r.invalid === true) {
-                txn.invalid = true;
+        const results = parseAIBatchResponse(raw);
+        const matched = new Set();
+        results.forEach((r) => {
+          const idx = (r.i || r.index || 0) - 1;
+          if (idx >= 0 && idx < batch.length) {
+            matched.add(idx);
+            const txn = batch[idx];
+            if (r.invalid === true) {
+              txn.invalid = true;
+              txn.aiClassified = true;
+              invalidCount++;
+            } else {
+              txn.invalid = false;
+              if (r.merchant && r.merchant !== "Unknown") {
+                txn.merchant = r.merchant;
                 txn.aiClassified = true;
-                invalidCount++;
+                delete txn.aiFailed;
               } else {
-                txn.invalid = false;
-                if (r.merchant && r.merchant !== "Unknown") {
-                  txn.merchant = r.merchant;
-                  txn.aiClassified = true;
-                  delete txn.aiFailed;
-                } else {
-                  txn.aiFailed = true;
-                }
-                if (r.category) txn.category = r.category;
-                if (r.mode) txn.mode = r.mode;
+                txn.aiFailed = true;
               }
-              updated++;
+              if (r.category) txn.category = r.category;
+              if (r.mode) txn.mode = r.mode;
             }
-          });
-          batch.forEach((txn, i) => {
-            if (!matched.has(i) && !txn.aiClassified) txn.aiFailed = true;
-          });
-        }
+            updated++;
+          }
+        });
+        batch.forEach((txn, i) => {
+          if (!matched.has(i) && !txn.aiClassified) txn.aiFailed = true;
+        });
       } catch (err) {
         errors++;
         consecutiveErrors++;
@@ -2601,39 +2609,31 @@ ${footer}`;
       try {
         const raw = await callAI(prompt);
         consecutiveErrors = 0;
-        let results;
-        try {
-          results = JSON.parse(raw);
-        } catch {
-          const m = raw.match(/\[[\s\S]*\]/);
-          results = m ? JSON.parse(m[0]) : [];
-        }
-        if (Array.isArray(results)) {
-          results.forEach((r) => {
-            const idx = (r.i || r.index || 0) - 1;
-            if (idx >= 0 && idx < batch.length) {
-              const txn = batch[idx];
-              txn.aiReclassified = true;
-              if (r.invalid === true) {
-                txn.invalid = true;
-                invalidCount++;
-              } else {
-                txn.invalid = false;
-                if (r.merchant && r.merchant !== "Unknown") {
-                  txn.merchant = r.merchant;
-                  txn.aiClassified = true;
-                  delete txn.aiFailed;
-                }
-                if (r.category) txn.category = r.category;
-                if (r.mode) txn.mode = r.mode;
+        const results = parseAIBatchResponse(raw);
+        results.forEach((r) => {
+          const idx = (r.i || r.index || 0) - 1;
+          if (idx >= 0 && idx < batch.length) {
+            const txn = batch[idx];
+            txn.aiReclassified = true;
+            if (r.invalid === true) {
+              txn.invalid = true;
+              invalidCount++;
+            } else {
+              txn.invalid = false;
+              if (r.merchant && r.merchant !== "Unknown") {
+                txn.merchant = r.merchant;
+                txn.aiClassified = true;
+                delete txn.aiFailed;
               }
-              updated++;
+              if (r.category) txn.category = r.category;
+              if (r.mode) txn.mode = r.mode;
             }
-          });
-          batch.forEach((txn) => {
-            if (!txn.aiReclassified) txn.aiReclassified = true;
-          });
-        }
+            updated++;
+          }
+        });
+        batch.forEach((txn) => {
+          if (!txn.aiReclassified) txn.aiReclassified = true;
+        });
       } catch (err) {
         errors++;
         consecutiveErrors++;
@@ -2723,39 +2723,31 @@ ${footer}`;
       try {
         const raw = await callAI(prompt);
         consecutiveErrors = 0;
-        let results;
-        try {
-          results = JSON.parse(raw);
-        } catch {
-          const m = raw.match(/\[[\s\S]*\]/);
-          results = m ? JSON.parse(m[0]) : [];
-        }
-        if (Array.isArray(results)) {
-          results.forEach((r) => {
-            const idx = (r.i || r.index || 0) - 1;
-            if (idx >= 0 && idx < batch.length) {
-              const txn = batch[idx];
-              txn.aiReclassified = true;
-              if (r.invalid === true) {
-                txn.invalid = true;
-                invalidCount++;
-              } else {
-                txn.invalid = false;
-                if (r.merchant && r.merchant !== "Unknown") {
-                  txn.merchant = r.merchant;
-                  txn.aiClassified = true;
-                  delete txn.aiFailed;
-                }
-                if (r.category) txn.category = r.category;
-                if (r.mode) txn.mode = r.mode;
+        const results = parseAIBatchResponse(raw);
+        results.forEach((r) => {
+          const idx = (r.i || r.index || 0) - 1;
+          if (idx >= 0 && idx < batch.length) {
+            const txn = batch[idx];
+            txn.aiReclassified = true;
+            if (r.invalid === true) {
+              txn.invalid = true;
+              invalidCount++;
+            } else {
+              txn.invalid = false;
+              if (r.merchant && r.merchant !== "Unknown") {
+                txn.merchant = r.merchant;
+                txn.aiClassified = true;
+                delete txn.aiFailed;
               }
-              updated++;
+              if (r.category) txn.category = r.category;
+              if (r.mode) txn.mode = r.mode;
             }
-          });
-          batch.forEach((txn) => {
-            if (!txn.aiReclassified) txn.aiReclassified = true;
-          });
-        }
+            updated++;
+          }
+        });
+        batch.forEach((txn) => {
+          if (!txn.aiReclassified) txn.aiReclassified = true;
+        });
       } catch (err) {
         errors++;
         consecutiveErrors++;
