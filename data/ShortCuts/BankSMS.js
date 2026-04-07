@@ -42,55 +42,20 @@ const KEYWORDS = [
   "refund",
   "reversed",
   "sent",
+  "paid",
+  "billed",
+  "charged",
+  "booked",
+  "deposited",
+  "autopay",
 ];
 
 const MONEY_RE = /(?:rs\.?\s*|inr\s*|rupees\s*)\d|(?:\d+\.\d{2})/i;
 
-// Known bank sender IDs — messages from these senders are treated as genuine
-// Matches if the sender *contains* any of these (case-insensitive)
-const BANK_SENDERS = [
-  "hdfc",
-  "icici",
-  "sbi",
-  "axis",
-  "kotak",
-  "pnb",
-  "yes",
-  "indus",
-  "federal",
-  "idfc",
-  "bob",
-  "canara",
-  "union",
-  "iob",
-  "boi",
-  "rbl",
-  "idbi",
-  "bandhan",
-  "citi",
-  "hsbc",
-  "scb",
-  "dbs",
-  "amex",
-  "bajaj",
-  "paytm",
-  "slice",
-  "onecard",
-  "fi.",
-  "jupiter",
-  "niyox",
-  "airtel",
-  "hdfcbk",
-  "icicib",
-  "sbibnk",
-  "axisbk",
-  "kotakb",
-  "pnbsms",
-  "yesbk",
-  "indusbk",
-  "fedbnk",
-  "idfcfb",
-];
+// Spam / promo filter — skip messages matching these even if they have keywords + money
+const SPAM_RE = /\b(?:congratulations|win\s|won\s|lottery|jackpot|prize|claim\s|free\s|offer\s|scheme|guaranteed|nominee|payout|pre.?approved\s+loan|pre.?approved\s+credit|personal\s*loan|top.?up|balance\s*transfer|limited\s+period|exclusive\s+deal|apply\s+now|click\s+here|bit\.ly|tinyurl|act\s+now|hurry|last\s+day)\b/i;
+
+// Note: iOS Shortcuts does not expose SMS sender — filtering is keyword + money only.
 
 // Delimiter between sender and body in each SMS segment: sender|||body
 const SENDER_DELIM = "|||";
@@ -269,26 +234,21 @@ try {
         const lower = msg.body.toLowerCase();
         const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
         const hasMoney = MONEY_RE.test(msg.body);
-        const senderLower = msg.sender.toLowerCase();
-        const fromBank = msg.sender === "" || BANK_SENDERS.some((id) => senderLower.includes(id));
+        const isSpam = SPAM_RE.test(msg.body);
         const time = extractTime(msg.body);
-        const kept = fromBank && hasKw && hasMoney;
-        debugLines.push(`[${kept ? "KEEP" : "SKIP"}] sender="${msg.sender}" bank=${fromBank} kw=${hasKw} money=${hasMoney} time="${time}" body=${msg.body.substring(0, 120)}`);
+        const kept = hasKw && hasMoney && !isSpam;
+        debugLines.push(`[${kept ? "KEEP" : "SKIP"}] kw=${hasKw} money=${hasMoney} spam=${isSpam} time="${time}" body=${msg.body.substring(0, 120)}`);
       }
       const debugExisting = await read(DEBUG_FILE);
       fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + debugLines.join("\n") + "\n");
 
-      // Keep only messages from known bank senders with keyword AND money amount
+      // Keep only messages with a transaction keyword AND a money amount, skip spam
       const bankMsgs = allMsgs.filter((msg) => {
         const lower = msg.body.toLowerCase();
         const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
         const hasMoney = MONEY_RE.test(msg.body);
-        // Sender filter: if sender is present, it must match a known bank
-        const senderLower = msg.sender.toLowerCase();
-        const fromBank =
-          msg.sender === "" ||
-          BANK_SENDERS.some((id) => senderLower.includes(id));
-        return fromBank && hasKw && hasMoney;
+        const isSpam = SPAM_RE.test(msg.body);
+        return hasKw && hasMoney && !isSpam;
       });
 
       // Cross-day dedup: skip messages already written in the previous day

@@ -53,11 +53,19 @@ const SMSParser = (() => {
 
   // ─── Merchant/Payee Patterns ───
   const MERCHANT_PATTERNS = [
+    // Paytm "Paid Rs.X to MERCHANT from" pattern
+    /Paid\s+Rs\.?\s*[\d,]+\.?\d*\s+to\s+(.+?)\s+from\s+/i,
     // HDFC "Sent Rs.X / To MERCHANT" multi-line format
     /\nTo\s+([^\n]{2,50})\s*\nOn\s/i,
-    // Axis Bank "UPI/P2M/ref/MERCHANT" or "UPI/P2B/ref/MERCHANT" multi-line format
-    /UPI\/P2[MB]\/\d+\/(.{2,40})/i,
-    /(?:at|towards|for)\s+([A-Za-z0-9][\w\s\-&'.]{2,40}?)(?:\s+on|\s+ref|\s+via|\s+using|\s*\.|$)/i,
+    // UPI Info field: "Info: UPI/P2M/ref/NAME/BANK" or P2A/P2B — extract NAME (4th segment)
+    /Info:\s*UPI\/P2[AMBP]\/\d+\/([^\/]+)/i,
+    // NACH Info field: "Info: NACH-DR- ENTITY"
+    /Info:\s*NACH[-\s]*(?:DR|CR)[-\s]*(.+?)(?:\s*$|\s+\d)/i,
+    // UPI/P2M, P2A, P2B inline (not inside Info:) — extract NAME only
+    /UPI\/P2[AMBP]\/\d+\/([^\/]+)/i,
+    // "at MERCHANT." — skip if followed by digits (avoids matching dates like "at 11-10-2020")
+    /\bat\s+([A-Za-z][A-Za-z0-9\s\-&'.]{1,40}?)(?:\s*\.|\s+on\s|\s+ref|\s+via|\s+using|$)/i,
+    /(?:towards|for)\s+([A-Za-z0-9][\w\s\-&'.]{2,40}?)(?:\s+on|\s+ref|\s+via|\s+using|\s*\.|$)/i,
     /(?:paid to|transferred to|sent to|received from)\s+([A-Za-z0-9][\w\s\-&'.]{2,40}?)(?:\s+on|\s+ref|\s+via|\s+using|\s*\.|$)/i,
     /(?:VPA|UPI)\s*:?\s*([a-zA-Z0-9._\-]+@[a-zA-Z]+)/i,
     /info:\s*([^\n.]+)/i,
@@ -638,6 +646,26 @@ const SMSParser = (() => {
       type: "debit",
     },
 
+    // ── Paytm Wallet ──
+    {
+      regex: /Paid\s+(?:Rs\.?|₹)\s*([\d,]+\.?\d*)\s+to\s+.+?\s+from\s+(?:Paytm|wallet)/i,
+      type: "debit",
+    },
+    {
+      regex: /(?:Rs\.?|₹)\s*([\d,]+\.?\d*)\s+(?:added|received)\s+(?:to|in)\s+(?:Paytm|wallet)/i,
+      type: "credit",
+    },
+
+    // ── Recharge / Bill Payment ──
+    {
+      regex: /(?:Recharge|recharge)\s+(?:of\s+)?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:is\s+)?successful/i,
+      type: "debit",
+    },
+    {
+      regex: /billed\s+(?:with\s+)?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)/i,
+      type: "debit",
+    },
+
     // ── Payment Confirmations ──
     {
       regex:
@@ -830,18 +858,40 @@ const SMSParser = (() => {
   // ─── Extract Merchant ───
   // Words that should not be treated as merchant names
   const MERCHANT_BLACKLIST =
-    /^(?:clearance|Unknown|charges?|fees?|interest|penalty|tax|cess|service|processing|convenience|emi|mandate|subscription|insurance|reversal|refund|cashback|reward|otp|pin)$/i;
+    /^(?:clearance|Unknown|charges?|fees?|interest|penalty|tax|cess|service|processing|convenience|emi|mandate|subscription|insurance|reversal|refund|cashback|reward|otp|pin|transaction|your|bank|the|a|an|of|rs\.?|inr|upi|neft|imps|rtgs|nach)$/i;
   const PHONE_NUMBER_RE = /^\d{10,}$/;
+
+  // UPI handle suffixes to strip from VPA-style merchants
+  const UPI_HANDLE_RE = /@(?:upi|ybl|paytm|okaxis|oksbi|okicici|okhdfcbank|axisbank|sbi|icici|kotak|indus|apl|ibl|axl|yesbank|rbl|federal|aubank|dlb|dbs|hsbc|citi|citigold|bandhan|kbl|uco|allbank|unionbank|uboi|freecharge|ikwik|yesg|yespay)\b/i;
+
+  function cleanMerchantName(raw) {
+    let m = raw.trim();
+    // Remove curly braces
+    m = m.replace(/[{}]/g, "");
+    // Collapse whitespace
+    m = m.replace(/\s+/g, " ");
+    // Strip trailing UPI Mandate reference
+    m = m.replace(/\s+for\s+UPI\s+Mandate\b.*/i, "").trim();
+    // Strip UPI handle suffix (e.g. "merchant@ybl" → "merchant")
+    m = m.replace(UPI_HANDLE_RE, "").trim();
+    // Strip trailing bank names leaked from Info: field
+    m = m.replace(/\s+(?:Axis Bank|HDFC|ICICI|SBI|Kotak|Paytm Pay|Syndicat|Oriental|Yes Bank|IndusInd|Federal|IDFC|BOB|Canara)\s*$/i, "").trim();
+    // Replace underscores/dots with spaces for VPA-derived names
+    if (/^[a-z0-9._]+$/i.test(m)) {
+      m = m.replace(/[._]/g, " ");
+    }
+    // Title-case single-word all-lowercase names
+    if (/^[a-z]+$/.test(m) && m.length > 2) {
+      m = m.charAt(0).toUpperCase() + m.slice(1);
+    }
+    return m.trim();
+  }
 
   function extractMerchant(text) {
     for (const pattern of MERCHANT_PATTERNS) {
       const match = text.match(pattern);
       if (match) {
-        let merchant = match[1].trim();
-        // Clean up merchant name
-        merchant = merchant.replace(/\s+/g, " ").replace(/[{}]/g, "");
-        // Trim trailing UPI Mandate reference
-        merchant = merchant.replace(/\s+for\s+UPI\s+Mandate\b.*/i, "").trim();
+        let merchant = cleanMerchantName(match[1]);
         if (
           merchant.length > 2 &&
           merchant.length < 50 &&
@@ -895,14 +945,14 @@ const SMSParser = (() => {
     if (NON_TRANSACTION_STRONG_RE.test(text)) return false;
 
     const bankKeywords =
-      /(?:debit|credit|debited|credited|a\/c|acct?|account|card|transaction|txn|balance|bal|UPI|NEFT|IMPS|RTGS|spent|purchase|payment|paid|received|withdrawal|deposit|EMI|mandate|cheque|transfer|transferred|refund|cashback|ATM)/i;
+      /(?:debit|credit|debited|credited|a\/c|acct?|account|card|transaction|txn|balance|bal|UPI|NEFT|IMPS|RTGS|spent|purchase|payment|paid|received|withdrawal|deposit|EMI|mandate|cheque|transfer|transferred|refund|cashback|ATM|billed|charged|booked|autopay|recharge)/i;
     const amountPresent = AMOUNT_PATTERNS.some((p) => p.test(text));
     if (!(bankKeywords.test(text) && amountPresent)) return false;
 
     // Additional heuristic: if message looks like OTP/security alert, reject
     if (
       NON_TRANSACTION_RE.test(text) &&
-      !/debited|credited|spent|received|withdrawn|charged|transferred|payment|refund/i.test(
+      !/debited|credited|spent|received|withdrawn|charged|transferred|payment|refund|paid|billed|booked|recharge/i.test(
         text,
       )
     )

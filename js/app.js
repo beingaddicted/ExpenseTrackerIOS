@@ -1319,7 +1319,7 @@ const App = (() => {
 
   // ─── Event Listeners ───
   function setupEventListeners() {
-    // Month navigation
+    // Month navigation (arrows)
     document.getElementById("prevMonth").addEventListener("click", () => {
       currentMonth--;
       if (currentMonth < 0) {
@@ -1335,6 +1335,52 @@ const App = (() => {
         currentYear++;
       }
       render();
+    });
+
+    // Month/Year picker — tap label to open
+    const pickerOverlay = document.getElementById("monthPickerOverlay");
+    const pickerYear = document.getElementById("pickerYear");
+    const pickerGrid = document.getElementById("pickerMonthGrid");
+    let pickerYearVal = currentYear;
+    const SHORT_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+    function renderPickerGrid() {
+      pickerYear.textContent = pickerYearVal;
+      pickerGrid.innerHTML = "";
+      SHORT_MONTHS.forEach((m, i) => {
+        const btn = document.createElement("button");
+        btn.className = "month-picker-btn";
+        btn.textContent = m;
+        if (i === currentMonth && pickerYearVal === currentYear) {
+          btn.classList.add("active");
+        }
+        btn.addEventListener("click", () => {
+          currentMonth = i;
+          currentYear = pickerYearVal;
+          pickerOverlay.classList.remove("show");
+          render();
+        });
+        pickerGrid.appendChild(btn);
+      });
+    }
+
+    document.getElementById("monthLabel").addEventListener("click", () => {
+      pickerYearVal = currentYear;
+      renderPickerGrid();
+      pickerOverlay.classList.add("show");
+    });
+
+    pickerOverlay.addEventListener("click", (e) => {
+      if (e.target === pickerOverlay) pickerOverlay.classList.remove("show");
+    });
+
+    document.getElementById("pickerPrevYear").addEventListener("click", () => {
+      pickerYearVal--;
+      renderPickerGrid();
+    });
+    document.getElementById("pickerNextYear").addEventListener("click", () => {
+      pickerYearVal++;
+      renderPickerGrid();
     });
 
     // Search
