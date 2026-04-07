@@ -18,6 +18,7 @@ const App = (() => {
   const DB_VERSION = 1;
   const STORE_NAME = "transactions";
   const LS_KEY = "expense_tracker_transactions"; // for migration
+  const DELTA_KEY = "expense_tracker_delta_tracker"; // tracks last import position
   const CATEGORY_ICONS = {
     "Food & Dining": "🍕",
     Shopping: "🛍️",
@@ -291,6 +292,30 @@ const App = (() => {
     });
   }
 
+  // ─── Delta Import Tracking ───
+  // Stores { lineCount, hash } per filename so re-imports only parse new lines
+  function getDeltaTracker() {
+    try {
+      return JSON.parse(localStorage.getItem(DELTA_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function saveDeltaTracker(tracker) {
+    localStorage.setItem(DELTA_KEY, JSON.stringify(tracker));
+  }
+
+  // Quick hash of first N chars to detect if the file was replaced/reset
+  function quickHash(text, len) {
+    const sample = text.substring(0, len || 200);
+    let h = 0;
+    for (let i = 0; i < sample.length; i++) {
+      h = ((h << 5) - h + sample.charCodeAt(i)) | 0;
+    }
+    return h;
+  }
+
   // ─── File Import (reads JSON created by iOS Shortcut) ───
   function handleFileImport(file) {
     if (!file) return;
@@ -308,6 +333,7 @@ const App = (() => {
         let added = 0,
           skipped = 0,
           failed = 0;
+
 
         if (data && Array.isArray(data.messages)) {
           // Format: { messages: [ { message: "...", sender: "...", timestamp: "..." }, ... ] }
@@ -375,7 +401,20 @@ const App = (() => {
           });
         } else {
           // Try as plain text — smart split handles newlines and concatenated SMS
-          const lines = splitSMSText(text);
+          const allLines = splitSMSText(text);
+
+          // Delta import: skip already-processed lines for known files
+          const tracker = getDeltaTracker();
+          const fileKey = file.name || "unknown";
+          const fileHash = quickHash(text);
+          const prev = tracker[fileKey];
+          let startIdx = 0;
+
+          if (prev && prev.hash === fileHash && prev.lineCount <= allLines.length) {
+            startIdx = prev.lineCount;
+          }
+
+          const lines = allLines.slice(startIdx);
           lines.forEach((line) => {
             const { sender, smsText } = extractSenderFromLine(line.trim());
             const txn = SMSParser.parse(smsText, sender);
@@ -388,6 +427,10 @@ const App = (() => {
               failed++;
             }
           });
+
+          // Save progress: total lines in file (not just delta)
+          tracker[fileKey] = { lineCount: allLines.length, hash: fileHash };
+          saveDeltaTracker(tracker);
         }
 
         if (added > 0) saveData();

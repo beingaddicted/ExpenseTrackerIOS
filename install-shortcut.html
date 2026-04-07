@@ -422,152 +422,66 @@
           date, and bank automatically. Duplicates are always skipped.
         </div>
         <div class="note">
-          <strong>Import as often as you like</strong> — dedup by amount + date
-          + merchant + reference ensures no double entries.
+          <strong>Import as often as you like</strong> — the app remembers where
+          it left off and only parses new entries (delta import). Dedup by
+          amount + date + merchant + reference ensures no double entries.
         </div>
       </div>
 
-      <!-- ─── SECTION 3: Real-Time Automation (collapsible) ─── -->
-      <div class="section-label">Step 3 — Auto-Save New SMS (Optional)</div>
+      <!-- ─── SECTION 3: Nightly Automation ─── -->
+      <div class="section-label">Step 3 — Automate Nightly (Optional)</div>
 
-      <div class="card">
-        <div class="card-desc" style="margin-bottom: 0">
-          Bulk export gets your history. This optional step captures
-          <strong>every future bank SMS</strong> automatically to a file, so you
-          just import periodically.
+      <div class="card" style="border-color: var(--accent)">
+        <div class="card-header">
+          <span class="card-badge">Set &amp; Forget</span>
+          <span class="card-title">Run Bulk Export Every Night</span>
         </div>
-      </div>
+        <div class="card-desc">
+          Re-use the <strong>same Bulk Export shortcut</strong> from Step 1.
+          Schedule it to run once a night — it picks up only new SMS
+          automatically. The script always overlaps by one extra day so nothing is
+          missed, and duplicates are filtered out.
+        </div>
 
-      <!-- 3A: Create the shortcut -->
-      <div class="card">
-        <button class="collapse-toggle" onclick="toggleCollapse(this)">
-          <span>A. Create "Save Bank SMS" Shortcut</span>
-          <span class="arrow">▶</span>
-        </button>
-        <div class="collapse-body">
-          <div class="steps">
-            <div class="step">
-              <div class="step-num">1</div>
-              <div class="step-text">
-                <strong>Shortcuts</strong> app → <strong>＋</strong> →
-                <strong>Add Action</strong> → search <strong>"Append"</strong> →
-                tap <strong>"Append to Text File"</strong>.
-              </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              Open <strong>Shortcuts</strong> → <strong>Automation</strong> tab
+              → <strong>＋</strong> → <strong>Time of Day</strong>.
             </div>
-            <div class="step">
-              <div class="step-num">2</div>
-              <div class="step-text">
-                Configure the action:
-                <ul
-                  style="
-                    margin-top: 6px;
-                    padding-left: 16px;
-                    list-style: disc;
-                    line-height: 2;
-                  "
-                >
-                  <li>
-                    <strong>Text</strong> field → tap
-                    <strong>"Shortcut Input"</strong>
-                  </li>
-                  <li>
-                    <strong>File path</strong> → type
-                    <code style="font-size: 12px">bank_sms.txt</code>
-                  </li>
-                  <li><strong>Append on New Line</strong> → ON</li>
-                </ul>
-              </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Set time to something late, e.g.
+              <strong>11:00 PM</strong>. Choose
+              <strong>Daily</strong>. Tap <strong>Next</strong>.
             </div>
-            <div class="step">
-              <div class="step-num">3</div>
-              <div class="step-text">
-                Rename the shortcut to
-                <code style="font-size: 12px">Save Bank SMS</code> →
-                <strong>Done</strong>.
-              </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              Tap <strong>Run Shortcut</strong> → pick the
+              <strong>Bulk Export</strong> shortcut you installed in Step 1.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              Turn <strong>OFF</strong> "Ask Before Running" →
+              <strong>Done</strong>.
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- 3B: Automation triggers -->
-      <div class="card">
-        <button class="collapse-toggle" onclick="toggleCollapse(this)">
-          <span>B. Set Up SMS Automation Triggers</span>
-          <span class="arrow">▶</span>
-        </button>
-        <div class="collapse-body">
-          <div class="card-desc">
-            Create one automation per keyword. iOS only allows one "Message
-            Contains" value per automation.
-          </div>
-          <div class="steps">
-            <div class="step">
-              <div class="step-num">1</div>
-              <div class="step-text">
-                <strong>Shortcuts</strong> → <strong>Automation</strong> tab →
-                <strong>＋</strong> → <strong>Message</strong>.
-              </div>
-            </div>
-            <div class="step">
-              <div class="step-num">2</div>
-              <div class="step-text">
-                Leave <strong>Sender</strong> empty. Set
-                <strong>"Message Contains"</strong> → <code>debit</code>.
-              </div>
-            </div>
-            <div class="step">
-              <div class="step-num">3</div>
-              <div class="step-text">
-                Next → <strong>Add Action</strong> → search
-                <strong>"Run Shortcut"</strong> → pick
-                <strong>"Save Bank SMS"</strong>.
-              </div>
-            </div>
-            <div class="step">
-              <div class="step-num">4</div>
-              <div class="step-text">
-                Turn <strong>OFF</strong> "Ask Before Running" →
-                <strong>Done</strong>.
-              </div>
-            </div>
-          </div>
-
-          <div class="note" style="border-color: var(--green)">
-            <strong style="color: var(--green)">Repeat</strong> for these
-            keywords (one automation each):
-            <div class="bank-ids" style="margin-top: 8px">
-              <span
-                class="bank-id"
-                data-id="debit"
-                style="font-size: 13px; padding: 6px 10px"
-                >debit</span
-              >
-              <span
-                class="bank-id"
-                data-id="credit"
-                style="font-size: 13px; padding: 6px 10px"
-                >credit</span
-              >
-              <span
-                class="bank-id"
-                data-id="sent"
-                style="font-size: 13px; padding: 6px 10px"
-                >sent</span
-              >
-              <span
-                class="bank-id"
-                data-id="spent"
-                style="font-size: 13px; padding: 6px 10px"
-                >spent</span
-              >
-            </div>
-            <div
-              style="margin-top: 6px; font-size: 11px; color: var(--text-muted)"
-            >
-              Tap any keyword to copy. These 4 cover 99% of Indian bank SMS.
-            </div>
-          </div>
+        <div class="note" style="border-color: var(--accent)">
+          <strong style="color: var(--accent-light)">How it works:</strong> Each
+          night the shortcut runs, picks up where it left off (plus one overlap
+          day for safety), exports only new bank SMS to
+          <code>exportSms.txt</code>, and quietly finishes. Next time you import
+          into Expense Tracker, only the delta (new entries) is parsed — no
+          re-processing of old data.
         </div>
       </div>
 

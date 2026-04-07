@@ -1,7 +1,7 @@
 // BankSMS.js — Scriptable (PROD BUILD)
 //
-// Called by a 9-action Shortcut:
-//   1. Run Script (no parameter)        → INIT: returns day count
+// Called by a 9-action Shortcut (runs manually or via nightly automation):
+//   1. Run Script (no parameter)        → INIT: returns day count (+1 overlap)
 //   2. Adjust Date (today − day count)
 //   3. Repeat (day count) times:
 //      4. Adjust Date (start + index)
@@ -12,6 +12,8 @@
 //      9. Run Script (Combined Text as parameter) → SAVE: filter + append
 //   (loop ends)
 //
+// INIT adds +1 day overlap so nightly automation never misses entries.
+// SAVE deduplicates against the previous day's batch (PREV_BATCH).
 // Output: iCloud Drive → Scriptable → expense tracker → exportSms.txt
 
 const fm = FileManager.iCloud();
@@ -228,7 +230,11 @@ try {
 
     const days = Math.max(0, Math.round((today - lastCompleted) / 86400000));
 
-    Script.setShortcutOutput(String(days));
+    // Add 1 extra day of overlap so nightly automation never misses entries.
+    // The SAVE phase's cross-day dedup (PREV_BATCH) filters out any duplicates.
+    const safeDays = days > 0 ? days + 1 : days;
+
+    Script.setShortcutOutput(String(safeDays));
 
     // ── SAVE ──────────────────────────────────────────
   } else {
