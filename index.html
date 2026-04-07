@@ -286,7 +286,7 @@
           <div class="settings-item" id="settingAI">
             <div class="settings-icon">🤖</div>
             <div class="settings-info">
-              <div class="settings-label">AI Merchant Detection</div>
+              <div class="settings-label">AI Message Classification</div>
               <div class="settings-desc" id="aiStatusDesc">
                 Disabled — tap to configure
               </div>
@@ -347,6 +347,7 @@
     <div class="modal-overlay" id="modalAdd">
       <div class="modal">
         <div class="modal-handle"></div>
+        <button class="detail-close-btn" onclick="App.closeModal?.('modalAdd') || document.getElementById('modalAdd').classList.remove('active')" aria-label="Close">×</button>
         <div class="modal-title">Add Transaction</div>
         <form id="formAdd" autocomplete="off">
           <div class="form-group">
@@ -578,6 +579,7 @@
     <div class="modal-overlay" id="modalExport">
       <div class="modal">
         <div class="modal-handle"></div>
+        <button class="detail-close-btn" onclick="document.getElementById('modalExport').classList.remove('active')" aria-label="Close">×</button>
         <div class="modal-title">Export Data</div>
         <div class="export-options">
           <button class="export-btn" id="exportCSV">
@@ -641,7 +643,8 @@
     <div class="modal-overlay" id="modalAI">
       <div class="modal">
         <div class="modal-handle"></div>
-        <div class="modal-title">🤖 AI Merchant Detection</div>
+        <button class="detail-close-btn" id="btnCloseAIX" aria-label="Close">×</button>
+        <div class="modal-title">🤖 AI Message Classification</div>
         <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
           Add multiple free API keys from different providers. Keys auto-rotate
           on rate limits or errors for uninterrupted classification.
@@ -656,19 +659,17 @@
         <div id="aiKeySection" style="display: none;">
           <div class="form-group">
             <label class="form-label">API Keys</label>
-            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-              <input
-                type="password"
-                class="form-input"
-                id="aiNewKey"
-                placeholder="Paste API key…"
-                autocomplete="off"
-                style="flex: 1;"
-              />
-              <button type="button" class="btn-primary" id="btnAddKey" style="white-space: nowrap; padding: 8px 14px;">
-                + Add
-              </button>
-            </div>
+            <input
+              type="password"
+              class="form-input"
+              id="aiNewKey"
+              placeholder="Paste API key…"
+              autocomplete="off"
+              style="margin-bottom: 6px;"
+            />
+            <button type="button" class="btn-primary" id="btnAddKey" style="white-space: nowrap; padding: 10px 16px; margin-top: 0; width: 100%;">
+              + Add Key
+            </button>
             <div id="aiKeyList"></div>
             <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
               Provider is auto-detected from key prefix. Get free keys:<br>
@@ -685,7 +686,10 @@
             🚀 Classify Unknown Merchants
           </button>
           <button type="button" class="btn-primary" id="btnReclassifyAll" style="margin-bottom: 8px; width: 100%; background: linear-gradient(135deg, var(--orange), #ea580c);">
-            🔄 Reclassify All Transactions (One-time)
+            🔄 Reclassify All Transactions
+          </button>
+          <button type="button" id="btnStopAI" style="display: none; margin-bottom: 8px; width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--red); background: rgba(239,68,68,0.1); color: var(--red); font-size: 14px; font-weight: 600; cursor: pointer;">
+            ⏹ Stop Classification
           </button>
           <div class="form-group" style="margin-top: 12px;">
             <label class="form-label">Auto-classify after import</label>

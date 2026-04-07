@@ -169,6 +169,7 @@ body {
     z-index: 200;
     align-items: center;
     justify-content: center;
+    padding-top: var(--safe-top);
 }
 .month-picker-overlay.show { display: flex; }
 .month-picker {
@@ -1107,26 +1108,31 @@ body {
 
 /* ─── Transaction Detail Modal ─── */
 .detail-close-btn {
-    position: absolute;
-    top: 12px;
-    right: 16px;
-    width: 32px;
-    height: 32px;
+    position: sticky;
+    top: 0;
+    float: right;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    border: 1px solid var(--border);
-    background: var(--bg-card);
-    color: var(--text-secondary);
-    font-size: 18px;
+    border: 1.5px solid var(--text-muted);
+    background: var(--bg-secondary, var(--bg-card));
+    color: var(--text-primary);
+    font-size: 20px;
+    font-weight: 600;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     z-index: 10;
     -webkit-tap-highlight-color: transparent;
+    margin-top: -4px;
+    margin-right: -4px;
 }
 
 .detail-close-btn:active {
-    background: var(--border);
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
 }
 
 .detail-header {

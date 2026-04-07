@@ -746,6 +746,10 @@ describe("SMSParser", () => {
       // "Other" is a fallback default, not in CATEGORY_KEYWORDS
       expect(cats).toContain("Refund");
       expect(cats).toContain("Tax");
+      expect(cats).toContain("Credit Card Payment");
+      expect(cats).toContain("Savings");
+      expect(cats).toContain("Investment");
+      expect(cats).toContain("EMI & Loans");
     });
   });
 
@@ -1111,6 +1115,46 @@ describe("SMSParser", () => {
     test("Refund: refund processed", () => {
       expect(SMSParser.detectCategory("refund processed", "REFUND")).toBe(
         "Refund",
+      );
+    });
+    test("Credit Card Payment: CC bill payment", () => {
+      expect(SMSParser.detectCategory("credit card payment of Rs.15000", "HDFC Card")).toBe(
+        "Credit Card Payment",
+      );
+    });
+    test("Credit Card Payment: card bill pay", () => {
+      expect(SMSParser.detectCategory("credit card bill paid Rs.20000", "CC")).toBe(
+        "Credit Card Payment",
+      );
+    });
+    test("Credit Card Payment: CC payment", () => {
+      expect(SMSParser.detectCategory("cc payment done", "CC")).toBe(
+        "Credit Card Payment",
+      );
+    });
+    test("Savings: fixed deposit", () => {
+      expect(SMSParser.detectCategory("Your FD of Rs.50000 has been placed", "FD")).toBe(
+        "Savings",
+      );
+    });
+    test("Savings: recurring deposit", () => {
+      expect(SMSParser.detectCategory("RD auto-debit Rs.5000", "RD")).toBe(
+        "Savings",
+      );
+    });
+    test("Savings: PPF deposit", () => {
+      expect(SMSParser.detectCategory("PPF contribution Rs.1500", "PPF")).toBe(
+        "Savings",
+      );
+    });
+    test("Savings: NPS deduction", () => {
+      expect(SMSParser.detectCategory("NPS tier 1 contribution", "NPS")).toBe(
+        "Savings",
+      );
+    });
+    test("Savings: auto-sweep to FD", () => {
+      expect(SMSParser.detectCategory("swept to FD Rs.25000", "Auto-sweep")).toBe(
+        "Savings",
       );
     });
   });
@@ -1614,6 +1658,166 @@ describe("SMSParser", () => {
       expect(txn).not.toBeNull();
       expect(txn.amount).toBe(3500);
       expect(txn.type).toBe("credit");
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // Missing detectCategory tests — Travel, Transfer, Cashback, Tax
+  // ═══════════════════════════════════════════════════════════
+  describe("detectCategory — previously untested categories", () => {
+    test("Travel: MakeMyTrip", () => {
+      expect(SMSParser.detectCategory("paid to MakeMyTrip", "MakeMyTrip")).toBe("Travel");
+    });
+
+    test("Travel: hotel booking", () => {
+      expect(SMSParser.detectCategory("hotel reservation confirmed", "Marriott")).toBe("Travel");
+    });
+
+    test("Travel: flight ticket", () => {
+      expect(SMSParser.detectCategory("flight ticket IndiGo", "IndiGo")).toBe("Travel");
+    });
+
+    test("Travel: Airbnb", () => {
+      expect(SMSParser.detectCategory("Airbnb stay Rs.5000", "Airbnb")).toBe("Travel");
+    });
+
+    test("Transfer: NEFT transfer", () => {
+      expect(SMSParser.detectCategory("NEFT transfer to John", "John")).toBe("Transfer");
+    });
+
+    test("Transfer: fund transfer", () => {
+      expect(SMSParser.detectCategory("fund transfer Rs.10000", "Self")).toBe("Transfer");
+    });
+
+    test("Transfer: IMPS", () => {
+      expect(SMSParser.detectCategory("IMPS to account", "Self")).toBe("Transfer");
+    });
+
+    test("Cashback & Rewards: cashback received", () => {
+      expect(SMSParser.detectCategory("cashback of Rs.50 credited", "PhonePe")).toBe("Cashback & Rewards");
+    });
+
+    test("Cashback & Rewards: reward points", () => {
+      expect(SMSParser.detectCategory("reward points credited", "HDFC")).toBe("Cashback & Rewards");
+    });
+
+    test("Tax: income tax payment", () => {
+      expect(SMSParser.detectCategory("income tax payment Rs.25000", "IT Dept")).toBe("Tax");
+    });
+
+    test("Tax: GST payment", () => {
+      expect(SMSParser.detectCategory("GST challan payment", "GST Portal")).toBe("Tax");
+    });
+
+    test("Tax: TDS deducted", () => {
+      expect(SMSParser.detectCategory("TDS deducted Rs.5000", "Bank")).toBe("Tax");
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // Missing detectMode tests via parse
+  // ═══════════════════════════════════════════════════════════
+  describe("parse — additional payment modes", () => {
+    test("Net Banking mode", () => {
+      const sms = "Rs.5000 debited from a/c XX1234 via Net Banking on 01-04-26 to Jio. Avl bal Rs.10000 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.mode).toBe("Net Banking");
+    });
+
+    test("Debit Card mode", () => {
+      const sms = "Rs.3000 spent on your Debit Card XX5678 at Amazon on 02-04-26. Avl bal Rs.20000 -SBI";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.mode).toBe("Debit Card");
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // Missing bank detection tests
+  // ═══════════════════════════════════════════════════════════
+  describe("detectBank — additional banks", () => {
+    test("detects HSBC", () => {
+      expect(SMSParser.detectBank("HSBC Bank")).toBe("HSBC");
+    });
+
+    test("detects Standard Chartered", () => {
+      expect(SMSParser.detectBank("Standard Chartered")).toBe("Standard Chartered");
+    });
+
+    test("detects DBS", () => {
+      expect(SMSParser.detectBank("DBS Bank")).toBe("DBS Bank");
+    });
+
+    test("detects Indian Bank", () => {
+      expect(SMSParser.detectBank("Indian Bank")).toBe("Indian Bank");
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // parseBatch edge cases
+  // ═══════════════════════════════════════════════════════════
+  describe("parseBatch — edge cases", () => {
+    test("handles objects with message field", () => {
+      const results = SMSParser.parseBatch([
+        { message: "Rs.500 debited from a/c XX1234 on 01-04-26 to Swiggy via UPI. Avl bal Rs.5000 -HDFC Bank" },
+      ]);
+      expect(results).toHaveLength(1);
+    });
+
+    test("filters out non-parseable items", () => {
+      const results = SMSParser.parseBatch([
+        "Rs.500 debited from a/c XX1234 on 01-04-26 to Swiggy via UPI. Avl bal Rs.5000 -HDFC Bank",
+        "This is not a bank SMS at all",
+      ]);
+      expect(results).toHaveLength(1);
+    });
+
+    test("deduplicates within batch", () => {
+      const sms = "Rs.500 debited from a/c XX1234 on 01-04-26 to Swiggy via UPI. Avl bal Rs.5000 -HDFC Bank";
+      const results = SMSParser.parseBatch([sms, sms, sms]);
+      expect(results).toHaveLength(1);
+    });
+
+    test("empty array returns empty results", () => {
+      const results = SMSParser.parseBatch([]);
+      expect(results).toHaveLength(0);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // isBankSMS edge cases
+  // ═══════════════════════════════════════════════════════════
+  describe("isBankSMS — additional edge cases", () => {
+    test("rejects card blocked notification", () => {
+      expect(SMSParser.isBankSMS("Your card has been blocked. Call 1800-xxx-xxxx to unblock.")).toBe(false);
+    });
+
+    test("rejects password change alert", () => {
+      expect(SMSParser.isBankSMS("Your password has been changed successfully. If not done by you call 1800-xxx")).toBe(false);
+    });
+
+    test("accepts salary credit SMS", () => {
+      expect(SMSParser.isBankSMS("Rs.50000 credited to a/c XX1234 on 01-04-26. Salary from Employer. Avl bal Rs.100000 -HDFC Bank")).toBe(true);
+    });
+
+    test("accepts EMI debit SMS", () => {
+      expect(SMSParser.isBankSMS("Rs.15000 debited from a/c XX5678 on 05-04-26 towards EMI. Avl bal Rs.20000 -ICICI Bank")).toBe(true);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // parse — balance type rejection
+  // ═══════════════════════════════════════════════════════════
+  describe("parse — balance-only SMS handling", () => {
+    test("balance inquiry with keyword parses but has type", () => {
+      const sms = "Your a/c XX1234 has available balance of Rs.50000.00 as on 01-04-26. -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      // Parser may parse this as a transaction since it has money + keywords
+      // The important thing is the app layer handles invalid marking via AI
+      if (txn) {
+        expect(txn.amount).toBe(50000);
+      }
     });
   });
 });

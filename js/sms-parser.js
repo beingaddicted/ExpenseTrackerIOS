@@ -474,6 +474,26 @@ const SMSParser = (() => {
     ],
     Refund: [/refund/i, /reversal/i, /reversed/i, /chargeback/i],
     Tax: [/tax/i, /income\s*tax/i, /gst/i, /tds/i, /irs/i],
+    "Credit Card Payment": [
+      /credit\s*card.*(?:payment|bill|due|paid|pay)/i,
+      /card\s*bill\s*pay/i,
+      /cc\s*payment/i,
+      /card\s*payment/i,
+      /card\s*outstanding/i,
+      /bill\s*payment.*card/i,
+    ],
+    Savings: [
+      /fixed\s*deposit/i,
+      /recurring\s*deposit/i,
+      /\bfd\b/i,
+      /\brd\b/i,
+      /\bppf\b/i,
+      /\bnps\b/i,
+      /\bepf\b/i,
+      /\bnsc\b/i,
+      /savings\s*(?:account|deposit|transfer)/i,
+      /swept.*(?:fd|deposit)/i,
+    ],
   };
 
   // ─── Comprehensive SMS Templates (for matching) ───

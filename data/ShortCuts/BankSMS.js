@@ -26,7 +26,7 @@ const PREV_BATCH = fm.joinPath(dir, "exportSmsPrevBatch.txt");
 const DEBUG_FILE = fm.joinPath(dir, "exportSmsDebug.txt");
 
 // ── CONFIG ──────────────────────────────────────────
-const DEBUG = true; // flip to true to write exportSmsDebug.txt
+const DEBUG = false; // flip to true to write exportSmsDebug.txt
 const DEFAULT_START = "2020-01-01";
 
 const KEYWORDS = [
@@ -150,6 +150,10 @@ async function read(path) {
 function fmt(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+// ── MAIN EXECUTION (Scriptable only) ────────────────
+if (typeof module === "undefined") {
+(async () => {
 
 // ── INPUT EXTRACTION ────────────────────────────────
 const raw = args.shortcutParameter;
@@ -307,3 +311,11 @@ try {
 }
 
 Script.complete();
+
+})(); // end async IIFE
+} // end Scriptable-only block
+
+// ── Test exports (Node.js only) ──
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { extractTime, splitMessages, reassembleMessages, KEYWORDS, MONEY_RE, SPAM_RE, DATE_ONLY_RE, fmt };
+}

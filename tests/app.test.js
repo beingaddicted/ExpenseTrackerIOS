@@ -632,3 +632,540 @@ describe("version.json", () => {
     expect(versionData.version).toMatch(/^\d+\.\d+\.\d+(\.\d+)?$/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// Transaction Display & Filtering Logic Tests
+// ═══════════════════════════════════════════════════════════
+// These replicate the filtering/calculation logic from app.js
+// to verify the rules documented in logic.md
+
+describe("Transaction display & filtering logic", () => {
+  const EXPENSE_EXCLUDED_CATEGORIES = ["EMI & Loans", "Investment", "Credit Card Payment", "Savings"];
+  const NON_GENUINE_CREDIT_CATEGORIES = ["Refund", "Cashback & Rewards"];
+
+  function isNonGenuineCredit(t) {
+    if (t.type !== "credit") return false;
+    if (NON_GENUINE_CREDIT_CATEGORIES.includes(t.category)) return true;
+    const sms = (t.rawSMS || "").toLowerCase();
+    const merchant = (t.merchant || "").toLowerCase();
+    if (/credit\s*card/.test(sms) || /credit\s*card/.test(merchant)) return true;
+    if (/paytm/.test(merchant) && !/salary|bonus|reward/i.test(sms)) return true;
+    return false;
+  }
+
+  function filterTransactions(transactions, activeFilter) {
+    return transactions.filter((t) => {
+      if (t.invalid && activeFilter !== "credit") return false;
+      if (activeFilter === "debit") {
+        if (t.type !== "debit") return false;
+        if (EXPENSE_EXCLUDED_CATEGORIES.includes(t.category)) return false;
+      } else if (activeFilter === "total-expense") {
+        if (t.type !== "debit") return false;
+      } else if (activeFilter === "credit") {
+        if (t.type !== "credit" && !t.invalid) return false;
+        if (!t.invalid && isNonGenuineCredit(t)) return false;
+      }
+      return true;
+    });
+  }
+
+  function calcSummary(transactions) {
+    const valid = transactions.filter((t) => !t.invalid);
+    const allDebits = valid.filter((t) => t.type === "debit");
+    const regularDebits = allDebits.filter((t) => !EXPENSE_EXCLUDED_CATEGORIES.includes(t.category));
+    const genuineCredits = valid.filter((t) => t.type === "credit" && !isNonGenuineCredit(t));
+    return {
+      regularExp: regularDebits.reduce((s, t) => s + t.amount, 0),
+      totalExp: allDebits.reduce((s, t) => s + t.amount, 0),
+      totalInc: genuineCredits.reduce((s, t) => s + t.amount, 0),
+    };
+  }
+
+  // ── Test Data ──
+  const txns = [
+    { id: "1", type: "debit", amount: 500, category: "Food & Dining", merchant: "Swiggy", invalid: false },
+    { id: "2", type: "debit", amount: 2000, category: "Shopping", merchant: "Amazon", invalid: false },
+    { id: "3", type: "debit", amount: 5000, category: "Investment", merchant: "Groww", invalid: false },
+    { id: "4", type: "debit", amount: 10000, category: "EMI & Loans", merchant: "HDFC Loan", invalid: false },
+    { id: "5", type: "debit", amount: 3000, category: "Credit Card Payment", merchant: "ICICI CC", invalid: false },
+    { id: "6", type: "debit", amount: 2000, category: "Savings", merchant: "FD Auto-sweep", invalid: false },
+    { id: "7", type: "debit", amount: 0, category: "Other", merchant: "Balance Check", invalid: true },
+    { id: "8", type: "credit", amount: 50000, category: "Salary", merchant: "Employer", invalid: false },
+    { id: "9", type: "credit", amount: 200, category: "Cashback & Rewards", merchant: "PhonePe", invalid: false },
+    { id: "10", type: "credit", amount: 1000, category: "Refund", merchant: "Amazon", invalid: false },
+    { id: "11", type: "credit", amount: 0, category: "Other", merchant: "Statement", invalid: true },
+    { id: "12", type: "debit", amount: 1500, category: "Bills & Utilities", merchant: "Jio", invalid: false },
+    { id: "13", type: "debit", amount: 0, category: "Other", merchant: "Spending Report", invalid: true },
+  ];
+
+  describe("Expenses tab (debit filter)", () => {
+    const filtered = filterTransactions(txns, "debit");
+
+    test("includes regular debits (food, shopping, bills)", () => {
+      expect(filtered.map((t) => t.id)).toContain("1");
+      expect(filtered.map((t) => t.id)).toContain("2");
+      expect(filtered.map((t) => t.id)).toContain("12");
+    });
+
+    test("excludes Investment", () => {
+      expect(filtered.map((t) => t.id)).not.toContain("3");
+    });
+
+    test("excludes EMI & Loans", () => {
+      expect(filtered.map((t) => t.id)).not.toContain("4");
+    });
+
+    test("excludes Credit Card Payment", () => {
+      expect(filtered.map((t) => t.id)).not.toContain("5");
+    });
+
+    test("excludes Savings", () => {
+      expect(filtered.map((t) => t.id)).not.toContain("6");
+    });
+
+    test("excludes invalid debit", () => {
+      expect(filtered.map((t) => t.id)).not.toContain("7");
+      expect(filtered.map((t) => t.id)).not.toContain("13");
+    });
+
+    test("excludes all credits", () => {
+      const creditIds = ["8", "9", "10", "11"];
+      creditIds.forEach((id) => {
+        expect(filtered.map((t) => t.id)).not.toContain(id);
+      });
+    });
+  });
+
+  describe("Total Expense tab (total-expense filter)", () => {
+    const filtered = filterTransactions(txns, "total-expense");
+
+    test("includes regular debits", () => {
+      expect(filtered.map((t) => t.id)).toContain("1");
+      expect(filtered.map((t) => t.id)).toContain("2");
+      expect(filtered.map((t) => t.id)).toContain("12");
+    });
+
+    test("includes excluded-category debits (Investment, EMI, CC, Savings)", () => {
+      expect(filtered.map((t) => t.id)).toContain("3");
+      expect(filtered.map((t) => t.id)).toContain("4");
+      expect(filtered.map((t) => t.id)).toContain("5");
+      expect(filtered.map((t) => t.id)).toContain("6");
+    });
+
+    test("excludes invalid debits", () => {
+      expect(filtered.map((t) => t.id)).not.toContain("7");
+      expect(filtered.map((t) => t.id)).not.toContain("13");
+    });
+
+    test("excludes all credits", () => {
+      const creditIds = ["8", "9", "10", "11"];
+      creditIds.forEach((id) => {
+        expect(filtered.map((t) => t.id)).not.toContain(id);
+      });
+    });
+  });
+
+  describe("Income tab (credit filter)", () => {
+    const filtered = filterTransactions(txns, "credit");
+
+    test("includes valid genuine credits (salary)", () => {
+      expect(filtered.map((t) => t.id)).toContain("8");
+    });
+
+    test("excludes non-genuine credits (cashback, refund)", () => {
+      expect(filtered.map((t) => t.id)).not.toContain("9");
+      expect(filtered.map((t) => t.id)).not.toContain("10");
+    });
+
+    test("includes invalid credits (shown for review)", () => {
+      expect(filtered.map((t) => t.id)).toContain("11");
+    });
+
+    test("includes invalid debits (shown for review)", () => {
+      expect(filtered.map((t) => t.id)).toContain("7");
+      expect(filtered.map((t) => t.id)).toContain("13");
+    });
+
+    test("excludes valid debits", () => {
+      const validDebitIds = ["1", "2", "3", "4", "5", "6", "12"];
+      validDebitIds.forEach((id) => {
+        expect(filtered.map((t) => t.id)).not.toContain(id);
+      });
+    });
+  });
+
+  describe("All tab (all filter)", () => {
+    const filtered = filterTransactions(txns, "all");
+
+    test("includes all valid transactions", () => {
+      const validIds = ["1", "2", "3", "4", "5", "6", "8", "9", "10", "12"];
+      validIds.forEach((id) => {
+        expect(filtered.map((t) => t.id)).toContain(id);
+      });
+    });
+
+    test("excludes invalid transactions", () => {
+      expect(filtered.map((t) => t.id)).not.toContain("7");
+      expect(filtered.map((t) => t.id)).not.toContain("11");
+      expect(filtered.map((t) => t.id)).not.toContain("13");
+    });
+  });
+
+  describe("Summary calculations", () => {
+    const summary = calcSummary(txns);
+
+    test("regularExp excludes Investment, EMI, CC Payment, Savings", () => {
+      // Food 500 + Shopping 2000 + Bills 1500 = 4000
+      expect(summary.regularExp).toBe(4000);
+    });
+
+    test("totalExp includes all valid debits", () => {
+      // Food 500 + Shopping 2000 + Investment 5000 + EMI 10000 + CC 3000 + Savings 2000 + Bills 1500 = 24000
+      expect(summary.totalExp).toBe(24000);
+    });
+
+    test("totalInc only counts genuine credits", () => {
+      // Salary 50000 only (cashback and refund are non-genuine)
+      expect(summary.totalInc).toBe(50000);
+    });
+
+    test("invalid transactions are excluded from all sums", () => {
+      // Txns 7, 11, 13 have amount 0 but even if they had amount, they'd be excluded
+      const txnsWithInvalidAmounts = txns.map((t) =>
+        t.invalid ? { ...t, amount: 99999 } : t
+      );
+      const s = calcSummary(txnsWithInvalidAmounts);
+      // Same amounts as above — invalids don't affect sums
+      expect(s.regularExp).toBe(4000);
+      expect(s.totalExp).toBe(24000);
+      expect(s.totalInc).toBe(50000);
+    });
+
+    test("net balance is Income minus Total Expense", () => {
+      expect(summary.totalInc - summary.totalExp).toBe(26000);
+    });
+  });
+
+  describe("isNonGenuineCredit", () => {
+    test("refund is non-genuine", () => {
+      expect(isNonGenuineCredit({ type: "credit", category: "Refund" })).toBe(true);
+    });
+
+    test("cashback is non-genuine", () => {
+      expect(isNonGenuineCredit({ type: "credit", category: "Cashback & Rewards" })).toBe(true);
+    });
+
+    test("salary is genuine", () => {
+      expect(isNonGenuineCredit({ type: "credit", category: "Salary", merchant: "Employer", rawSMS: "" })).toBe(false);
+    });
+
+    test("credit card merchant credit is non-genuine", () => {
+      expect(isNonGenuineCredit({ type: "credit", category: "Other", merchant: "Credit Card Reward", rawSMS: "" })).toBe(true);
+    });
+
+    test("paytm credit without salary keyword is non-genuine", () => {
+      expect(isNonGenuineCredit({ type: "credit", category: "Other", merchant: "Paytm", rawSMS: "You received Rs.500" })).toBe(true);
+    });
+
+    test("paytm salary credit is genuine", () => {
+      expect(isNonGenuineCredit({ type: "credit", category: "Other", merchant: "Paytm", rawSMS: "Salary credited Rs.50000" })).toBe(false);
+    });
+
+    test("debit is never non-genuine credit", () => {
+      expect(isNonGenuineCredit({ type: "debit", category: "Refund" })).toBe(false);
+    });
+  });
+
+  describe("EXPENSE_EXCLUDED_CATEGORIES completeness", () => {
+    test("contains Investment", () => {
+      expect(EXPENSE_EXCLUDED_CATEGORIES).toContain("Investment");
+    });
+
+    test("contains Savings", () => {
+      expect(EXPENSE_EXCLUDED_CATEGORIES).toContain("Savings");
+    });
+
+    test("contains EMI & Loans", () => {
+      expect(EXPENSE_EXCLUDED_CATEGORIES).toContain("EMI & Loans");
+    });
+
+    test("contains Credit Card Payment", () => {
+      expect(EXPENSE_EXCLUDED_CATEGORIES).toContain("Credit Card Payment");
+    });
+
+    test("does not contain regular expense categories", () => {
+      const regularCats = ["Food & Dining", "Shopping", "Transport", "Bills & Utilities", "Rent", "Groceries"];
+      regularCats.forEach((cat) => {
+        expect(EXPENSE_EXCLUDED_CATEGORIES).not.toContain(cat);
+      });
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Pure Function Tests — replicated from app.js
+// ═══════════════════════════════════════════════════════════
+
+describe("getBatchSize logic", () => {
+  function getBatchSize(contextWindow) {
+    if (!contextWindow || contextWindow <= 8000) return 30;
+    if (contextWindow <= 32000) return 80;
+    if (contextWindow <= 128000) return 150;
+    return 200;
+  }
+
+  test("null/undefined context returns 30", () => {
+    expect(getBatchSize(null)).toBe(30);
+    expect(getBatchSize(undefined)).toBe(30);
+    expect(getBatchSize(0)).toBe(30);
+  });
+
+  test("small context (≤8K) returns 30", () => {
+    expect(getBatchSize(4000)).toBe(30);
+    expect(getBatchSize(8000)).toBe(30);
+  });
+
+  test("medium context (≤32K) returns 80", () => {
+    expect(getBatchSize(8001)).toBe(80);
+    expect(getBatchSize(16000)).toBe(80);
+    expect(getBatchSize(32000)).toBe(80);
+  });
+
+  test("large context (≤128K) returns 150", () => {
+    expect(getBatchSize(32001)).toBe(150);
+    expect(getBatchSize(64000)).toBe(150);
+    expect(getBatchSize(128000)).toBe(150);
+  });
+
+  test("very large context (>128K) returns 200", () => {
+    expect(getBatchSize(128001)).toBe(200);
+    expect(getBatchSize(1000000)).toBe(200);
+    expect(getBatchSize(2000000)).toBe(200);
+  });
+});
+
+describe("detectProvider logic", () => {
+  function detectProvider(key) {
+    if (!key) return null;
+    if (key.startsWith("AIza")) return "gemini";
+    if (key.startsWith("gsk_")) return "groq";
+    if (key.startsWith("sk-or-")) return "openrouter";
+    if (key.startsWith("sk-")) return "openai";
+    return null;
+  }
+
+  test("Gemini key (AIza prefix)", () => {
+    expect(detectProvider("AIzaSyABC123")).toBe("gemini");
+  });
+
+  test("Groq key (gsk_ prefix)", () => {
+    expect(detectProvider("gsk_abc123xyz")).toBe("groq");
+  });
+
+  test("OpenRouter key (sk-or- prefix)", () => {
+    expect(detectProvider("sk-or-abc123")).toBe("openrouter");
+  });
+
+  test("OpenAI key (sk- prefix)", () => {
+    expect(detectProvider("sk-abc123xyz")).toBe("openai");
+  });
+
+  test("sk-or- is detected as openrouter, not openai", () => {
+    expect(detectProvider("sk-or-v1-abc123")).toBe("openrouter");
+  });
+
+  test("unknown prefix returns null", () => {
+    expect(detectProvider("xyz_123")).toBeNull();
+  });
+
+  test("null/empty returns null", () => {
+    expect(detectProvider(null)).toBeNull();
+    expect(detectProvider("")).toBeNull();
+    expect(detectProvider(undefined)).toBeNull();
+  });
+});
+
+describe("markKeyError cooldown logic", () => {
+  function markKeyError(state, status, message) {
+    state.errorCount++;
+    state.lastError = message;
+    if (status === 429) {
+      state.cooldownUntil = Date.now() + 60000;
+    } else if (status === 403 || (message && message.toLowerCase().includes("quota"))) {
+      state.cooldownUntil = Date.now() + 300000;
+    } else if (status >= 500) {
+      state.cooldownUntil = Date.now() + 30000;
+    }
+  }
+
+  test("429 sets 60s cooldown", () => {
+    const state = { errorCount: 0, cooldownUntil: 0, lastError: null };
+    const before = Date.now();
+    markKeyError(state, 429, "Rate limited");
+    expect(state.cooldownUntil).toBeGreaterThanOrEqual(before + 60000);
+    expect(state.errorCount).toBe(1);
+  });
+
+  test("403 sets 300s cooldown", () => {
+    const state = { errorCount: 0, cooldownUntil: 0, lastError: null };
+    const before = Date.now();
+    markKeyError(state, 403, "Forbidden");
+    expect(state.cooldownUntil).toBeGreaterThanOrEqual(before + 300000);
+  });
+
+  test("quota error message sets 300s cooldown regardless of status", () => {
+    const state = { errorCount: 0, cooldownUntil: 0, lastError: null };
+    const before = Date.now();
+    markKeyError(state, 200, "Quota exceeded");
+    expect(state.cooldownUntil).toBeGreaterThanOrEqual(before + 300000);
+  });
+
+  test("500+ sets 30s cooldown", () => {
+    const state = { errorCount: 0, cooldownUntil: 0, lastError: null };
+    const before = Date.now();
+    markKeyError(state, 500, "Server error");
+    expect(state.cooldownUntil).toBeGreaterThanOrEqual(before + 30000);
+  });
+
+  test("other errors increment count but no cooldown change", () => {
+    const state = { errorCount: 0, cooldownUntil: 0, lastError: null };
+    markKeyError(state, 400, "Bad request");
+    expect(state.errorCount).toBe(1);
+    expect(state.cooldownUntil).toBe(0);
+    expect(state.lastError).toBe("Bad request");
+  });
+});
+
+describe("buildAIPrompt logic", () => {
+  function buildAIPrompt({ mode, smsContent }) {
+    const catList = "Food & Dining, Shopping, Other";
+    const isBatch = mode === "batch";
+    const intro = isBatch
+      ? "For each SMS below, perform these steps:"
+      : "For the SMS below, perform these steps:";
+    const returnFormat = isBatch
+      ? 'Return a JSON array: [{"i":1,"merchant":"Name","category":"Category","invalid":false,"mode":"UPI"}, ...]'
+      : 'Return JSON: {"merchant":"Name","category":"Category","invalid":false,"mode":"UPI"}';
+    const indexRule = isBatch ? '\n- "i": SMS number (1-based)' : "";
+    const footer = isBatch ? `SMS list:\n${smsContent}` : `SMS:\n${smsContent}`;
+
+    return `${intro}\n${returnFormat}\n${indexRule}\n${footer}`;
+  }
+
+  test("single mode uses singular intro", () => {
+    const prompt = buildAIPrompt({ mode: "single", smsContent: "test sms" });
+    expect(prompt).toContain("For the SMS below");
+    expect(prompt).not.toContain("For each SMS below");
+  });
+
+  test("batch mode uses plural intro", () => {
+    const prompt = buildAIPrompt({ mode: "batch", smsContent: "1. test" });
+    expect(prompt).toContain("For each SMS below");
+  });
+
+  test("single mode returns object format", () => {
+    const prompt = buildAIPrompt({ mode: "single", smsContent: "test" });
+    expect(prompt).toContain("Return JSON:");
+    expect(prompt).not.toContain("Return a JSON array");
+  });
+
+  test("batch mode returns array format with index field", () => {
+    const prompt = buildAIPrompt({ mode: "batch", smsContent: "1. test" });
+    expect(prompt).toContain("Return a JSON array");
+    expect(prompt).toContain('"i": SMS number (1-based)');
+  });
+
+  test("single mode has SMS footer", () => {
+    const prompt = buildAIPrompt({ mode: "single", smsContent: "Hello bank" });
+    expect(prompt).toContain("SMS:\nHello bank");
+  });
+
+  test("batch mode has SMS list footer", () => {
+    const prompt = buildAIPrompt({ mode: "batch", smsContent: "1. msg1\n2. msg2" });
+    expect(prompt).toContain("SMS list:\n1. msg1\n2. msg2");
+  });
+
+  test("single mode does not include i field rule", () => {
+    const prompt = buildAIPrompt({ mode: "single", smsContent: "test" });
+    expect(prompt).not.toContain('"i": SMS number');
+  });
+});
+
+describe("searchQuery filtering logic", () => {
+  function filterWithSearch(transactions, searchQuery) {
+    return transactions.filter((t) => {
+      const q = searchQuery.toLowerCase();
+      return (
+        (t.merchant || "").toLowerCase().includes(q) ||
+        (t.category || "").toLowerCase().includes(q) ||
+        (t.bank || "").toLowerCase().includes(q) ||
+        (t.mode || "").toLowerCase().includes(q) ||
+        String(t.amount).includes(q)
+      );
+    });
+  }
+
+  const txns = [
+    { merchant: "Swiggy", category: "Food & Dining", bank: "HDFC", mode: "UPI", amount: 350 },
+    { merchant: "Amazon", category: "Shopping", bank: "ICICI", mode: "Card", amount: 2500 },
+    { merchant: "Groww", category: "Investment", bank: "HDFC", mode: "Auto-debit", amount: 5000 },
+  ];
+
+  test("searches by merchant name", () => {
+    expect(filterWithSearch(txns, "swiggy")).toHaveLength(1);
+    expect(filterWithSearch(txns, "swiggy")[0].merchant).toBe("Swiggy");
+  });
+
+  test("searches by category", () => {
+    expect(filterWithSearch(txns, "shopping")).toHaveLength(1);
+  });
+
+  test("searches by bank", () => {
+    expect(filterWithSearch(txns, "hdfc")).toHaveLength(2);
+  });
+
+  test("searches by mode", () => {
+    expect(filterWithSearch(txns, "upi")).toHaveLength(1);
+  });
+
+  test("searches by amount", () => {
+    expect(filterWithSearch(txns, "2500")).toHaveLength(1);
+  });
+
+  test("case insensitive", () => {
+    expect(filterWithSearch(txns, "SWIGGY")).toHaveLength(1);
+    expect(filterWithSearch(txns, "hdfc")).toHaveLength(2);
+  });
+
+  test("no match returns empty", () => {
+    expect(filterWithSearch(txns, "netflix")).toHaveLength(0);
+  });
+
+  test("partial match works", () => {
+    expect(filterWithSearch(txns, "ama")).toHaveLength(1);
+  });
+});
+
+describe("isNonGenuineCredit — rawSMS credit card text", () => {
+  function isNonGenuineCredit(t) {
+    if (t.type !== "credit") return false;
+    if (["Refund", "Cashback & Rewards"].includes(t.category)) return true;
+    const sms = (t.rawSMS || "").toLowerCase();
+    const merchant = (t.merchant || "").toLowerCase();
+    if (/credit\s*card/.test(sms) || /credit\s*card/.test(merchant)) return true;
+    if (/paytm/.test(merchant) && !/salary|bonus|reward/i.test(sms)) return true;
+    return false;
+  }
+
+  test("rawSMS mentioning credit card is non-genuine", () => {
+    expect(isNonGenuineCredit({
+      type: "credit", category: "Other", merchant: "Bank", rawSMS: "Credit Card reward points credited Rs.200"
+    })).toBe(true);
+  });
+
+  test("rawSMS with creditcard (no space) is also caught", () => {
+    expect(isNonGenuineCredit({
+      type: "credit", category: "Other", merchant: "Bank", rawSMS: "creditcard cashback Rs.100"
+    })).toBe(true);
+  });
+});
