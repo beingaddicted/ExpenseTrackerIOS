@@ -26,6 +26,7 @@ const PREV_BATCH = fm.joinPath(dir, "exportSmsPrevBatch.txt");
 const DEBUG_FILE = fm.joinPath(dir, "exportSmsDebug.txt");
 
 // ── CONFIG ──────────────────────────────────────────
+const DEBUG = false; // flip to true to write exportSmsDebug.txt
 const DEFAULT_START = "2020-01-01";
 
 const KEYWORDS = [
@@ -225,22 +226,24 @@ try {
     if (input.length > 0) {
       const allMsgs = splitMessages(input);
 
-      // ── Debug: log raw input, split count, filter results ──
-      const debugLines = [];
-      debugLines.push(`\n=== ${dateStr} ===`);
-      debugLines.push(`Raw input length: ${input.length}`);
-      debugLines.push(`Messages split: ${allMsgs.length}`);
-      for (const msg of allMsgs) {
-        const lower = msg.body.toLowerCase();
-        const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
-        const hasMoney = MONEY_RE.test(msg.body);
-        const isSpam = SPAM_RE.test(msg.body);
-        const time = extractTime(msg.body);
-        const kept = hasKw && hasMoney && !isSpam;
-        debugLines.push(`[${kept ? "KEEP" : "SKIP"}] kw=${hasKw} money=${hasMoney} spam=${isSpam} time="${time}" body=${msg.body.substring(0, 120)}`);
+      // ── Debug log (only when DEBUG === true) ──
+      if (DEBUG) {
+        const debugLines = [];
+        debugLines.push(`\n=== ${dateStr} ===`);
+        debugLines.push(`Raw input length: ${input.length}`);
+        debugLines.push(`Messages split: ${allMsgs.length}`);
+        for (const msg of allMsgs) {
+          const lower = msg.body.toLowerCase();
+          const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
+          const hasMoney = MONEY_RE.test(msg.body);
+          const isSpam = SPAM_RE.test(msg.body);
+          const time = extractTime(msg.body);
+          const kept = hasKw && hasMoney && !isSpam;
+          debugLines.push(`[${kept ? "KEEP" : "SKIP"}] kw=${hasKw} money=${hasMoney} spam=${isSpam} time="${time}" body=${msg.body.substring(0, 120)}`);
+        }
+        const debugExisting = await read(DEBUG_FILE);
+        fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + debugLines.join("\n") + "\n");
       }
-      const debugExisting = await read(DEBUG_FILE);
-      fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + debugLines.join("\n") + "\n");
 
       // Keep only messages with a transaction keyword AND a money amount, skip spam
       const bankMsgs = allMsgs.filter((msg) => {
