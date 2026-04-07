@@ -2519,9 +2519,11 @@ ${footer}`;
             updated++;
           }
         });
-        batch.forEach((txn, i) => {
-          if (!matched.has(i) && !txn.aiClassified) txn.aiFailed = true;
-        });
+        if (results.length > 0) {
+          batch.forEach((txn, i) => {
+            if (!matched.has(i) && !txn.aiClassified) txn.aiFailed = true;
+          });
+        }
       } catch (err) {
         errors++;
         consecutiveErrors++;
@@ -2631,9 +2633,11 @@ ${footer}`;
             updated++;
           }
         });
-        batch.forEach((txn) => {
-          if (!txn.aiReclassified) txn.aiReclassified = true;
-        });
+        if (results.length > 0) {
+          batch.forEach((txn) => {
+            if (!txn.aiReclassified) txn.aiReclassified = true;
+          });
+        }
       } catch (err) {
         errors++;
         consecutiveErrors++;
@@ -2745,9 +2749,11 @@ ${footer}`;
             updated++;
           }
         });
-        batch.forEach((txn) => {
-          if (!txn.aiReclassified) txn.aiReclassified = true;
-        });
+        if (results.length > 0) {
+          batch.forEach((txn) => {
+            if (!txn.aiReclassified) txn.aiReclassified = true;
+          });
+        }
       } catch (err) {
         errors++;
         consecutiveErrors++;
