@@ -49,6 +49,7 @@ const KEYWORDS = [
   "booked",
   "deposited",
   "autopay",
+  "paying",
 ];
 
 const MONEY_RE = /(?:rs\.?\s*|inr\s*|rupees\s*)\d|(?:\d+\.\d{2})/i;

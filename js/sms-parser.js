@@ -435,7 +435,7 @@ const SMSParser = (() => {
       /car\s*loan/i,
       /personal\s*loan/i,
     ],
-    Rent: [/rent/i, /landlord/i, /housing/i, /lease/i, /tenant/i, /nobroker/i],
+    Rent: [/\brent\b/i, /landlord/i, /housing/i, /\blease\b/i, /tenant/i, /nobroker/i],
     Groceries: [
       /grocery/i,
       /grofers/i,
