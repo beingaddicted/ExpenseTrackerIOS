@@ -501,49 +501,38 @@
         <div class="card-desc">
           Many bank SMS don't include a clear merchant name. Enable
           <strong>AI Classification</strong> to automatically identify
-          merchants and categories using Google's free Gemini API.
+          merchants and categories. Supports multiple free API providers
+          with automatic failover.
         </div>
 
         <div class="steps">
           <div class="step">
             <div class="step-num">1</div>
             <div class="step-text">
-              Go to
-              <strong
-                ><a
-                  href="https://aistudio.google.com/apikey"
-                  style="color: var(--accent-light)"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  >aistudio.google.com/apikey</a
-                ></strong
-              >
-              and sign in with your Google account.
+              Get one or more free API keys from any of these providers:<br>
+              🔵 <a href="https://aistudio.google.com/apikey" style="color: var(--accent-light)" target="_blank" rel="noopener noreferrer">Google Gemini</a> (key starts with <code>AIza…</code>)<br>
+              🟠 <a href="https://console.groq.com/keys" style="color: var(--accent-light)" target="_blank" rel="noopener noreferrer">Groq</a> (key starts with <code>gsk_…</code>)<br>
+              🟣 <a href="https://openrouter.ai/keys" style="color: var(--accent-light)" target="_blank" rel="noopener noreferrer">OpenRouter</a> (key starts with <code>sk-or-…</code>)<br>
+              🟢 <a href="https://platform.openai.com/api-keys" style="color: var(--accent-light)" target="_blank" rel="noopener noreferrer">OpenAI</a> (key starts with <code>sk-…</code>)
             </div>
           </div>
           <div class="step">
             <div class="step-num">2</div>
             <div class="step-text">
-              Click <strong>Create API Key</strong> → select any project →
-              copy the key (starts with <code>AIza...</code>).
+              In Expense Tracker, go to <strong>Settings</strong> →
+              <strong>AI Merchant Detection</strong> → toggle
+              <strong>ON</strong> → paste each key and tap <strong>+ Add</strong>.
+              The provider is auto-detected from the key prefix.
             </div>
           </div>
           <div class="step">
             <div class="step-num">3</div>
             <div class="step-text">
-              In Expense Tracker, go to <strong>Settings</strong> →
-              <strong>AI Merchant Detection</strong> → toggle
-              <strong>ON</strong> → paste the API key.
+              Tap <strong>🔑 Test All Keys</strong> to verify they work.
             </div>
           </div>
           <div class="step">
             <div class="step-num">4</div>
-            <div class="step-text">
-              Tap <strong>🔑 Test API Key</strong> to verify it works.
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">5</div>
             <div class="step-text">
               Use <strong>🚀 Classify Unknown Merchants</strong> to batch-classify
               all "Unknown" transactions, or tap <strong>🤖 Reclassify with AI</strong>
@@ -553,9 +542,10 @@
         </div>
 
         <div class="note" style="border-color: var(--orange)">
-          <strong style="color: var(--orange)">Free tier:</strong> Gemini
-          2.0 Flash-Lite offers 30 requests/minute and 1M tokens/day at no
-          cost. Your API key is stored <strong>only on your device</strong>
+          <strong style="color: var(--orange)">Multi-provider failover:</strong>
+          Add keys from multiple providers. If one hits a rate limit or
+          quota, the app automatically switches to the next available key.
+          All keys are stored <strong>only on your device</strong>
           — never sent to our servers. You can also enable
           <strong>Auto-classify after import</strong> to run AI automatically
           on new transactions.

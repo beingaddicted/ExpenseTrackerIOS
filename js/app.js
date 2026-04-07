@@ -19,7 +19,136 @@ const App = (() => {
   const STORE_NAME = "transactions";
   const LS_KEY = "expense_tracker_transactions"; // for migration
   const DELTA_KEY = "expense_tracker_delta_tracker"; // tracks last import position
-  const AI_KEY = "expense_tracker_ai_config"; // { enabled, apiKey }
+  const AI_KEY = "expense_tracker_ai_config"; // { enabled, apiKeys: [{key, provider}] }
+
+  // ─── AI Provider Definitions ───
+  const AI_PROVIDERS = {
+    gemini: {
+      name: "Gemini",
+      icon: "🔵",
+      model: "gemini-2.5-flash-lite",
+      freeLink: "https://aistudio.google.com/apikey",
+      async call(key, prompt) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${encodeURIComponent(key)}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 2048, responseMimeType: "application/json" },
+          }),
+        });
+        if (!res.ok) {
+          const errBody = await res.text();
+          throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
+        }
+        const data = await res.json();
+        return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      },
+    },
+    groq: {
+      name: "Groq",
+      icon: "🟠",
+      model: "llama-3.3-70b-versatile",
+      freeLink: "https://console.groq.com/keys",
+      async call(key, prompt) {
+        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.1,
+            max_tokens: 2048,
+            response_format: { type: "json_object" },
+          }),
+        });
+        if (!res.ok) {
+          const errBody = await res.text();
+          throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
+        }
+        const data = await res.json();
+        return data?.choices?.[0]?.message?.content || "";
+      },
+    },
+    openrouter: {
+      name: "OpenRouter",
+      icon: "🟣",
+      model: "google/gemini-2.5-flash-preview-04-17:free",
+      freeLink: "https://openrouter.ai/keys",
+      async call(key, prompt) {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-preview-04-17:free",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.1,
+            max_tokens: 2048,
+          }),
+        });
+        if (!res.ok) {
+          const errBody = await res.text();
+          throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
+        }
+        const data = await res.json();
+        return data?.choices?.[0]?.message?.content || "";
+      },
+    },
+    openai: {
+      name: "OpenAI",
+      icon: "🟢",
+      model: "gpt-4o-mini",
+      freeLink: "https://platform.openai.com/api-keys",
+      async call(key, prompt) {
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.1,
+            max_tokens: 2048,
+            response_format: { type: "json_object" },
+          }),
+        });
+        if (!res.ok) {
+          const errBody = await res.text();
+          throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
+        }
+        const data = await res.json();
+        return data?.choices?.[0]?.message?.content || "";
+      },
+    },
+  };
+
+  function detectProvider(key) {
+    if (!key) return null;
+    if (key.startsWith("AIza")) return "gemini";
+    if (key.startsWith("gsk_")) return "groq";
+    if (key.startsWith("sk-or-")) return "openrouter";
+    if (key.startsWith("sk-")) return "openai";
+    return null;
+  }
+
+  const _keyStates = new Map();
+  function getKeyState(key) {
+    if (!_keyStates.has(key)) _keyStates.set(key, { cooldownUntil: 0, errorCount: 0, lastError: null });
+    return _keyStates.get(key);
+  }
+
+  function markKeyError(key, status, message) {
+    const state = getKeyState(key);
+    state.errorCount++;
+    state.lastError = message;
+    if (status === 429) {
+      state.cooldownUntil = Date.now() + 60000;
+    } else if (status === 403 || (message && message.toLowerCase().includes("quota"))) {
+      state.cooldownUntil = Date.now() + 300000;
+    } else if (status >= 500) {
+      state.cooldownUntil = Date.now() + 30000;
+    }
+  }
   const CATEGORY_ICONS = {
     "Food & Dining": "🍕",
     Shopping: "🛍️",
@@ -449,7 +578,7 @@ const App = (() => {
         // Auto-trigger AI classification after import if enabled
         if (added > 0) {
           const aiCfg = getAIConfig();
-          if (aiCfg.enabled && aiCfg.apiKey && aiCfg.autoClassify !== false) {
+          if (aiCfg.enabled && aiCfg.apiKeys?.length > 0 && aiCfg.autoClassify !== false) {
             const unknowns = transactions.filter(
               (t) => t.merchant === "Unknown" && !t.aiClassified && !t.aiFailed && (t.rawSMS || t.originalSms),
             );
@@ -994,8 +1123,8 @@ const App = (() => {
 
   async function reclassifySingleTransaction(txn) {
     const cfg = getAIConfig();
-    if (!cfg.enabled || !cfg.apiKey) {
-      showToast("Enable AI and enter API key in Settings", "error");
+    if (!cfg.enabled || !cfg.apiKeys?.length) {
+      showToast("Enable AI and add API keys in Settings", "error");
       return;
     }
     const smsText = (txn.originalSms || txn.rawSMS || "").substring(0, 300);
@@ -1030,7 +1159,7 @@ ${smsText}`;
     btn.disabled = true;
 
     try {
-      const raw = await callGemini(cfg.apiKey, prompt);
+      const raw = await callAI(prompt);
       let result;
       try {
         result = JSON.parse(raw);
@@ -1762,33 +1891,77 @@ ${smsText}`;
   // ─── AI Classification ───
   function getAIConfig() {
     try {
-      return JSON.parse(localStorage.getItem(AI_KEY)) || { enabled: false, apiKey: "", autoClassify: true };
-    } catch { return { enabled: false, apiKey: "" }; }
+      const raw = JSON.parse(localStorage.getItem(AI_KEY)) || { enabled: false, apiKeys: [], autoClassify: true };
+      // Migrate old single-key format
+      if (raw.apiKey && !raw.apiKeys) {
+        const provider = detectProvider(raw.apiKey) || "gemini";
+        raw.apiKeys = [{ key: raw.apiKey, provider }];
+        delete raw.apiKey;
+        localStorage.setItem(AI_KEY, JSON.stringify(raw));
+      }
+      if (!raw.apiKeys) raw.apiKeys = [];
+      return raw;
+    } catch { return { enabled: false, apiKeys: [], autoClassify: true }; }
   }
   function saveAIConfig(cfg) {
     localStorage.setItem(AI_KEY, JSON.stringify(cfg));
+  }
+
+  function updateAIStatus() {
+    const cfg = getAIConfig();
+    const statusDesc = document.getElementById("aiStatusDesc");
+    if (!statusDesc) return;
+    if (!cfg.enabled) {
+      statusDesc.textContent = "Disabled — tap to configure";
+    } else if (!cfg.apiKeys || cfg.apiKeys.length === 0) {
+      statusDesc.textContent = "Enabled — add API keys";
+    } else {
+      const providers = [...new Set(cfg.apiKeys.map(k => AI_PROVIDERS[k.provider]?.name || k.provider))];
+      statusDesc.textContent = `Enabled — ${cfg.apiKeys.length} key(s): ${providers.join(", ")}`;
+    }
+  }
+
+  function renderKeyList() {
+    const cfg = getAIConfig();
+    const keys = cfg.apiKeys || [];
+    const container = document.getElementById("aiKeyList");
+    if (!container) return;
+    if (keys.length === 0) {
+      container.innerHTML = '<p style="font-size: 12px; color: var(--text-muted); padding: 8px 0;">No API keys added yet.</p>';
+      return;
+    }
+    container.innerHTML = keys.map((entry, i) => {
+      const provider = AI_PROVIDERS[entry.provider];
+      const state = getKeyState(entry.key);
+      const masked = entry.key.substring(0, 6) + "…" + entry.key.substring(entry.key.length - 4);
+      const isOnCooldown = Date.now() < state.cooldownUntil;
+      const statusText = isOnCooldown ? "⏳" : (state.lastError ? "⚠️" : "✅");
+      return `<div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 4px; font-size: 12px;">
+        <span>${provider?.icon || "❓"}</span>
+        <span style="font-weight: 600; min-width: 65px;">${provider?.name || "Unknown"}</span>
+        <span style="color: var(--text-muted); flex: 1; font-family: monospace; font-size: 11px;">${masked}</span>
+        <span title="${state.lastError || 'Ready'}">${statusText}</span>
+        <button type="button" data-remove-key="${i}" style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 14px; padding: 2px 6px; line-height: 1;">✕</button>
+      </div>`;
+    }).join("");
   }
 
   function setupAIListeners() {
     const cfg = getAIConfig();
     const toggle = document.getElementById("aiToggle");
     const keySection = document.getElementById("aiKeySection");
-    const keyInput = document.getElementById("aiApiKey");
-    const statusDesc = document.getElementById("aiStatusDesc");
-
     const autoToggle = document.getElementById("aiAutoToggle");
 
     // Init UI state
     toggle.checked = cfg.enabled;
     autoToggle.checked = cfg.autoClassify !== false;
-    keyInput.value = cfg.apiKey || "";
     keySection.style.display = cfg.enabled ? "block" : "none";
-    statusDesc.textContent = cfg.enabled && cfg.apiKey
-      ? "Enabled — Gemini API"
-      : "Disabled — tap to configure";
+    updateAIStatus();
+    renderKeyList();
 
     document.getElementById("settingAI").addEventListener("click", () => {
       openModal("modalAI");
+      renderKeyList(); // refresh cooldown statuses
     });
     document.getElementById("btnCloseAI").addEventListener("click", () => {
       closeModal("modalAI");
@@ -1799,34 +1972,103 @@ ${smsText}`;
       c.enabled = toggle.checked;
       saveAIConfig(c);
       keySection.style.display = toggle.checked ? "block" : "none";
-      statusDesc.textContent = toggle.checked && c.apiKey
-        ? "Enabled — Gemini API"
-        : toggle.checked ? "Enabled — enter API key" : "Disabled — tap to configure";
+      updateAIStatus();
     });
 
-    keyInput.addEventListener("change", () => {
+    // Add key
+    document.getElementById("btnAddKey").addEventListener("click", () => {
+      const input = document.getElementById("aiNewKey");
+      const key = input.value.trim();
+      if (!key) { showToast("Paste an API key first", "error"); return; }
+      const provider = detectProvider(key);
+      if (!provider) {
+        showToast("Unknown key format. Supported: Gemini (AIza…), Groq (gsk_…), OpenRouter (sk-or-…), OpenAI (sk-…)", "error");
+        return;
+      }
       const c = getAIConfig();
-      c.apiKey = keyInput.value.trim();
+      if (c.apiKeys.some(k => k.key === key)) {
+        showToast("This key is already added", "error");
+        return;
+      }
+      c.apiKeys.push({ key, provider });
       saveAIConfig(c);
-      statusDesc.textContent = c.enabled && c.apiKey
-        ? "Enabled — Gemini API" : "Enabled — enter API key";
+      input.value = "";
+      renderKeyList();
+      updateAIStatus();
+      showToast(`${AI_PROVIDERS[provider].icon} ${AI_PROVIDERS[provider].name} key added`, "success");
     });
 
+    // Remove key via event delegation
+    document.getElementById("aiKeyList").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-remove-key]");
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.removeKey);
+      const c = getAIConfig();
+      if (idx >= 0 && idx < c.apiKeys.length) {
+        const removed = c.apiKeys.splice(idx, 1)[0];
+        saveAIConfig(c);
+        renderKeyList();
+        updateAIStatus();
+        showToast(`Removed ${AI_PROVIDERS[removed.provider]?.name || ""} key`, "info");
+      }
+    });
+
+    // Test all keys
     document.getElementById("btnTestAI").addEventListener("click", async () => {
       const c = getAIConfig();
-      if (!c.apiKey) { showToast("Enter an API key first", "error"); return; }
-      try {
-        showToast("Testing API key…", "info");
-        const res = await callGemini(c.apiKey, "Reply with just: OK");
-        if (res) showToast("API key works! ✅", "success");
-        else showToast("No response from API", "error");
-      } catch (err) {
-        showToast("API error: " + err.message, "error");
+      if (!c.apiKeys || c.apiKeys.length === 0) { showToast("Add an API key first", "error"); return; }
+      const btn = document.getElementById("btnTestAI");
+      btn.disabled = true;
+      btn.textContent = "🔑 Testing…";
+      let passed = 0;
+      let failed = 0;
+      for (const entry of c.apiKeys) {
+        const provider = AI_PROVIDERS[entry.provider];
+        if (!provider) { failed++; continue; }
+        try {
+          await provider.call(entry.key, 'Respond with this JSON: {"status":"ok"}');
+          passed++;
+          const state = getKeyState(entry.key);
+          state.errorCount = 0;
+          state.lastError = null;
+        } catch {
+          failed++;
+        }
       }
+      btn.disabled = false;
+      btn.textContent = "🔑 Test All Keys";
+      if (failed === 0) showToast(`All ${passed} key(s) working! ✅`, "success");
+      else showToast(`${passed} working, ${failed} failed`, passed > 0 ? "info" : "error");
+      renderKeyList();
     });
 
     document.getElementById("btnRunAI").addEventListener("click", () => {
       runAIClassification();
+    });
+
+    const btnReclassifyAll = document.getElementById("btnReclassifyAll");
+    function updateReclassifyBtn() {
+      const total = transactions.filter((t) => t.rawSMS || t.originalSms).length;
+      const done = transactions.filter((t) => t.aiReclassified).length;
+      if (total > 0 && done >= total) {
+        btnReclassifyAll.disabled = true;
+        btnReclassifyAll.style.opacity = "0.4";
+        btnReclassifyAll.textContent = "✅ All transactions reclassified";
+      } else {
+        btnReclassifyAll.disabled = false;
+        btnReclassifyAll.style.opacity = "1";
+        btnReclassifyAll.textContent = `🔄 Reclassify All (${total - done} remaining)`;
+      }
+    }
+    updateReclassifyBtn();
+    btnReclassifyAll.addEventListener("click", () => {
+      const remaining = transactions.filter((t) => (t.rawSMS || t.originalSms) && !t.aiReclassified).length;
+      if (remaining === 0) {
+        showToast("All transactions already reclassified", "info");
+        return;
+      }
+      if (!confirm("This will reclassify " + remaining + " transactions using AI.\nAI will detect merchant, category, and mark non-transactions as invalid.\nThis may take 15–30 minutes on the free tier.\n\nContinue?")) return;
+      runAIClassificationAll();
     });
 
     autoToggle.addEventListener("change", () => {
@@ -1836,33 +2078,59 @@ ${smsText}`;
     });
   }
 
-  async function callGemini(apiKey, prompt) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 2048,
-          responseMimeType: "application/json",
-        },
-      }),
-    });
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`);
+  async function callAI(prompt, _retried) {
+    const cfg = getAIConfig();
+    const keys = cfg.apiKeys || [];
+    if (keys.length === 0) throw new Error("No API keys configured");
+
+    let lastError;
+    for (const entry of keys) {
+      const state = getKeyState(entry.key);
+      if (Date.now() < state.cooldownUntil) continue;
+
+      const provider = AI_PROVIDERS[entry.provider];
+      if (!provider) continue;
+
+      try {
+        const result = await provider.call(entry.key, prompt);
+        state.errorCount = 0;
+        state.lastError = null;
+        return result;
+      } catch (err) {
+        const status = err.status || 0;
+        markKeyError(entry.key, status, err.message);
+        lastError = err;
+        if (status === 429 || status === 403 || status >= 500) {
+          console.warn(`[AI] ${provider.name} failed (HTTP ${status}), trying next key…`);
+          showToast(`${provider.icon} ${provider.name} throttled, switching…`, "info");
+          continue;
+        }
+        throw err;
+      }
     }
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return text;
+
+    // All keys tried or on cooldown — wait once for shortest cooldown
+    if (!_retried) {
+      const cooldowns = keys.map(k => getKeyState(k.key).cooldownUntil).filter(t => t > 0);
+      if (cooldowns.length > 0) {
+        const soonest = Math.min(...cooldowns);
+        const waitMs = soonest - Date.now();
+        if (waitMs > 0 && waitMs <= 65000) {
+          console.log(`[AI] All keys on cooldown, waiting ${Math.ceil(waitMs / 1000)}s…`);
+          showToast(`All keys on cooldown, waiting ${Math.ceil(waitMs / 1000)}s…`, "info");
+          await new Promise(r => setTimeout(r, waitMs + 1000));
+          return callAI(prompt, true);
+        }
+      }
+    }
+
+    throw lastError || new Error("All API keys failed or on cooldown");
   }
 
   async function runAIClassification() {
     const cfg = getAIConfig();
-    if (!cfg.enabled || !cfg.apiKey) {
-      showToast("Enable AI and enter API key first", "error");
+    if (!cfg.enabled || !cfg.apiKeys?.length) {
+      showToast("Enable AI and add API keys first", "error");
       return;
     }
 
@@ -1922,7 +2190,7 @@ SMS list:
 ${smsList}`;
 
       try {
-        const raw = await callGemini(cfg.apiKey, prompt);
+        const raw = await callAI(prompt);
         let results;
         try {
           results = JSON.parse(raw);
@@ -1978,6 +2246,143 @@ ${smsList}`;
       render();
     }
     showToast(`AI classified ${updated} transactions`, updated > 0 ? "success" : "info");
+  }
+
+  async function runAIClassificationAll() {
+    const cfg = getAIConfig();
+    if (!cfg.enabled || !cfg.apiKeys?.length) {
+      showToast("Enable AI and add API keys first", "error");
+      return;
+    }
+
+    const targets = transactions.filter((t) => (t.rawSMS || t.originalSms) && !t.aiReclassified);
+    if (targets.length === 0) {
+      showToast("All transactions already reclassified!", "info");
+      return;
+    }
+
+    const progressDiv = document.getElementById("aiProgress");
+    const progressText = document.getElementById("aiProgressText");
+    const progressBar = document.getElementById("aiProgressBar");
+    progressDiv.style.display = "block";
+
+    const BATCH_SIZE = 15;
+    const batches = [];
+    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+      batches.push(targets.slice(i, i + BATCH_SIZE));
+    }
+
+    const categories = Object.keys(
+      SMSParser.getCategories ? SMSParser.getCategories() : {},
+    );
+    const catList = categories.length > 0
+      ? categories.join(", ")
+      : "Food & Dining, Shopping, Transport, Travel, Bills & Utilities, Entertainment, Health, Education, Insurance, Investment, EMI & Loans, Rent, Groceries, Salary, Transfer, ATM, Subscription, Cashback & Rewards, Refund, Tax, Other";
+
+    let updated = 0;
+    let errors = 0;
+    let invalidCount = 0;
+
+    for (let b = 0; b < batches.length; b++) {
+      const batch = batches[b];
+      const pct = Math.round(((b + 1) / batches.length) * 100);
+      progressText.textContent = `Reclassifying batch ${b + 1}/${batches.length} (${targets.length} total)…`;
+      progressBar.style.width = pct + "%";
+
+      const smsList = batch
+        .map((t, i) => `${i + 1}. ${(t.originalSms || t.rawSMS || "").substring(0, 200)}`)
+        .join("\n");
+
+      const prompt = `You are a bank SMS classifier for Indian transactions.
+For each SMS below, determine:
+1. Is it a real financial transaction (debit/credit) or a non-transaction (OTP, promo, alert, balance check, SIP confirmation, broker notification, portfolio update, statement, card blocked, app notification)?
+2. If it IS a transaction: extract merchant/payee name and best category.
+3. Detect EMI, SIP, loan repayment, mutual fund, and investment transactions — categorize them correctly.
+
+Categories: ${catList}
+
+Return a JSON array: [{"i":1,"merchant":"Name","category":"Category","invalid":false}, ...]
+Rules:
+- "i" is the SMS number (1-based)
+- "invalid": true if the SMS is NOT a real debit/credit transaction (e.g. OTP, promo, balance inquiry, SIP/MF confirmation without debit, portfolio summary, broker margin report, card activation, app notification)
+- "invalid": false if it IS a real money movement (debit, credit, payment, transfer, EMI deduction, refund)
+- For real transactions: extract merchant name, never return "Unknown"
+- For UPI, extract the person/shop name (not the VPA handle like @ybl)
+- SIP/mutual fund PURCHASE DEBIT from bank = real transaction, category "Investment"
+- SIP confirmation/NAV update WITHOUT bank debit = invalid (informational)
+- EMI auto-debit = real transaction, category "EMI & Loans"
+- Loan disbursement credit = real transaction, category "EMI & Loans"
+
+SMS list:
+${smsList}`;
+
+      try {
+        const raw = await callAI(prompt);
+        let results;
+        try {
+          results = JSON.parse(raw);
+        } catch {
+          const m = raw.match(/\[[\s\S]*\]/);
+          results = m ? JSON.parse(m[0]) : [];
+        }
+        if (Array.isArray(results)) {
+          results.forEach((r) => {
+            const idx = (r.i || r.index || 0) - 1;
+            if (idx >= 0 && idx < batch.length) {
+              const txn = batch[idx];
+              txn.aiReclassified = true;
+              if (r.invalid === true) {
+                txn.invalid = true;
+                invalidCount++;
+              } else {
+                txn.invalid = false;
+                if (r.merchant && r.merchant !== "Unknown") {
+                  txn.merchant = r.merchant;
+                  txn.aiClassified = true;
+                  delete txn.aiFailed;
+                }
+                if (r.category) txn.category = r.category;
+              }
+              updated++;
+            }
+          });
+          // Mark unmatched batch items as reclassified too
+          batch.forEach((txn, i) => {
+            if (!txn.aiReclassified) txn.aiReclassified = true;
+          });
+        }
+      } catch (err) {
+        errors++;
+        ErrorLogger.log("ai_reclassify_all_error", { message: err.message, batch: b });
+      }
+
+      // Save every 10 batches to avoid data loss
+      if (b % 10 === 9) await saveData();
+
+      // Rate limiting: 2s between batches for free tier (~30 RPM)
+      if (b < batches.length - 1) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+
+    progressBar.style.width = "100%";
+    progressText.textContent = `Done! ${updated} reclassified, ${invalidCount} marked invalid, ${errors} errors`;
+
+    await saveData();
+    render();
+
+    // Update button state
+    const btnReclassifyAll = document.getElementById("btnReclassifyAll");
+    const remaining = transactions.filter((t) => (t.rawSMS || t.originalSms) && !t.aiReclassified).length;
+    if (remaining === 0) {
+      btnReclassifyAll.disabled = true;
+      btnReclassifyAll.style.opacity = "0.4";
+      btnReclassifyAll.textContent = "✅ All transactions reclassified";
+    } else {
+      btnReclassifyAll.textContent = `🔄 Reclassify All (${remaining} remaining)`;
+    }
+
+    showToast(`Reclassified ${updated}, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
   }
 
   return { init };
