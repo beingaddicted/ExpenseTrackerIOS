@@ -629,6 +629,6 @@ describe("version.json", () => {
   });
 
   test("version matches semver format", () => {
-    expect(versionData.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(versionData.version).toMatch(/^\d+\.\d+\.\d+(\.\d+)?$/);
   });
 });

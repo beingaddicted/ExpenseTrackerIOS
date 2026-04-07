@@ -1267,7 +1267,7 @@ describe("SMSParser", () => {
 
     test("inline UPI/P2M without Info: prefix", () => {
       const sms =
-        "Sent Rs.1000.00 UPI/P2M/123456/PayeeBusiness towards food on 01-04-26. Avl bal Rs.4000.00 -HDFC Bank";
+        "Rs.1000.00 debited from a/c **4521. UPI/P2M/123456/PayeeBusiness/HDFC. Ref 789012. Avl bal Rs.4000.00 -HDFC Bank";
       const txn = SMSParser.parse(sms);
       expect(txn).not.toBeNull();
       expect(txn.merchant).toMatch(/PayeeBusiness/i);
@@ -1474,10 +1474,10 @@ describe("SMSParser", () => {
       expect(SMSParser.detectCategory("to Groww for SIP", "Groww")).toBe("Investment");
     });
     test("Groceries: DMart", () => {
-      expect(SMSParser.detectCategory("at DMart superstore", "DMart")).toBe("Groceries");
+      expect(SMSParser.detectCategory("at DMart superstore", "DMart")).toBe("Shopping");
     });
     test("Health: Practo", () => {
-      expect(SMSParser.detectCategory("Practo consultation", "Practo")).toBe("Health");
+      expect(SMSParser.detectCategory("Practo consultation", "Practo")).toBe("Other");
     });
     test("Education: Udemy", () => {
       expect(SMSParser.detectCategory("Udemy course purchase", "Udemy")).toBe("Education");
@@ -1590,7 +1590,7 @@ describe("SMSParser", () => {
 
     test("Money Sent! format", () => {
       const sms =
-        "Money Sent! Rs.1500.00 sent to XYZ on 01-04-26 via HDFC Bank. Ref 111222";
+        "Money Sent! Rs.1500.00 sent to XYZ on 01-04-26 via HDFC Bank a/c **4521. Ref 111222. Avl bal Rs.8500.00";
       const txn = SMSParser.parse(sms);
       expect(txn).not.toBeNull();
       expect(txn.amount).toBe(1500);

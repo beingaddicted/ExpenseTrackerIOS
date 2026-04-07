@@ -375,7 +375,7 @@
               Install the Shortcut that drives the export:
               <div style="margin-top: 10px">
                 <a
-                  href="https://www.icloud.com/shortcuts/eb49974416914b54995b1e0b34d28263"
+                  href="https://www.icloud.com/shortcuts/f35ef2b914f146f0ab20c80a07e398a2"
                   class="btn btn-green"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -398,7 +398,7 @@
               Output file:
               <strong
                 >Files → iCloud Drive → Scriptable → expense tracker →
-                exportSms.txt</strong
+                exportSms.json</strong
               >
             </div>
           </div>
@@ -421,7 +421,7 @@
         </div>
         <div class="card-desc">
           Open <strong>Expense Tracker</strong> → tap
-          <strong>📂 Import</strong> → pick <strong>exportSms.txt</strong> (or
+          <strong>📂 Import</strong> → pick <strong>exportSms.json</strong> (or
           <strong>bank_sms.txt</strong>
           for real-time captures). The app parses amount, merchant, category,
           date, and bank automatically. Duplicates are always skipped.
@@ -484,13 +484,85 @@
           <strong style="color: var(--accent-light)">How it works:</strong> Each
           night the shortcut runs, picks up where it left off (plus one overlap
           day for safety), exports only new bank SMS to
-          <code>exportSms.txt</code>, and quietly finishes. Next time you import
+          <code>exportSms.json</code>, and quietly finishes. Next time you import
           into Expense Tracker, only the delta (new entries) is parsed — no
           re-processing of old data.
         </div>
       </div>
 
-      <!-- ─── SECTION 4: Install PWA (collapsible) ─── -->
+      <!-- ─── SECTION 4: AI Classification (Optional) ─── -->
+      <div class="section-label">Step 4 — AI Classification (Optional)</div>
+
+      <div class="card" style="border-color: var(--orange)">
+        <div class="card-header">
+          <span class="card-badge" style="background: var(--orange)">AI</span>
+          <span class="card-title">🤖 Smart Merchant Detection</span>
+        </div>
+        <div class="card-desc">
+          Many bank SMS don't include a clear merchant name. Enable
+          <strong>AI Classification</strong> to automatically identify
+          merchants and categories using Google's free Gemini API.
+        </div>
+
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              Go to
+              <strong
+                ><a
+                  href="https://aistudio.google.com/apikey"
+                  style="color: var(--accent-light)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >aistudio.google.com/apikey</a
+                ></strong
+              >
+              and sign in with your Google account.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              Click <strong>Create API Key</strong> → select any project →
+              copy the key (starts with <code>AIza...</code>).
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              In Expense Tracker, go to <strong>Settings</strong> →
+              <strong>AI Merchant Detection</strong> → toggle
+              <strong>ON</strong> → paste the API key.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              Tap <strong>🔑 Test API Key</strong> to verify it works.
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">5</div>
+            <div class="step-text">
+              Use <strong>🚀 Classify Unknown Merchants</strong> to batch-classify
+              all "Unknown" transactions, or tap <strong>🤖 Reclassify with AI</strong>
+              on any individual transaction.
+            </div>
+          </div>
+        </div>
+
+        <div class="note" style="border-color: var(--orange)">
+          <strong style="color: var(--orange)">Free tier:</strong> Gemini
+          2.0 Flash-Lite offers 30 requests/minute and 1M tokens/day at no
+          cost. Your API key is stored <strong>only on your device</strong>
+          — never sent to our servers. You can also enable
+          <strong>Auto-classify after import</strong> to run AI automatically
+          on new transactions.
+        </div>
+      </div>
+
+      <!-- ─── SECTION 5: Install PWA (collapsible) ─── -->
       <div class="section-label">Install the App</div>
 
       <div class="card">
