@@ -96,10 +96,10 @@
             <div class="summary-amount" id="totalExpense">₹0</div>
             <div class="summary-count" id="expenseCount">0 transactions</div>
           </div>
-          <div class="summary-card income">
+          <div class="summary-card income" id="incomeCard">
             <div class="summary-icon">📈</div>
             <div class="summary-label">Income</div>
-            <div class="summary-amount" id="totalIncome">₹0</div>
+            <div class="summary-amount summary-amount-hidden" id="totalIncome">₹0</div>
             <div class="summary-count" id="incomeCount">0 transactions</div>
           </div>
           <div class="summary-card total">
@@ -116,18 +116,24 @@
       <!-- Category Donut Chart -->
       <section class="charts-section">
         <div class="chart-container">
-          <div class="chart-header">
+          <div class="chart-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
             <span class="chart-title">By Category</span>
+            <span class="chart-collapse-arrow">▶</span>
           </div>
-          <div class="donut-chart" id="donutChart"></div>
+          <div class="chart-body">
+            <div class="donut-chart" id="donutChart"></div>
+          </div>
         </div>
 
         <!-- Daily Bar Chart -->
         <div class="chart-container">
-          <div class="chart-header">
+          <div class="chart-header" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
             <span class="chart-title">Daily Spending</span>
+            <span class="chart-collapse-arrow">▶</span>
           </div>
-          <div class="bar-chart" id="barChart"></div>
+          <div class="chart-body">
+            <div class="bar-chart" id="barChart"></div>
+          </div>
         </div>
       </section>
 
@@ -478,6 +484,7 @@
     <div class="modal-overlay" id="modalDetail">
       <div class="modal">
         <div class="modal-handle"></div>
+        <button class="detail-close-btn" id="btnCloseDetailX" aria-label="Close">×</button>
         <div class="detail-header">
           <div class="detail-amount" id="detailAmount"></div>
           <div class="detail-merchant" id="detailMerchant"></div>

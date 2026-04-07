@@ -134,15 +134,15 @@ const App = (() => {
   function extractSenderFromLine(line) {
     // New format: "YYYY-MM-DD [HH:MM] [SENDER] | SMS body"
     const m = line.match(
-      /^\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2}(?:\s*[AP]M)?)?\s*\[([^\]]+)\]\s*\|\s*(.+)$/i,
+      /^(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}(?:\s*[AP]M)?))?\s*\[([^\]]+)\]\s*\|\s*(.+)$/i,
     );
-    if (m) return { sender: m[1], smsText: m[2] };
+    if (m) return { sender: m[3], smsText: m[4], date: m[1], time: m[2] || "" };
     // Old format: "YYYY-MM-DD [HH:MM] | SMS body"
     const m2 = line.match(
-      /^\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2}(?:\s*[AP]M)?)?\s*\|\s*(.+)$/i,
+      /^(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}(?:\s*[AP]M)?))?\s*\|\s*(.+)$/i,
     );
-    if (m2) return { sender: "", smsText: m2[1] };
-    return { sender: "", smsText: line };
+    if (m2) return { sender: "", smsText: m2[3], date: m2[1], time: m2[2] || "" };
+    return { sender: "", smsText: line, date: "", time: "" };
   }
 
   // ─── Init ───
@@ -416,8 +416,8 @@ const App = (() => {
 
           const lines = allLines.slice(startIdx);
           lines.forEach((line) => {
-            const { sender, smsText } = extractSenderFromLine(line.trim());
-            const txn = SMSParser.parse(smsText, sender);
+            const { sender, smsText, date } = extractSenderFromLine(line.trim());
+            const txn = SMSParser.parse(smsText, sender, date || null);
             if (txn && !SMSParser.isDuplicate(txn, transactions)) {
               transactions.unshift(txn);
               added++;
@@ -589,14 +589,16 @@ const App = (() => {
     const totalInc = genuineCredits.reduce((s, t) => s + t.amount, 0);
 
     document.getElementById("totalExpense").textContent =
-      Charts.formatCurrency(regularExp);
+      Charts.formatCurrency(activeFilter === "total-expense" ? totalExp : regularExp);
     document.getElementById("totalIncome").textContent =
       Charts.formatCurrency(totalInc);
     document.getElementById("netBalance").textContent = Charts.formatCurrency(
       totalInc - totalExp,
     );
     document.getElementById("expenseCount").textContent =
-      `${regularDebits.length} txns \u00b7 Total: ${Charts.formatCurrency(totalExp)}`;
+      activeFilter === "total-expense"
+        ? `${allDebits.length} txns`
+        : `${regularDebits.length} txns \u00b7 Total: ${Charts.formatCurrency(totalExp)}`;
     document.getElementById("incomeCount").textContent =
       `${genuineCredits.length} transaction${genuineCredits.length !== 1 ? "s" : ""}`;
   }
@@ -1171,7 +1173,12 @@ const App = (() => {
     if (!text) return;
 
     const smsList = splitSMSText(text);
-    const results = SMSParser.parseBatch(smsList);
+    // Convert to objects with sender/date when lines have prefix format
+    const smsObjects = smsList.map((s) => {
+      const info = extractSenderFromLine(s.trim());
+      return { text: info.smsText, sender: info.sender, date: info.date || null };
+    });
+    const results = SMSParser.parseBatch(smsObjects);
 
     let added = 0,
       skipped = 0;
@@ -1453,6 +1460,18 @@ const App = (() => {
     document
       .getElementById("btnCloseDetail")
       .addEventListener("click", () => closeModal("modalDetail"));
+    document
+      .getElementById("btnCloseDetailX")
+      .addEventListener("click", () => closeModal("modalDetail"));
+
+    // Income amount tap to reveal
+    const incomeCard = document.getElementById("incomeCard");
+    if (incomeCard) {
+      incomeCard.addEventListener("click", () => {
+        const amtEl = document.getElementById("totalIncome");
+        if (amtEl) amtEl.classList.toggle("revealed");
+      });
+    }
 
     // Shortcut setup info
     document

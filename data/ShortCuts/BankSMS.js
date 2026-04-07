@@ -23,6 +23,7 @@ if (!fm.fileExists(dir)) fm.createDirectory(dir);
 const SMS_FILE = fm.joinPath(dir, "exportSms.txt");
 const TRACKER = fm.joinPath(dir, "exportSmstracker.txt");
 const PREV_BATCH = fm.joinPath(dir, "exportSmsPrevBatch.txt");
+const DEBUG_FILE = fm.joinPath(dir, "exportSmsDebug.txt");
 
 // ── CONFIG ──────────────────────────────────────────
 const DEFAULT_START = "2020-01-01";
@@ -101,21 +102,34 @@ const DATE_ONLY_RE =
 // Extract time from SMS body — tries common bank timestamp patterns
 // Returns "HH:MM" or "" if not found
 function extractTime(msg) {
+  let m;
   // "DD-MM-YYYY HH:MM:SS" (4-digit year, e.g. Meal Card: "at 11-10-2020 22:53:10")
-  let m = msg.match(/\d{2}-\d{2}-\d{4}\s+(\d{1,2}:\d{2}):\d{2}/);
+  m = msg.match(/\d{2}-\d{2}-\d{4}\s+(\d{1,2}:\d{2}):\d{2}/);
   if (m) return m[1];
   // "DD-MM-YY HH:MM:SS" (2-digit year, e.g. Axis: "27-11-20 09:54:25")
   m = msg.match(/\d{2}-\d{2}-\d{2}\s+(\d{1,2}:\d{2}):\d{2}/);
   if (m) return m[1];
+  // "DD/MM/YYYY HH:MM:SS" or "DD/MM/YY HH:MM:SS" (slash-separated)
+  m = msg.match(/\d{2}\/\d{2}\/\d{2,4}\s+(\d{1,2}:\d{2})(?::\d{2})?/);
+  if (m) return m[1];
   // "on DD-MM-YYYY HH:MM:SS" or "on DD/MM/YYYY HH:MM"
   m = msg.match(/on\s+\d{2}[\/-]\d{2}[\/-]\d{2,4}\s+(\d{1,2}:\d{2})/i);
   if (m) return m[1];
-  // "at HH:MM:SS IST" or "at HH:MM:SS"
-  m = msg.match(/at\s+(\d{1,2}:\d{2}):\d{2}\s*(?:IST|ist)?/i);
+  // "on DD-Mon-YYYY HH:MM" (e.g. "on 05-Apr-26 14:30")
+  m = msg.match(/on\s+\d{1,2}-\w{3}-\d{2,4}\s+(\d{1,2}:\d{2})/i);
+  if (m) return m[1];
+  // "DD Mon YYYY HH:MM" (e.g. "05 Apr 2026 14:30")
+  m = msg.match(/\d{1,2}\s+\w{3}\s+\d{4}\s+(\d{1,2}:\d{2})/);
+  if (m) return m[1];
+  // "at HH:MM:SS IST" or "at HH:MM:SS hrs"
+  m = msg.match(/at\s+(\d{1,2}:\d{2}):\d{2}\s*(?:IST|ist|hrs|Hrs)?/i);
   if (m) return m[1];
   // "at HH:MM AM/PM IST"
   m = msg.match(/at\s+(\d{1,2}:\d{2}\s*(?:AM|PM))\s*(?:IST)?/i);
   if (m) return m[1].trim();
+  // Standalone "HH:MM:SS IST" or "HH:MM:SS hrs" anywhere in text
+  m = msg.match(/\b(\d{1,2}:\d{2}):\d{2}\s*(?:IST|ist|hrs|Hrs)\b/);
+  if (m) return m[1];
   return "";
 }
 
@@ -245,6 +259,24 @@ try {
 
     if (input.length > 0) {
       const allMsgs = splitMessages(input);
+
+      // ── Debug: log raw input, split count, filter results ──
+      const debugLines = [];
+      debugLines.push(`\n=== ${dateStr} ===`);
+      debugLines.push(`Raw input length: ${input.length}`);
+      debugLines.push(`Messages split: ${allMsgs.length}`);
+      for (const msg of allMsgs) {
+        const lower = msg.body.toLowerCase();
+        const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
+        const hasMoney = MONEY_RE.test(msg.body);
+        const senderLower = msg.sender.toLowerCase();
+        const fromBank = msg.sender === "" || BANK_SENDERS.some((id) => senderLower.includes(id));
+        const time = extractTime(msg.body);
+        const kept = fromBank && hasKw && hasMoney;
+        debugLines.push(`[${kept ? "KEEP" : "SKIP"}] sender="${msg.sender}" bank=${fromBank} kw=${hasKw} money=${hasMoney} time="${time}" body=${msg.body.substring(0, 120)}`);
+      }
+      const debugExisting = await read(DEBUG_FILE);
+      fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + debugLines.join("\n") + "\n");
 
       // Keep only messages from known bank senders with keyword AND money amount
       const bankMsgs = allMsgs.filter((msg) => {
