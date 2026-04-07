@@ -775,6 +775,7 @@ const App = (() => {
     renderMonthLabel();
     renderSummary(filtered);
     renderQuickStats(filtered);
+    updateAIMonthBtn();
     renderCharts(filtered);
     renderTransactions(filtered);
     renderAnalytics();
@@ -1626,6 +1627,11 @@ const App = (() => {
       render();
     });
 
+    // AI Classify Month button
+    document.getElementById("btnAIMonth").addEventListener("click", () => {
+      runAIClassificationMonth();
+    });
+
     // Month/Year picker — tap label to open
     const pickerOverlay = document.getElementById("monthPickerOverlay");
     const pickerYear = document.getElementById("pickerYear");
@@ -2189,6 +2195,39 @@ ${footer}`;
     }
   }
 
+  function getMonthTransactionsForAI() {
+    return transactions.filter((t) => {
+      const d = new Date(t.date);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear && (t.rawSMS || t.originalSms);
+    });
+  }
+
+  function updateAIMonthBtn() {
+    const btn = document.getElementById("btnAIMonth");
+    if (!btn) return;
+    const cfg = getAIConfig();
+    if (!cfg.enabled || !cfg.apiKeys?.length) {
+      btn.style.display = "none";
+      return;
+    }
+    const monthTxns = getMonthTransactionsForAI();
+    if (monthTxns.length === 0) {
+      btn.style.display = "none";
+      return;
+    }
+    const unclassified = monthTxns.filter((t) => !t.aiReclassified).length;
+    btn.style.display = "block";
+    if (unclassified === 0) {
+      btn.disabled = true;
+      btn.style.opacity = "0.4";
+      btn.textContent = "✅ Month fully classified";
+    } else {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+      btn.textContent = `🤖 AI Classify Month (${unclassified})`;
+    }
+  }
+
   function setupAIListeners() {
     const cfg = getAIConfig();
     const toggle = document.getElementById("aiToggle");
@@ -2303,6 +2342,7 @@ ${footer}`;
           failedNames.push(`${provider.name} (${err.message.substring(0, 60)})`);
           const state = getKeyState(entry.key);
           state.lastError = err.message;
+          ErrorLogger.log("ai_test_key_error", { provider: provider.name, model: model, status: err.status || 0, message: err.message });
         }
       }
       btn.disabled = false;
@@ -2364,10 +2404,11 @@ ${footer}`;
       } catch (err) {
         const status = err.status || 0;
         markKeyError(entry.key, status, err.message);
+        ErrorLogger.log("ai_call_error", { provider: provider.name, model, status, message: err.message });
         lastError = err;
-        if (status === 429 || status === 403 || status >= 500) {
+        if (status === 429 || status === 403 || status === 404 || status >= 500) {
           console.warn(`[AI] ${provider.name} failed (HTTP ${status}), trying next key…`);
-          showToast(`${provider.icon} ${provider.name} throttled, switching…`, "info");
+          showToast(`${provider.icon} ${provider.name} ${status === 404 ? 'model not found' : 'throttled'}, switching…`, "info");
           continue;
         }
         throw err;
@@ -2624,6 +2665,128 @@ ${footer}`;
     updateReclassifyBtn();
 
     showToast(`Reclassified ${updated}, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
+  }
+
+  async function runAIClassificationMonth() {
+    const cfg = getAIConfig();
+    if (!cfg.enabled || !cfg.apiKeys?.length) {
+      showToast("Enable AI and add API keys first", "error");
+      return;
+    }
+
+    const monthName = MONTHS[currentMonth] + " " + currentYear;
+    const targets = getMonthTransactionsForAI().filter((t) => !t.aiReclassified)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (targets.length === 0) {
+      showToast(`All transactions in ${monthName} already classified!`, "info");
+      return;
+    }
+
+    if (!confirm(`AI will classify ${targets.length} transactions in ${monthName}.\nThis will detect merchants, categories, and mark non-transactions as invalid.\n\nContinue?`)) return;
+
+    _aiStopRequested = false;
+    const progressDiv = document.getElementById("aiProgress");
+    const progressText = document.getElementById("aiProgressText");
+    const progressBar = document.getElementById("aiProgressBar");
+    progressDiv.style.display = "block";
+    showStopButton(true);
+
+    const firstKey = cfg.apiKeys.find(k => Date.now() >= (getKeyState(k.key).cooldownUntil || 0)) || cfg.apiKeys[0];
+    const BATCH_SIZE = getBatchSize(firstKey?.contextWindow || 32000);
+    const batches = [];
+    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+      batches.push(targets.slice(i, i + BATCH_SIZE));
+    }
+
+    let updated = 0;
+    let errors = 0;
+    let invalidCount = 0;
+    let consecutiveErrors = 0;
+
+    for (let b = 0; b < batches.length; b++) {
+      if (_aiStopRequested) {
+        progressText.textContent = `Stopped! ${updated} classified, ${invalidCount} invalid, ${errors} errors`;
+        break;
+      }
+
+      const batch = batches[b];
+      const pct = Math.round(((b + 1) / batches.length) * 100);
+      progressText.textContent = `${monthName} · Batch ${b + 1}/${batches.length} · ${targets.length} total`;
+      progressBar.style.width = pct + "%";
+
+      const smsList = batch
+        .map((t, i) => `${i + 1}. ${(t.originalSms || t.rawSMS || "").substring(0, 200)}`)
+        .join("\n");
+
+      const prompt = buildAIPrompt({ mode: "batch", smsContent: smsList });
+
+      try {
+        const raw = await callAI(prompt);
+        consecutiveErrors = 0;
+        let results;
+        try {
+          results = JSON.parse(raw);
+        } catch {
+          const m = raw.match(/\[[\s\S]*\]/);
+          results = m ? JSON.parse(m[0]) : [];
+        }
+        if (Array.isArray(results)) {
+          results.forEach((r) => {
+            const idx = (r.i || r.index || 0) - 1;
+            if (idx >= 0 && idx < batch.length) {
+              const txn = batch[idx];
+              txn.aiReclassified = true;
+              if (r.invalid === true) {
+                txn.invalid = true;
+                invalidCount++;
+              } else {
+                txn.invalid = false;
+                if (r.merchant && r.merchant !== "Unknown") {
+                  txn.merchant = r.merchant;
+                  txn.aiClassified = true;
+                  delete txn.aiFailed;
+                }
+                if (r.category) txn.category = r.category;
+                if (r.mode) txn.mode = r.mode;
+              }
+              updated++;
+            }
+          });
+          batch.forEach((txn) => {
+            if (!txn.aiReclassified) txn.aiReclassified = true;
+          });
+        }
+      } catch (err) {
+        errors++;
+        consecutiveErrors++;
+        ErrorLogger.log("ai_classify_month_error", { message: err.message, month: monthName, batch: b });
+        if (consecutiveErrors >= 3) {
+          progressText.textContent = `Stopped after ${consecutiveErrors} consecutive errors. ${updated} classified, ${errors} errors.`;
+          showToast("AI stopped — too many consecutive errors. Fix API keys and retry.", "error");
+          break;
+        }
+      }
+
+      if (b % 10 === 9) await saveData();
+
+      if (b < batches.length - 1 && !_aiStopRequested) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+
+    progressBar.style.width = "100%";
+    if (!_aiStopRequested && consecutiveErrors < 3) {
+      progressText.textContent = `Done! ${updated} classified, ${invalidCount} invalid, ${errors} errors`;
+    }
+
+    showStopButton(false);
+    _aiStopRequested = false;
+
+    await saveData();
+    render();
+    updateReclassifyBtn();
+
+    showToast(`${monthName}: ${updated} classified, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
   }
 
   return { init };

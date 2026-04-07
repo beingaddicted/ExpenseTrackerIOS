@@ -383,6 +383,21 @@ body {
     border-radius: 50%;
 }
 
+.btn-ai-month {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px 16px;
+    border: none;
+    border-radius: var(--radius);
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+.btn-ai-month:active { opacity: 0.8; }
+
 /* ─── Charts Section ─── */
 .charts-section {
     padding: 0 20px 16px;
