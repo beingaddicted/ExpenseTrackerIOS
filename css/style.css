@@ -505,7 +505,7 @@ body {
 }
 
 .txn-card.txn-invalid .txn-merchant::after {
-    content: " (invalid)";
+    content: " (non-txn)";
     font-size: 0.75em;
     color: var(--red, #ef4444);
     font-weight: 500;
@@ -558,6 +558,8 @@ body {
 .txn-amount-wrap {
     text-align: right;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
 }
 
 .txn-amount {
@@ -597,6 +599,115 @@ body {
 .cat-refund { background: #f0fdf4; color: #16a34a; }
 .cat-tax { background: #fef2f2; color: #b91c1c; }
 .cat-other { background: #f1f5f9; color: #64748b; }
+
+/* ─── Non-Transaction Toggle ─── */
+.txn-toggle {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-light);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s;
+    padding: 0;
+    margin-right: 8px;
+}
+
+.txn-toggle.toggled {
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--red-bg);
+}
+
+.txn-toggle:active {
+    transform: scale(0.9);
+}
+
+/* ─── Inline Category Select ─── */
+.txn-cat-select {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 0;
+    cursor: pointer;
+    max-width: 120px;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.txn-cat-select:focus {
+    outline: none;
+}
+
+/* ─── Category Manager ─── */
+.cat-manage-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.cat-manage-name {
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.cat-manage-del {
+    background: var(--red-bg);
+    color: var(--red);
+    border: 1px solid var(--red);
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cat-manage-del:active {
+    transform: scale(0.9);
+}
+
+.cat-manage-builtin {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.btn-small {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.btn-small:active {
+    transform: scale(0.95);
+}
+
+/* ─── Detail Category Edit ─── */
+.detail-cat-edit {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--bg-input);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
 
 /* ─── Bottom Navigation ─── */
 .bottom-nav {

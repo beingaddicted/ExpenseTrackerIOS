@@ -81,6 +81,69 @@ const App = (() => {
     "December",
   ];
 
+  // ─── Excluded Categories for Expense vs Total Expense ───
+  const EXPENSE_EXCLUDED_CATEGORIES = ["EMI & Loans", "Investment"];
+  const NON_GENUINE_CREDIT_CATEGORIES = ["Refund", "Cashback & Rewards"];
+
+  const CUSTOM_CAT_KEY = "expense_tracker_custom_categories";
+
+  function isNonGenuineCredit(t) {
+    if (t.type !== "credit") return false;
+    if (NON_GENUINE_CREDIT_CATEGORIES.includes(t.category)) return true;
+    const sms = (t.rawSMS || "").toLowerCase();
+    const merchant = (t.merchant || "").toLowerCase();
+    if (/credit\s*card/.test(sms) || /credit\s*card/.test(merchant))
+      return true;
+    if (/paytm/.test(merchant) && !/salary|bonus|reward/i.test(sms))
+      return true;
+    return false;
+  }
+
+  function getCustomCategories() {
+    try {
+      return JSON.parse(localStorage.getItem(CUSTOM_CAT_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  }
+
+  function saveCustomCategories(cats) {
+    localStorage.setItem(CUSTOM_CAT_KEY, JSON.stringify(cats));
+  }
+
+  function getAllCategories() {
+    const builtIn = SMSParser.getCategories();
+    const custom = getCustomCategories();
+    return [...new Set([...builtIn, ...custom])];
+  }
+
+  function addCustomCategory(name) {
+    const cats = getCustomCategories();
+    if (!cats.includes(name) && !SMSParser.getCategories().includes(name)) {
+      cats.push(name);
+      saveCustomCategories(cats);
+    }
+  }
+
+  function deleteCustomCategory(name) {
+    const cats = getCustomCategories().filter((c) => c !== name);
+    saveCustomCategories(cats);
+  }
+
+  function extractSenderFromLine(line) {
+    // New format: "YYYY-MM-DD [HH:MM] [SENDER] | SMS body"
+    const m = line.match(
+      /^\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2}(?:\s*[AP]M)?)?\s*\[([^\]]+)\]\s*\|\s*(.+)$/i,
+    );
+    if (m) return { sender: m[1], smsText: m[2] };
+    // Old format: "YYYY-MM-DD [HH:MM] | SMS body"
+    const m2 = line.match(
+      /^\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2}(?:\s*[AP]M)?)?\s*\|\s*(.+)$/i,
+    );
+    if (m2) return { sender: "", smsText: m2[1] };
+    return { sender: "", smsText: line };
+  }
+
   // ─── Init ───
   async function init() {
     // Initialize error logger (set your Google Apps Script URL to enable remote logging)
@@ -314,7 +377,8 @@ const App = (() => {
           // Try as plain text — smart split handles newlines and concatenated SMS
           const lines = splitSMSText(text);
           lines.forEach((line) => {
-            const txn = SMSParser.parse(line.trim());
+            const { sender, smsText } = extractSenderFromLine(line.trim());
+            const txn = SMSParser.parse(smsText, sender);
             if (txn && !SMSParser.isDuplicate(txn, transactions)) {
               transactions.unshift(txn);
               added++;
@@ -416,7 +480,17 @@ const App = (() => {
       const d = new Date(t.date);
       if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear)
         return false;
-      if (activeFilter !== "all" && t.type !== activeFilter) return false;
+
+      if (activeFilter === "debit") {
+        if (t.type !== "debit") return false;
+        if (EXPENSE_EXCLUDED_CATEGORIES.includes(t.category)) return false;
+      } else if (activeFilter === "total-expense") {
+        if (t.type !== "debit") return false;
+      } else if (activeFilter === "credit") {
+        if (t.type !== "credit") return false;
+        if (isNonGenuineCredit(t)) return false;
+      }
+
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return (
@@ -449,23 +523,39 @@ const App = (() => {
 
   // ─── Summary Cards ───
   function renderSummary(filtered) {
-    const valid = filtered.filter((t) => !t.invalid);
-    const debits = valid.filter((t) => t.type === "debit");
-    const credits = valid.filter((t) => t.type === "credit");
-    const totalExp = debits.reduce((s, t) => s + t.amount, 0);
-    const totalInc = credits.reduce((s, t) => s + t.amount, 0);
+    const monthAll = transactions.filter((t) => {
+      const d = new Date(t.date);
+      return (
+        d.getMonth() === currentMonth &&
+        d.getFullYear() === currentYear &&
+        !t.invalid
+      );
+    });
+    const allDebits = monthAll.filter((t) => t.type === "debit");
+    const allCredits = monthAll.filter((t) => t.type === "credit");
+
+    // Regular expenses (excluding EMI, Loans, Investment)
+    const regularDebits = allDebits.filter(
+      (t) => !EXPENSE_EXCLUDED_CATEGORIES.includes(t.category),
+    );
+    const regularExp = regularDebits.reduce((s, t) => s + t.amount, 0);
+    const totalExp = allDebits.reduce((s, t) => s + t.amount, 0);
+
+    // Genuine income (excluding refunds, CC credits, paytm)
+    const genuineCredits = allCredits.filter((t) => !isNonGenuineCredit(t));
+    const totalInc = genuineCredits.reduce((s, t) => s + t.amount, 0);
 
     document.getElementById("totalExpense").textContent =
-      Charts.formatCurrency(totalExp);
+      Charts.formatCurrency(regularExp);
     document.getElementById("totalIncome").textContent =
       Charts.formatCurrency(totalInc);
     document.getElementById("netBalance").textContent = Charts.formatCurrency(
       totalInc - totalExp,
     );
     document.getElementById("expenseCount").textContent =
-      `${debits.length} transaction${debits.length !== 1 ? "s" : ""}`;
+      `${regularDebits.length} txns \u00b7 Total: ${Charts.formatCurrency(totalExp)}`;
     document.getElementById("incomeCount").textContent =
-      `${credits.length} transaction${credits.length !== 1 ? "s" : ""}`;
+      `${genuineCredits.length} transaction${genuineCredits.length !== 1 ? "s" : ""}`;
   }
 
   // ─── Quick Stats Pills ───
@@ -566,6 +656,7 @@ const App = (() => {
       groups[t.date].push(t);
     });
 
+    const visibleCats = getAllCategories();
     let html = "";
     for (const [date, txns] of Object.entries(groups)) {
       const d = new Date(date);
@@ -575,19 +666,30 @@ const App = (() => {
         const css = CATEGORY_CSS[t.category] || "cat-other";
         const sign = t.type === "debit" ? "-" : "+";
         const invalidCls = t.invalid ? " txn-invalid" : "";
+        const toggleIcon = t.invalid ? "⊘" : "○";
+        const toggleCls = t.invalid ? " toggled" : "";
+        const catOpts = visibleCats
+          .map(
+            (c) =>
+              `<option value="${sanitize(c)}"${c === t.category ? " selected" : ""}>${sanitize(c)}</option>`,
+          )
+          .join("");
         html += `<div class="txn-card${invalidCls}" data-id="${sanitize(t.id)}">
           <div class="txn-icon ${css}">${icon}</div>
           <div class="txn-info">
             <div class="txn-merchant">${sanitize(t.merchant || "Unknown")}</div>
             <div class="txn-meta">
-              <span>${sanitize(t.category || "")}</span>
+              <select class="txn-cat-select" data-id="${sanitize(t.id)}">${catOpts}</select>
               <span class="txn-meta-dot"></span>
               <span>${sanitize(t.bank || "")}</span>
             </div>
           </div>
           <div class="txn-amount-wrap">
-            <div class="txn-amount ${t.type}">${sign}${Charts.formatCurrency(t.amount, t.currency)}</div>
-            <div class="txn-mode">${sanitize(t.mode || "")}</div>
+            <button class="txn-toggle${toggleCls}" data-id="${sanitize(t.id)}" title="${t.invalid ? "Mark as transaction" : "Mark as non-transaction"}">${toggleIcon}</button>
+            <div>
+              <div class="txn-amount ${t.type}">${sign}${Charts.formatCurrency(t.amount, t.currency)}</div>
+              <div class="txn-mode">${sanitize(t.mode || "")}</div>
+            </div>
           </div>
         </div>`;
       });
@@ -597,6 +699,37 @@ const App = (() => {
 
     container.querySelectorAll(".txn-card").forEach((card) => {
       card.addEventListener("click", () => showDetail(card.dataset.id));
+    });
+
+    // Non-transaction toggle
+    container.querySelectorAll(".txn-toggle").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const txn = transactions.find((t) => t.id === btn.dataset.id);
+        if (txn) {
+          txn.invalid = !txn.invalid;
+          saveData();
+          render();
+          showToast(
+            txn.invalid ? "Marked as non-transaction" : "Marked as transaction",
+            "info",
+          );
+        }
+      });
+    });
+
+    // Inline category change
+    container.querySelectorAll(".txn-cat-select").forEach((sel) => {
+      sel.addEventListener("click", (e) => e.stopPropagation());
+      sel.addEventListener("change", (e) => {
+        e.stopPropagation();
+        const txn = transactions.find((t) => t.id === sel.dataset.id);
+        if (txn) {
+          txn.category = sel.value;
+          saveData();
+          render();
+        }
+      });
     });
   }
 
@@ -705,15 +838,58 @@ const App = (() => {
       )
       .join("");
 
+    // Category editing in detail modal
+    const catSelect = document.getElementById("detailCategorySelect");
+    if (catSelect) {
+      const allCats = getAllCategories();
+      catSelect.innerHTML = allCats
+        .map(
+          (c) =>
+            `<option value="${c}"${c === txn.category ? " selected" : ""}>${c}</option>`,
+        )
+        .join("");
+      catSelect.onchange = () => {
+        txn.category = catSelect.value;
+        saveData();
+        render();
+      };
+    }
+    const catCustomInput = document.getElementById("detailCategoryCustom");
+    if (catCustomInput) catCustomInput.value = "";
+    const btnDetailAddCat = document.getElementById("btnDetailAddCat");
+    if (btnDetailAddCat) {
+      btnDetailAddCat.onclick = () => {
+        const name = (catCustomInput ? catCustomInput.value : "").trim();
+        if (name) {
+          addCustomCategory(name);
+          txn.category = name;
+          saveData();
+          render();
+          const updatedCats = getAllCategories();
+          if (catSelect)
+            catSelect.innerHTML = updatedCats
+              .map(
+                (c) =>
+                  `<option value="${c}"${c === name ? " selected" : ""}>${c}</option>`,
+              )
+              .join("");
+          if (catCustomInput) catCustomInput.value = "";
+          showToast("Category added: " + name, "success");
+        }
+      };
+    }
+
     document.getElementById("detailSMS").textContent =
       txn.rawSMS || "No raw SMS available";
     document.getElementById("detailSMS").style.display = txn.rawSMS
       ? "block"
       : "none";
 
-    // Toggle invalid
+    // Toggle non-transaction
     const btnInvalid = document.getElementById("btnToggleInvalid");
-    btnInvalid.textContent = txn.invalid ? "Mark as Valid" : "Mark as Invalid";
+    btnInvalid.textContent = txn.invalid
+      ? "Mark as Transaction"
+      : "Mark as Non-Transaction";
     btnInvalid.style.color = txn.invalid
       ? "var(--green, #22c55e)"
       : "var(--yellow, #eab308)";
@@ -725,7 +901,10 @@ const App = (() => {
       saveData();
       closeModal("modalDetail");
       render();
-      showToast(txn.invalid ? "Marked as invalid" : "Marked as valid", "info");
+      showToast(
+        txn.invalid ? "Marked as non-transaction" : "Marked as transaction",
+        "info",
+      );
     };
 
     document.getElementById("btnDeleteTxn").onclick = async () => {
@@ -843,13 +1022,16 @@ const App = (() => {
   // ─── Batch Import (text paste) ───
   // ─── Smart SMS Splitter ───
   // Handles: newline-separated, blank-line-separated, no-newline concatenated SMS,
-  // and exportSms.txt format ("YYYY-MM-DD [HH:MM] | SMS body" per line)
+  // and exportSms.txt format ("YYYY-MM-DD [HH:MM] [SENDER] | SMS body" per line)
   function splitSMSText(text) {
-    // Detect exportSms.txt format: lines prefixed with "YYYY-MM-DD [HH:MM] | "
-    const exportLineRe = /\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?\s*\|/;
+    // Detect exportSms.txt format: lines prefixed with "YYYY-MM-DD [HH:MM] [SENDER] | " or "YYYY-MM-DD [HH:MM] | "
+    const exportLineRe =
+      /\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?(?:\s*\[[^\]]*\])?\s*\|/;
     if (exportLineRe.test(text)) {
       const chunks = text
-        .split(/(?=\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?\s*\|)/)
+        .split(
+          /(?=\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?(?:\s*\[[^\]]*\])?\s*\|)/,
+        )
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
       if (chunks.length > 1) return chunks;
@@ -1055,9 +1237,34 @@ const App = (() => {
   // ─── Category Select ───
   function populateCategorySelect() {
     const sel = document.getElementById("addCategory");
-    sel.innerHTML = SMSParser.getCategories()
+    sel.innerHTML = getAllCategories()
       .map((c) => `<option value="${c}">${c}</option>`)
       .join("");
+  }
+
+  // ─── Category Manager ───
+  function renderCategoryManager() {
+    const cats = getAllCategories();
+    const customSet = new Set(getCustomCategories());
+    const el = document.getElementById("categoryList");
+    if (!el) return;
+    el.innerHTML = cats
+      .map((c) => {
+        const isCustom = customSet.has(c);
+        return `<div class="cat-manage-row">
+        <span class="cat-manage-name">${sanitize(c)}</span>
+        ${isCustom ? `<button class="cat-manage-del" data-cat="${sanitize(c)}">✕</button>` : '<span class="cat-manage-builtin">built-in</span>'}
+      </div>`;
+      })
+      .join("");
+
+    el.querySelectorAll(".cat-manage-del").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        deleteCustomCategory(btn.dataset.cat);
+        renderCategoryManager();
+        showToast("Category removed", "info");
+      });
+    });
   }
 
   // ─── Event Listeners ───
@@ -1306,6 +1513,35 @@ const App = (() => {
     document
       .getElementById("btnCloseErrorLogs")
       .addEventListener("click", () => closeModal("modalErrorLogs"));
+
+    // Category management
+    const settingCat = document.getElementById("settingCategories");
+    if (settingCat) {
+      settingCat.addEventListener("click", () => {
+        renderCategoryManager();
+        openModal("modalCategories");
+      });
+    }
+    const btnNewCat = document.getElementById("btnNewCategory");
+    if (btnNewCat) {
+      btnNewCat.addEventListener("click", () => {
+        const input = document.getElementById("newCategoryInput");
+        const name = input.value.trim();
+        if (name) {
+          addCustomCategory(name);
+          input.value = "";
+          renderCategoryManager();
+          populateCategorySelect();
+          showToast("Category added: " + name, "success");
+        }
+      });
+    }
+    const btnCloseCat = document.getElementById("btnCloseCategories");
+    if (btnCloseCat) {
+      btnCloseCat.addEventListener("click", () =>
+        closeModal("modalCategories"),
+      );
+    }
 
     // Close modals on overlay click
     document.querySelectorAll(".modal-overlay").forEach((overlay) => {

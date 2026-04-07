@@ -7,7 +7,7 @@
 //      4. Adjust Date (start + index)
 //      5. Find Messages (for that date)
 //      6. Repeat with Each message:
-//         7. Text (extract body from Message object)
+//         7. Text (extract sender|||body from Message object)
 //      8. Combine Text (===SMS=== delimiter)
 //      9. Run Script (Combined Text as parameter) → SAVE: filter + append
 //   (loop ends)
@@ -43,6 +43,55 @@ const KEYWORDS = [
 
 const MONEY_RE = /(?:rs\.?\s*|inr\s*|rupees\s*)\d|(?:\d+\.\d{2})/i;
 
+// Known bank sender IDs — messages from these senders are treated as genuine
+// Matches if the sender *contains* any of these (case-insensitive)
+const BANK_SENDERS = [
+  "hdfc",
+  "icici",
+  "sbi",
+  "axis",
+  "kotak",
+  "pnb",
+  "yes",
+  "indus",
+  "federal",
+  "idfc",
+  "bob",
+  "canara",
+  "union",
+  "iob",
+  "boi",
+  "rbl",
+  "idbi",
+  "bandhan",
+  "citi",
+  "hsbc",
+  "scb",
+  "dbs",
+  "amex",
+  "bajaj",
+  "paytm",
+  "slice",
+  "onecard",
+  "fi.",
+  "jupiter",
+  "niyox",
+  "airtel",
+  "hdfcbk",
+  "icicib",
+  "sbibnk",
+  "axisbk",
+  "kotakb",
+  "pnbsms",
+  "yesbk",
+  "indusbk",
+  "fedbnk",
+  "idfcfb",
+];
+
+// Delimiter between sender and body in each SMS segment: sender|||body
+const SENDER_DELIM = "|||";
+
 // Matches bare date strings leaked by Shortcuts (e.g. "27 Mar 2026 at 9:35 PM")
 const DATE_ONLY_RE =
   /^\d{1,2}\s+\w{3}\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*(?:AM|PM)$/i;
@@ -72,16 +121,31 @@ function extractTime(msg) {
 const SMS_DELIMITER = "===SMS===";
 
 // Preferred: split by delimiter injected by updated Shortcut
-// Fallback:  heuristic reassembly for old Shortcut format
+// Returns array of { sender, body } objects
+// New format: each segment is "sender|||body"
+// Legacy format (no |||): sender defaults to "" and whole segment is body
 function splitMessages(text) {
+  let segments;
   if (text.includes(SMS_DELIMITER)) {
-    return text
+    segments = text
       .split(SMS_DELIMITER)
       .map((s) => s.replace(/\n/g, " ").trim())
       .filter((s) => s.length > 0);
+  } else {
+    // Fallback: old heuristic
+    segments = reassembleMessages(text);
   }
-  // Fallback: old heuristic
-  return reassembleMessages(text);
+  return segments.map((seg) => {
+    if (seg.includes(SENDER_DELIM)) {
+      const idx = seg.indexOf(SENDER_DELIM);
+      return {
+        sender: seg.slice(0, idx).trim(),
+        body: seg.slice(idx + SENDER_DELIM.length).trim(),
+      };
+    }
+    // Legacy: no sender info
+    return { sender: "", body: seg };
+  });
 }
 
 function reassembleMessages(text) {
@@ -176,12 +240,17 @@ try {
     if (input.length > 0) {
       const allMsgs = splitMessages(input);
 
-      // Keep only messages with banking keyword AND money amount
+      // Keep only messages from known bank senders with keyword AND money amount
       const bankMsgs = allMsgs.filter((msg) => {
-        const lower = msg.toLowerCase();
+        const lower = msg.body.toLowerCase();
         const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
-        const hasMoney = MONEY_RE.test(msg);
-        return hasKw && hasMoney;
+        const hasMoney = MONEY_RE.test(msg.body);
+        // Sender filter: if sender is present, it must match a known bank
+        const senderLower = msg.sender.toLowerCase();
+        const fromBank =
+          msg.sender === "" ||
+          BANK_SENDERS.some((id) => senderLower.includes(id));
+        return fromBank && hasKw && hasMoney;
       });
 
       // Cross-day dedup: skip messages already written in the previous day
@@ -195,12 +264,14 @@ try {
       const uniqueBankMsgs = [];
       const lines = [];
       for (const msg of bankMsgs) {
-        if (!seen.has(msg) && !prevSet.has(msg)) {
-          seen.add(msg);
-          uniqueBankMsgs.push(msg);
-          const time = extractTime(msg);
+        const dedupKey = msg.body;
+        if (!seen.has(dedupKey) && !prevSet.has(dedupKey)) {
+          seen.add(dedupKey);
+          uniqueBankMsgs.push(dedupKey);
+          const time = extractTime(msg.body);
           const stamp = time ? `${dateStr} ${time}` : dateStr;
-          lines.push(`${stamp} | ${msg}`);
+          const senderTag = msg.sender ? ` [${msg.sender}]` : "";
+          lines.push(`${stamp}${senderTag} | ${msg.body}`);
         }
       }
 

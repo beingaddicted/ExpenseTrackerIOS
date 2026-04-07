@@ -135,6 +135,9 @@
       <div class="filter-bar" id="filterBar">
         <button class="filter-chip active" data-filter="all">All</button>
         <button class="filter-chip" data-filter="debit">Expenses</button>
+        <button class="filter-chip" data-filter="total-expense">
+          Total Expense
+        </button>
         <button class="filter-chip" data-filter="credit">Income</button>
       </div>
 
@@ -246,6 +249,17 @@
             <div class="settings-info">
               <div class="settings-label">Clear All Data</div>
               <div class="settings-desc">Remove all stored transactions</div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-group-title">Categories</div>
+          <div class="settings-item" id="settingCategories">
+            <div class="settings-icon">🏷️</div>
+            <div class="settings-info">
+              <div class="settings-label">Manage Categories</div>
+              <div class="settings-desc">Add or remove expense categories</div>
             </div>
             <span class="settings-arrow">›</span>
           </div>
@@ -469,6 +483,35 @@
           <div class="detail-merchant" id="detailMerchant"></div>
         </div>
         <div class="detail-grid" id="detailGrid"></div>
+        <div class="detail-cat-edit">
+          <label
+            class="form-label"
+            style="
+              font-size: 12px;
+              color: var(--text-muted);
+              margin-bottom: 4px;
+            "
+            >Edit Category</label
+          >
+          <div style="display: flex; gap: 8px; align-items: center">
+            <select
+              class="form-select"
+              id="detailCategorySelect"
+              style="flex: 1"
+            ></select>
+            <input
+              type="text"
+              class="form-input"
+              id="detailCategoryCustom"
+              placeholder="New..."
+              maxlength="30"
+              style="flex: 1"
+            />
+            <button type="button" class="btn-small" id="btnDetailAddCat">
+              +
+            </button>
+          </div>
+        </div>
         <div class="detail-sms" id="detailSMS"></div>
         <button
           type="button"
@@ -476,7 +519,7 @@
           style="margin-top: 16px"
           id="btnToggleInvalid"
         >
-          Mark as Invalid
+          Mark as Non-Transaction
         </button>
         <button
           type="button"
@@ -728,6 +771,46 @@
           type="button"
           class="btn-secondary"
           id="btnCloseErrorLogs"
+          style="margin-top: 12px"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: Category Management ═══ -->
+    <div class="modal-overlay" id="modalCategories">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Manage Categories</div>
+        <div class="form-group">
+          <div style="display: flex; gap: 8px">
+            <input
+              type="text"
+              class="form-input"
+              id="newCategoryInput"
+              placeholder="New category name..."
+              maxlength="30"
+              style="flex: 1"
+            />
+            <button
+              type="button"
+              class="btn-primary"
+              id="btnNewCategory"
+              style="white-space: nowrap"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+        <div
+          id="categoryList"
+          style="max-height: 300px; overflow-y: auto"
+        ></div>
+        <button
+          type="button"
+          class="btn-secondary"
+          id="btnCloseCategories"
           style="margin-top: 12px"
         >
           Close

@@ -100,10 +100,10 @@ Input: Find Messages result (from step 5)
 ### 7 · Text _(inside Repeat with Each)_
 
 ```
-Content: {Repeat Item}
+Content: {Sender of Repeat Item}|||{Repeat Item}
 ```
 
-This converts each Message object to its body text individually.
+This extracts the **sender** (e.g. `HDFCBK`, `AXISBK`) and the **message body**, separated by `|||`. The script uses the sender to filter out non-bank messages.
 
 ---
 
@@ -147,9 +147,11 @@ Tap **Show More** → under **Texts** tap **+ Add** → tap the text field → i
 │   4. start_date + index                                   │
 │   5. Find Messages ← only Shortcuts can do this           │
 │   6. Repeat with Each message:                            │
-│      7. Text → extract body                               │
+│      7. Text → extract sender|||body                      │
 │   8. Combine Text (===SMS=== delimiter)                   │
 │   9. Scriptable   ─────────→ Split on ===SMS===           │
+│                               Parse sender|||body         │
+│                               Filter known bank senders   │
 │                               Filter 13 banking keywords  │
 │                               Require money amount        │
 │                               Extract time from SMS body  │
@@ -169,12 +171,12 @@ Tap **Show More** → under **Texts** tap **+ Add** → tap the text field → i
 **Files → iCloud Drive → Scriptable → expense tracker → exportSms.txt**
 
 ```
-2024-01-02 09:42 | INR Rs. 1500 debited from A/c no. 472912 on 02-01-24 09:42:37 at UPI/…
-2024-01-05 | Sent Rs.450.00 From HDFC Bank A/C x7782 To AMAZON On 05/01/24 Ref 500512345678
-2024-03-15 05:31 | INR 25000.00 credited to A/c no. XX2912 on 15-03-24 at 05:31:37 IST. Info - NEFT/…
+2024-01-02 09:42 [HDFCBK] | INR Rs. 1500 debited from A/c no. 472912 on 02-01-24 09:42:37 at UPI/…
+2024-01-05 [HDFCBK] | Sent Rs.450.00 From HDFC Bank A/C x7782 To AMAZON On 05/01/24 Ref 500512345678
+2024-03-15 05:31 [ICICIB] | INR 25000.00 credited to A/c no. XX2912 on 15-03-24 at 05:31:37 IST. Info - NEFT/…
 ```
 
-Lines include time when extractable from the SMS body, date-only otherwise.
+Lines include sender tag, time when extractable from the SMS body, date-only otherwise.
 
 ---
 
