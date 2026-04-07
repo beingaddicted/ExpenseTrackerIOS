@@ -7,26 +7,26 @@
 //      4. Adjust Date (start + index)
 //      5. Find Messages (for that date)
 //      6. Repeat with Each message:
-//         7. Text (extract sender|||body from Message object)
+//         7. Text (SMS body from Message object)
 //      8. Combine Text (===SMS=== delimiter)
 //      9. Run Script (Combined Text as parameter) → SAVE: filter + append
 //   (loop ends)
 //
 // INIT adds +1 day overlap so nightly automation never misses entries.
 // SAVE deduplicates against the previous day's batch (PREV_BATCH).
-// Output: iCloud Drive → Scriptable → expense tracker → exportSms.txt
+// Output: iCloud Drive → Scriptable → expense tracker → exportSms.json
 
 const fm = FileManager.iCloud();
 const root = fm.documentsDirectory();
 const dir = fm.joinPath(root, "expense tracker");
 if (!fm.fileExists(dir)) fm.createDirectory(dir);
-const SMS_FILE = fm.joinPath(dir, "exportSms.txt");
+const SMS_FILE = fm.joinPath(dir, "exportSms.json");
 const TRACKER = fm.joinPath(dir, "exportSmstracker.txt");
 const PREV_BATCH = fm.joinPath(dir, "exportSmsPrevBatch.txt");
 const DEBUG_FILE = fm.joinPath(dir, "exportSmsDebug.txt");
 
 // ── CONFIG ──────────────────────────────────────────
-const DEBUG = false; // flip to true to write exportSmsDebug.txt
+const DEBUG = true; // flip to true to write exportSmsDebug.txt
 const DEFAULT_START = "2020-01-01";
 
 const KEYWORDS = [
@@ -57,9 +57,6 @@ const MONEY_RE = /(?:rs\.?\s*|inr\s*|rupees\s*)\d|(?:\d+\.\d{2})/i;
 const SPAM_RE = /\b(?:congratulations|win\s|won\s|lottery|jackpot|prize|claim\s|free\s|offer\s|scheme|guaranteed|nominee|payout|pre.?approved\s+loan|pre.?approved\s+credit|personal\s*loan|top.?up|balance\s*transfer|limited\s+period|exclusive\s+deal|apply\s+now|click\s+here|bit\.ly|tinyurl|act\s+now|hurry|last\s+day)\b/i;
 
 // Note: iOS Shortcuts does not expose SMS sender — filtering is keyword + money only.
-
-// Delimiter between sender and body in each SMS segment: sender|||body
-const SENDER_DELIM = "|||";
 
 // Matches bare date strings leaked by Shortcuts (e.g. "27 Mar 2026 at 9:35 PM")
 const DATE_ONLY_RE =
@@ -102,32 +99,16 @@ function extractTime(msg) {
 // ── SPLIT MESSAGES ──────────────────────────────────
 const SMS_DELIMITER = "===SMS===";
 
-// Preferred: split by delimiter injected by updated Shortcut
-// Returns array of { sender, body } objects
-// New format: each segment is "sender|||body"
-// Legacy format (no |||): sender defaults to "" and whole segment is body
+// Split combined Shortcut output into individual SMS strings
 function splitMessages(text) {
-  let segments;
   if (text.includes(SMS_DELIMITER)) {
-    segments = text
+    return text
       .split(SMS_DELIMITER)
       .map((s) => s.replace(/\n/g, " ").trim())
       .filter((s) => s.length > 0);
-  } else {
-    // Fallback: old heuristic
-    segments = reassembleMessages(text);
   }
-  return segments.map((seg) => {
-    if (seg.includes(SENDER_DELIM)) {
-      const idx = seg.indexOf(SENDER_DELIM);
-      return {
-        sender: seg.slice(0, idx).trim(),
-        body: seg.slice(idx + SENDER_DELIM.length).trim(),
-      };
-    }
-    // Legacy: no sender info
-    return { sender: "", body: seg };
-  });
+  // Fallback: old heuristic
+  return reassembleMessages(text);
 }
 
 function reassembleMessages(text) {
@@ -232,25 +213,25 @@ try {
         debugLines.push(`\n=== ${dateStr} ===`);
         debugLines.push(`Raw input length: ${input.length}`);
         debugLines.push(`Messages split: ${allMsgs.length}`);
-        for (const msg of allMsgs) {
-          const lower = msg.body.toLowerCase();
+        for (const sms of allMsgs) {
+          const lower = sms.toLowerCase();
           const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
-          const hasMoney = MONEY_RE.test(msg.body);
-          const isSpam = SPAM_RE.test(msg.body);
-          const time = extractTime(msg.body);
+          const hasMoney = MONEY_RE.test(sms);
+          const isSpam = SPAM_RE.test(sms);
+          const time = extractTime(sms);
           const kept = hasKw && hasMoney && !isSpam;
-          debugLines.push(`[${kept ? "KEEP" : "SKIP"}] kw=${hasKw} money=${hasMoney} spam=${isSpam} time="${time}" body=${msg.body.substring(0, 120)}`);
+          debugLines.push(`[${kept ? "KEEP" : "SKIP"}] kw=${hasKw} money=${hasMoney} spam=${isSpam} time="${time}" body=${sms.substring(0, 120)}`);
         }
         const debugExisting = await read(DEBUG_FILE);
         fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + debugLines.join("\n") + "\n");
       }
 
       // Keep only messages with a transaction keyword AND a money amount, skip spam
-      const bankMsgs = allMsgs.filter((msg) => {
-        const lower = msg.body.toLowerCase();
+      const bankMsgs = allMsgs.filter((sms) => {
+        const lower = sms.toLowerCase();
         const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
-        const hasMoney = MONEY_RE.test(msg.body);
-        const isSpam = SPAM_RE.test(msg.body);
+        const hasMoney = MONEY_RE.test(sms);
+        const isSpam = SPAM_RE.test(sms);
         return hasKw && hasMoney && !isSpam;
       });
 
@@ -263,26 +244,45 @@ try {
       // Dedup within this day and against previous day
       const seen = new Set();
       const uniqueBankMsgs = [];
-      const lines = [];
-      for (const msg of bankMsgs) {
-        const dedupKey = msg.body;
-        if (!seen.has(dedupKey) && !prevSet.has(dedupKey)) {
-          seen.add(dedupKey);
-          uniqueBankMsgs.push(dedupKey);
-          const time = extractTime(msg.body);
-          const stamp = time ? `${dateStr} ${time}` : dateStr;
-          const senderTag = msg.sender ? ` [${msg.sender}]` : "";
-          lines.push(`${stamp}${senderTag} | ${msg.body}`);
+      const newEntries = [];
+      for (const sms of bankMsgs) {
+        if (!seen.has(sms) && !prevSet.has(sms)) {
+          seen.add(sms);
+          uniqueBankMsgs.push(sms);
+          const time = extractTime(sms);
+          newEntries.push({
+            date: dateStr,
+            time: time || "",
+            body: sms,
+            originalSms: sms,
+          });
         }
       }
 
       // Save deduplicated batch for next day's cross-day dedup
       fm.writeString(PREV_BATCH, uniqueBankMsgs.join("\n===\n"));
 
-      if (lines.length > 0) {
-        const chunk = lines.join("\n") + "\n";
-        const existing = await read(SMS_FILE);
-        fm.writeString(SMS_FILE, (existing ? existing + "\n" : "") + chunk);
+      if (newEntries.length > 0) {
+        // Read existing JSON array (or start fresh)
+        let existing = [];
+        const raw = await read(SMS_FILE);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            existing = Array.isArray(parsed.messages)
+              ? parsed.messages
+              : Array.isArray(parsed)
+                ? parsed
+                : [];
+          } catch (_) {
+            existing = [];
+          }
+        }
+        const merged = existing.concat(newEntries);
+        fm.writeString(
+          SMS_FILE,
+          JSON.stringify({ messages: merged }, null, 0),
+        );
       }
     }
 
@@ -295,7 +295,7 @@ try {
     if (trackerDate >= today) {
       const n = new Notification();
       n.title = "Bank SMS Export Done";
-      n.body = `Processed up to ${dateStr}. Check exportSms.txt`;
+      n.body = `Processed up to ${dateStr}. Check exportSms.json`;
       await n.schedule();
     }
 

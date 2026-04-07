@@ -19,6 +19,7 @@ const App = (() => {
   const STORE_NAME = "transactions";
   const LS_KEY = "expense_tracker_transactions"; // for migration
   const DELTA_KEY = "expense_tracker_delta_tracker"; // tracks last import position
+  const AI_KEY = "expense_tracker_ai_config"; // { enabled, apiKey }
   const CATEGORY_ICONS = {
     "Food & Dining": "🍕",
     Shopping: "🛍️",
@@ -336,13 +337,17 @@ const App = (() => {
 
 
         if (data && Array.isArray(data.messages)) {
-          // Format: { messages: [ { message: "...", sender: "...", timestamp: "..." }, ... ] }
+          // Format: { messages: [ { body, originalSms, date, time, sender }, ... ] }
           data.messages.forEach((item) => {
-            const smsText = item.message || item.text || item.body || "";
+            const smsText = item.body || item.message || item.text || "";
             const sender = item.sender || item.from || "";
-            const ts = item.timestamp || item.date || null;
+            const dateVal = item.date || item.timestamp || null;
+            const timeVal = item.time || "";
+            const ts = dateVal && timeVal ? `${dateVal} ${timeVal}` : dateVal;
+            const original = item.originalSms || smsText;
             const txn = SMSParser.parse(smsText, sender, ts);
             if (txn) {
+              txn.originalSms = original;
               if (!SMSParser.isDuplicate(txn, transactions)) {
                 transactions.unshift(txn);
                 added++;
@@ -440,6 +445,20 @@ const App = (() => {
           `${added} added, ${skipped} duplicates, ${failed} failed`,
           added > 0 ? "success" : "info",
         );
+
+        // Auto-trigger AI classification after import if enabled
+        if (added > 0) {
+          const aiCfg = getAIConfig();
+          if (aiCfg.enabled && aiCfg.apiKey && aiCfg.autoClassify !== false) {
+            const unknowns = transactions.filter(
+              (t) => t.merchant === "Unknown" && !t.aiClassified && !t.aiFailed && (t.rawSMS || t.originalSms),
+            );
+            if (unknowns.length > 0) {
+              showToast(`AI classifying ${unknowns.length} transactions…`, "info");
+              runAIClassification();
+            }
+          }
+        }
       } catch (err) {
         ErrorLogger.log("file_import_error", {
           message: err.message,
@@ -952,6 +971,14 @@ const App = (() => {
       );
     };
 
+    // Reclassify single transaction with AI
+    const btnReclassify = document.getElementById("btnReclassifyAI");
+    const smsText = txn.originalSms || txn.rawSMS;
+    btnReclassify.style.display = smsText ? "block" : "none";
+    btnReclassify.onclick = async () => {
+      await reclassifySingleTransaction(txn);
+    };
+
     document.getElementById("btnDeleteTxn").onclick = async () => {
       if (confirm("Delete this transaction?")) {
         transactions = transactions.filter((t) => t.id !== id);
@@ -963,6 +990,76 @@ const App = (() => {
     };
 
     openModal("modalDetail");
+  }
+
+  async function reclassifySingleTransaction(txn) {
+    const cfg = getAIConfig();
+    if (!cfg.enabled || !cfg.apiKey) {
+      showToast("Enable AI and enter API key in Settings", "error");
+      return;
+    }
+    const smsText = (txn.originalSms || txn.rawSMS || "").substring(0, 300);
+    if (!smsText) {
+      showToast("No SMS text available to classify", "error");
+      return;
+    }
+
+    const categories = Object.keys(
+      SMSParser.getCategories ? SMSParser.getCategories() : {},
+    );
+    const catList = categories.length > 0
+      ? categories.join(", ")
+      : "Food & Dining, Shopping, Transport, Travel, Bills & Utilities, Entertainment, Health, Education, Insurance, Investment, EMI & Loans, Rent, Groceries, Salary, Transfer, ATM, Subscription, Cashback & Rewards, Refund, Tax, Other";
+
+    const prompt = `You are a bank SMS classifier for Indian transactions.
+Extract the merchant/payee name and the best expense category from this SMS.
+
+Categories: ${catList}
+
+Return JSON: {"merchant":"Name","category":"Category"}
+Rules:
+- If merchant is unclear, use the best guess from the SMS text
+- Never return "Unknown" as merchant — always extract something meaningful
+- For UPI, extract the person/shop name (not the VPA handle)
+
+SMS:
+${smsText}`;
+
+    const btn = document.getElementById("btnReclassifyAI");
+    btn.textContent = "🤖 Classifying…";
+    btn.disabled = true;
+
+    try {
+      const raw = await callGemini(cfg.apiKey, prompt);
+      let result;
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        const m = raw.match(/\{[\s\S]*\}/);
+        result = m ? JSON.parse(m[0]) : null;
+      }
+      if (result && result.merchant && result.merchant !== "Unknown") {
+        txn.merchant = result.merchant;
+        txn.aiClassified = true;
+        delete txn.aiFailed;
+        if (result.category) txn.category = result.category;
+        await saveData();
+        // Update the detail modal in-place
+        document.getElementById("detailMerchant").textContent = txn.merchant;
+        const catSelect = document.getElementById("detailCategorySelect");
+        if (catSelect) catSelect.value = txn.category;
+        render();
+        showToast(`Classified as: ${txn.merchant}`, "success");
+      } else {
+        showToast("AI could not determine merchant", "error");
+      }
+    } catch (err) {
+      showToast("AI error: " + err.message, "error");
+      ErrorLogger.log("ai_single_classify_error", { message: err.message });
+    } finally {
+      btn.textContent = "🤖 Reclassify with AI";
+      btn.disabled = false;
+    }
   }
 
   // ─── Add Transaction (Manual) ───
@@ -1622,6 +1719,9 @@ const App = (() => {
       .getElementById("btnCloseErrorLogs")
       .addEventListener("click", () => closeModal("modalErrorLogs"));
 
+    // AI Classification
+    setupAIListeners();
+
     // Category management
     const settingCat = document.getElementById("settingCategories");
     if (settingCat) {
@@ -1657,6 +1757,227 @@ const App = (() => {
         if (e.target === overlay) overlay.classList.remove("active");
       });
     });
+  }
+
+  // ─── AI Classification ───
+  function getAIConfig() {
+    try {
+      return JSON.parse(localStorage.getItem(AI_KEY)) || { enabled: false, apiKey: "", autoClassify: true };
+    } catch { return { enabled: false, apiKey: "" }; }
+  }
+  function saveAIConfig(cfg) {
+    localStorage.setItem(AI_KEY, JSON.stringify(cfg));
+  }
+
+  function setupAIListeners() {
+    const cfg = getAIConfig();
+    const toggle = document.getElementById("aiToggle");
+    const keySection = document.getElementById("aiKeySection");
+    const keyInput = document.getElementById("aiApiKey");
+    const statusDesc = document.getElementById("aiStatusDesc");
+
+    const autoToggle = document.getElementById("aiAutoToggle");
+
+    // Init UI state
+    toggle.checked = cfg.enabled;
+    autoToggle.checked = cfg.autoClassify !== false;
+    keyInput.value = cfg.apiKey || "";
+    keySection.style.display = cfg.enabled ? "block" : "none";
+    statusDesc.textContent = cfg.enabled && cfg.apiKey
+      ? "Enabled — Gemini API"
+      : "Disabled — tap to configure";
+
+    document.getElementById("settingAI").addEventListener("click", () => {
+      openModal("modalAI");
+    });
+    document.getElementById("btnCloseAI").addEventListener("click", () => {
+      closeModal("modalAI");
+    });
+
+    toggle.addEventListener("change", () => {
+      const c = getAIConfig();
+      c.enabled = toggle.checked;
+      saveAIConfig(c);
+      keySection.style.display = toggle.checked ? "block" : "none";
+      statusDesc.textContent = toggle.checked && c.apiKey
+        ? "Enabled — Gemini API"
+        : toggle.checked ? "Enabled — enter API key" : "Disabled — tap to configure";
+    });
+
+    keyInput.addEventListener("change", () => {
+      const c = getAIConfig();
+      c.apiKey = keyInput.value.trim();
+      saveAIConfig(c);
+      statusDesc.textContent = c.enabled && c.apiKey
+        ? "Enabled — Gemini API" : "Enabled — enter API key";
+    });
+
+    document.getElementById("btnTestAI").addEventListener("click", async () => {
+      const c = getAIConfig();
+      if (!c.apiKey) { showToast("Enter an API key first", "error"); return; }
+      try {
+        showToast("Testing API key…", "info");
+        const res = await callGemini(c.apiKey, "Reply with just: OK");
+        if (res) showToast("API key works! ✅", "success");
+        else showToast("No response from API", "error");
+      } catch (err) {
+        showToast("API error: " + err.message, "error");
+      }
+    });
+
+    document.getElementById("btnRunAI").addEventListener("click", () => {
+      runAIClassification();
+    });
+
+    autoToggle.addEventListener("change", () => {
+      const c = getAIConfig();
+      c.autoClassify = autoToggle.checked;
+      saveAIConfig(c);
+    });
+  }
+
+  async function callGemini(apiKey, prompt) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json",
+        },
+      }),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    return text;
+  }
+
+  async function runAIClassification() {
+    const cfg = getAIConfig();
+    if (!cfg.enabled || !cfg.apiKey) {
+      showToast("Enable AI and enter API key first", "error");
+      return;
+    }
+
+    // Find transactions with Unknown merchant (skip already attempted)
+    const unknowns = transactions.filter(
+      (t) => t.merchant === "Unknown" && !t.aiClassified && !t.aiFailed && (t.rawSMS || t.originalSms),
+    );
+    if (unknowns.length === 0) {
+      showToast("No Unknown merchants to classify!", "info");
+      return;
+    }
+
+    const progressDiv = document.getElementById("aiProgress");
+    const progressText = document.getElementById("aiProgressText");
+    const progressBar = document.getElementById("aiProgressBar");
+    progressDiv.style.display = "block";
+
+    const BATCH_SIZE = 15;
+    const batches = [];
+    for (let i = 0; i < unknowns.length; i += BATCH_SIZE) {
+      batches.push(unknowns.slice(i, i + BATCH_SIZE));
+    }
+
+    const categories = Object.keys(
+      SMSParser.getCategories ? SMSParser.getCategories() : {},
+    );
+    const catList = categories.length > 0
+      ? categories.join(", ")
+      : "Food & Dining, Shopping, Transport, Travel, Bills & Utilities, Entertainment, Health, Education, Insurance, Investment, EMI & Loans, Rent, Groceries, Salary, Transfer, ATM, Subscription, Cashback & Rewards, Refund, Tax, Other";
+
+    let updated = 0;
+    let errors = 0;
+
+    for (let b = 0; b < batches.length; b++) {
+      const batch = batches[b];
+      const pct = Math.round(((b + 1) / batches.length) * 100);
+      progressText.textContent = `Processing batch ${b + 1}/${batches.length} (${unknowns.length} total)…`;
+      progressBar.style.width = pct + "%";
+
+      const smsList = batch
+        .map((t, i) => `${i + 1}. ${(t.originalSms || t.rawSMS || "").substring(0, 200)}`)
+        .join("\n");
+
+      const prompt = `You are a bank SMS classifier for Indian transactions.
+For each SMS below, extract the merchant/payee name and the best category.
+
+Categories: ${catList}
+
+Return a JSON array: [{"i":1,"merchant":"Name","category":"Category"}, ...]
+Rules:
+- "i" is the SMS number (1-based)
+- If merchant is unclear, use the best guess from the SMS text
+- Never return "Unknown" as merchant — always extract something meaningful
+- For UPI, extract the person/shop name (not the VPA handle)
+
+SMS list:
+${smsList}`;
+
+      try {
+        const raw = await callGemini(cfg.apiKey, prompt);
+        let results;
+        try {
+          results = JSON.parse(raw);
+        } catch {
+          // Try to extract JSON array from response
+          const m = raw.match(/\[[\s\S]*\]/);
+          results = m ? JSON.parse(m[0]) : [];
+        }
+        if (Array.isArray(results)) {
+          const matched = new Set();
+          results.forEach((r) => {
+            const idx = (r.i || r.index || 0) - 1;
+            if (idx >= 0 && idx < batch.length) {
+              matched.add(idx);
+              const txn = batch[idx];
+              if (r.merchant && r.merchant !== "Unknown") {
+                txn.merchant = r.merchant;
+                txn.aiClassified = true;
+              } else {
+                txn.aiFailed = true;
+              }
+              if (r.category) {
+                txn.category = r.category;
+              }
+              updated++;
+            }
+          });
+          // Mark any batch items not in the response as failed
+          batch.forEach((txn, i) => {
+            if (!matched.has(i) && !txn.aiClassified) txn.aiFailed = true;
+          });
+        }
+      } catch (err) {
+        errors++;
+        batch.forEach((txn) => { txn.aiFailed = true; });
+        ErrorLogger.log("ai_classify_error", {
+          message: err.message,
+          batch: b,
+        });
+      }
+
+      // Rate limiting: ~2 requests per second for free tier
+      if (b < batches.length - 1) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+
+    progressBar.style.width = "100%";
+    progressText.textContent = `Done! ${updated} classified, ${errors} errors`;
+
+    if (updated > 0 || errors > 0) {
+      await saveData();
+      render();
+    }
+    showToast(`AI classified ${updated} transactions`, updated > 0 ? "success" : "info");
   }
 
   return { init };

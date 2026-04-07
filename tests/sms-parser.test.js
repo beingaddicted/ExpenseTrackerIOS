@@ -1182,5 +1182,438 @@ describe("SMSParser", () => {
       expect(txn).not.toBeNull();
       expect(txn.refNumber).toBeNull();
     });
+    test("extracts auth code", () => {
+      const sms =
+        "Rs.750.00 spent on your HDFC Bank Credit Card XX9012 on 02-Apr-26 at BigBasket. Auth code: 334455";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.refNumber).toBe("334455");
+    });
+  });
+
+  // ─── Merchant Extraction — Advanced Patterns ───
+  describe("parse — merchant extraction patterns", () => {
+    test("Paytm 'Paid Rs to MERCHANT from' pattern", () => {
+      const sms =
+        "Paid Rs.500 to Daily Needs Store from your Paytm account on 01-04-26. Ref 123456";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toBe("Daily Needs Store");
+    });
+
+    test("UPI Info P2M field extraction", () => {
+      const sms =
+        "Rs.200.00 debited from a/c **4521 on 02-04-26. Info: UPI/P2M/123456/QuickMart/HDFC. Avl bal Rs.10000.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toBe("QuickMart");
+    });
+
+    test("UPI Info P2A field extraction", () => {
+      const sms =
+        "Rs.1000.00 debited from a/c **4521 on 03-04-26. Info: UPI/P2A/789012/Ramesh Kumar/SBI. Avl bal Rs.9000.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toBe("Ramesh Kumar");
+    });
+
+    test("NACH Info field extraction", () => {
+      const sms =
+        "Rs.5000.00 debited from a/c **4521 on 05-04-26. Info: NACH-DR-BAJAJ FINANCE EMI. Avl bal Rs.15000.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toMatch(/BAJAJ FINANCE/i);
+    });
+
+    test("'at MERCHANT' pattern", () => {
+      const sms =
+        "Rs.1,599.00 charged to your Axis Bank Credit Card XX7788 on 30-03-26 at Reliance Digital. Avl limit Rs.98,401.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toMatch(/Reliance Digital/i);
+    });
+
+    test("'towards MERCHANT' pattern", () => {
+      const sms =
+        "Rs.320.00 debited from your SBI a/c XX6672 on 28-03-26 towards Rapido. UPI ref 612300007700. Bal: Rs.18,500.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toMatch(/Rapido/i);
+    });
+
+    test("'paid to MERCHANT' pattern", () => {
+      const sms =
+        "Rs.2,000.00 paid to Suresh Sharma on 01-04-26 from HDFC Bank a/c **4521. Ref 123456789. Bal Rs.8000.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toMatch(/Suresh Sharma/i);
+    });
+
+    test("VPA pattern extraction", () => {
+      const sms =
+        "Rs.500.00 debited from a/c **4521 on 01-04-26 to VPA shopkeeper@ybl. Avl bal Rs.5000.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toBe("Shopkeeper");
+    });
+
+    test("'merchant:' label pattern", () => {
+      const sms =
+        "Rs.999.00 debited from a/c **4521 on 01-04-26. merchant: Urban Clap. Avl bal Rs.4001.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toMatch(/Urban Clap/i);
+    });
+
+    test("inline UPI/P2M without Info: prefix", () => {
+      const sms =
+        "Sent Rs.1000.00 UPI/P2M/123456/PayeeBusiness towards food on 01-04-26. Avl bal Rs.4000.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toMatch(/PayeeBusiness/i);
+    });
+  });
+
+  // ─── Merchant Name Cleaning ───
+  describe("parse — merchant name cleaning", () => {
+    test("strips UPI handle from VPA merchant", () => {
+      const sms =
+        "Rs.100.00 debited from a/c **4521 on 01-04-26 to VPA dailyshop@paytm. Avl bal Rs.4900.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).not.toMatch(/@paytm/);
+    });
+
+    test("strips UPI handle @okaxis", () => {
+      const sms =
+        "Rs.200.00 debited from a/c **4521 on 01-04-26 to VPA grocery@okaxis. Avl bal Rs.4700.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).not.toMatch(/@okaxis/);
+    });
+
+    test("title-cases single lowercase word", () => {
+      const sms =
+        "Rs.150.00 debited from a/c **4521 on 01-04-26 to VPA merchant@ybl. Avl bal Rs.4550.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toBe("Merchant");
+    });
+
+    test("replaces dots/underscores in VPA-style names", () => {
+      const sms =
+        "Rs.300.00 debited from a/c **4521 on 01-04-26 to VPA first.last@ybl. Avl bal Rs.4200.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).not.toMatch(/\./);
+    });
+  });
+
+  // ─── SMS Templates ───
+  describe("parse — SMS templates", () => {
+    test("Paytm wallet paid", () => {
+      const sms =
+        "Paid Rs.2000 to ABC Merchant from Paytm wallet on 01-04-26. Ref 456789";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(2000);
+      expect(txn.type).toBe("debit");
+    });
+
+    test("recharge success", () => {
+      const sms =
+        "Recharge of Rs.499 is successful for Jio prepaid number 9876543210 on 02-04-26";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(499);
+      expect(txn.type).toBe("debit");
+    });
+
+    test("billed with amount", () => {
+      const sms =
+        "Your HDFC Bank a/c **4521 billed with INR 500.50 for internet plan on 03-04-26. Avl bal Rs.4499.50";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(500.5);
+      expect(txn.type).toBe("debit");
+    });
+
+    test("thank you payment confirmation", () => {
+      const sms =
+        "Thank you for your payment of Rs.5000 towards your credit card bill on 04-04-26. -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(5000);
+      expect(txn.type).toBe("debit");
+    });
+
+    test("refund initiated", () => {
+      const sms =
+        "Refund of Rs.1500 has been initiated to your a/c **4521 on 05-04-26. -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(1500);
+      expect(txn.type).toBe("credit");
+    });
+
+    test("wallet transfer", () => {
+      const sms =
+        "Rs.1000 transferred to Paytm Wallet from your HDFC Bank a/c **4521 on 01-04-26. Avl bal Rs.9000.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(1000);
+      expect(txn.type).toBe("debit");
+    });
+  });
+
+  // ─── Currency Detection — Extended ───
+  describe("Currency detection — extended", () => {
+    test("detects EUR from € symbol", () => {
+      const txn = SMSParser.parse(
+        "€100.00 charged at Berlin Store on 01-04-26. Avl bal €900.00",
+      );
+      if (txn) expect(txn.currency).toBe("EUR");
+    });
+    test("detects GBP from £ symbol", () => {
+      const txn = SMSParser.parse(
+        "£50.00 deducted from account XX1234 on 01-04-26 for Amazon UK",
+      );
+      if (txn) expect(txn.currency).toBe("GBP");
+    });
+  });
+
+  // ─── Payment Mode Detection — Extended ───
+  describe("Payment mode detection — extended", () => {
+    test("detects Cheque mode", () => {
+      const sms =
+        "Rs.10000.00 debited from a/c **4521 on 01-04-26 via cheque CHQ123456. Avl bal Rs.5000.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.mode).toBe("Cheque");
+    });
+    test("detects AutoPay mode", () => {
+      const sms =
+        "Rs.999.00 debited from a/c **4521 on 01-04-26 via autopay mandate for Netflix. Avl bal Rs.4001.00 -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.mode).toBe("Auto Pay");
+    });
+  });
+
+  // ─── Bank Detection — Extended ───
+  describe("detectBank — extended banks", () => {
+    test("detects Bank of Baroda", () => {
+      expect(SMSParser.detectBank("Bank of Baroda a/c XX1234 debited Rs.500", "")).toBe("Bank of Baroda");
+    });
+    test("detects BOB abbreviation", () => {
+      expect(SMSParser.detectBank("BOB a/c debited Rs.500", "")).toBe("Bank of Baroda");
+    });
+    test("detects IDFC First", () => {
+      expect(SMSParser.detectBank("IDFC First Bank a/c debited Rs.500", "")).toBe("IDFC First");
+    });
+    test("detects Canara Bank", () => {
+      expect(SMSParser.detectBank("Canara Bank a/c XX1234 debited", "")).toBe("Canara Bank");
+    });
+    test("detects Union Bank", () => {
+      expect(SMSParser.detectBank("Union Bank a/c debited Rs.500", "")).toBe("Union Bank");
+    });
+    test("detects Bank of India", () => {
+      expect(SMSParser.detectBank("Bank of India a/c debited Rs.500", "")).toBe("Bank of India");
+    });
+    test("detects BOI abbreviation", () => {
+      expect(SMSParser.detectBank("BOI a/c debited Rs.500", "")).toBe("Bank of India");
+    });
+    test("detects RBL Bank", () => {
+      expect(SMSParser.detectBank("RBL Bank alert: Rs.1000 spent at Merchant", "")).toBe("RBL Bank");
+    });
+    test("detects Bandhan Bank", () => {
+      expect(SMSParser.detectBank("Bandhan Bank a/c debited Rs.500", "")).toBe("Bandhan Bank");
+    });
+    test("detects Capital One", () => {
+      expect(SMSParser.detectBank("Capital One: card ending 1234 charged $50", "")).toBe("Capital One");
+    });
+    test("detects Discover", () => {
+      expect(SMSParser.detectBank("Discover: card ending 5678 charged $100", "")).toBe("Discover");
+    });
+  });
+
+  // ─── isBankSMS — New Keywords ───
+  describe("isBankSMS — new keywords", () => {
+    test("detects 'paid' keyword", () => {
+      expect(SMSParser.isBankSMS("Paid Rs.500 to XYZ Store from your account")).toBe(true);
+    });
+    test("detects 'billed' keyword", () => {
+      expect(SMSParser.isBankSMS("Your account billed with INR 999 for plan renewal")).toBe(true);
+    });
+    test("detects 'charged' keyword", () => {
+      expect(SMSParser.isBankSMS("Rs.1599 charged to your credit card XX7788")).toBe(true);
+    });
+    test("detects 'booked' keyword", () => {
+      expect(SMSParser.isBankSMS("Rs.2000 booked on your HDFC credit card for hotel")).toBe(true);
+    });
+    test("detects 'deposited' keyword", () => {
+      expect(SMSParser.isBankSMS("Rs.10000 deposited to your savings a/c XX1234")).toBe(true);
+    });
+    test("detects 'autopay' keyword", () => {
+      expect(SMSParser.isBankSMS("Autopay of Rs.499 for Jio recharge is successful")).toBe(true);
+    });
+  });
+
+  // ─── Category Detection — Additional Merchants ───
+  describe("detectCategory — additional merchants", () => {
+    test("Transport: Rapido", () => {
+      expect(SMSParser.detectCategory("towards Rapido ride", "Rapido")).toBe("Transport");
+    });
+    test("Entertainment: Disney+", () => {
+      expect(SMSParser.detectCategory("Disney+ subscription", "Disney")).toBe("Entertainment");
+    });
+    test("Entertainment: Spotify", () => {
+      expect(SMSParser.detectCategory("to spotify@axl", "Spotify")).toBe("Entertainment");
+    });
+    test("Investment: Groww", () => {
+      expect(SMSParser.detectCategory("to Groww for SIP", "Groww")).toBe("Investment");
+    });
+    test("Groceries: DMart", () => {
+      expect(SMSParser.detectCategory("at DMart superstore", "DMart")).toBe("Groceries");
+    });
+    test("Health: Practo", () => {
+      expect(SMSParser.detectCategory("Practo consultation", "Practo")).toBe("Health");
+    });
+    test("Education: Udemy", () => {
+      expect(SMSParser.detectCategory("Udemy course purchase", "Udemy")).toBe("Education");
+    });
+    test("EMI & Loans: EMI deduction", () => {
+      expect(SMSParser.detectCategory("Home loan EMI deducted", "EMI")).toBe("EMI & Loans");
+    });
+    test("Shopping: Flipkart", () => {
+      expect(SMSParser.detectCategory("for Flipkart purchase", "Flipkart")).toBe("Shopping");
+    });
+    test("Food & Dining: Zomato", () => {
+      expect(SMSParser.detectCategory("IMPS to Zomato", "Zomato")).toBe("Food & Dining");
+    });
+  });
+
+  // ─── Account Number Extraction — Additional Patterns ───
+  describe("parse — account extraction extended", () => {
+    test("extracts from 'card ending in NNNN'", () => {
+      const sms =
+        "Chase: You made a $42.50 purchase with your debit card ending 9876 at Store on 01/04";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.account).toBe("XX9876");
+    });
+    test("extracts from 'Card ending in NNNN' with in", () => {
+      const sms =
+        "Wells Fargo: card ending in 3456 was charged $125.00 at Amazon.com on 01-04-26";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.account).toBe("XX3456");
+    });
+  });
+
+  // ─── Balance Extraction — Variants ───
+  describe("parse — balance extraction variants", () => {
+    test("extracts 'Balance:' format", () => {
+      const sms =
+        "INR 50,000.00 credited to your SBI a/c XX6672 on 01-04-26. Balance: Rs.68,350.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.balance).toBe(68350);
+    });
+    test("extracts 'Bal Rs.' format", () => {
+      const sms =
+        "You have done a UPI txn. Rs.89.00 debited from Kotak Bank A/c XX3310 on 03-04-26 to CHAI POINT@ybl. Bal Rs.9,911.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.balance).toBe(9911);
+    });
+  });
+
+  // ─── parseBatch — with timestamps ───
+  describe("parseBatch — with object format and timestamps", () => {
+    test("preserves sender and uses timestamp", () => {
+      const smsList = [
+        {
+          message:
+            "Rs.200.00 debited from a/c **4521 on 01-04-26 to VPA test@ybl -HDFC Bank. Avl bal Rs.5000.00",
+          sender: "HDFCBK",
+          timestamp: "2026-04-01",
+        },
+      ];
+      const results = SMSParser.parseBatch(smsList);
+      expect(results.length).toBe(1);
+      expect(results[0].sender).toBe("HDFCBK");
+      expect(results[0].date).toBe("2026-04-01");
+    });
+  });
+
+  // ─── Full Integration — Bank-Specific Formats ───
+  describe("parse — bank-specific template formats", () => {
+    test("ICICI acct debited format (acct before amount)", () => {
+      const sms =
+        "Your ICICI Bank Acct XX5566 has been debited with INR 3,200.00 on 01-04-26 for Electricity Bill. Ref No 888777666. Avl Bal INR 22,800.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(3200);
+      expect(txn.type).toBe("debit");
+      expect(txn.bank).toBe("ICICI Bank");
+      expect(txn.account).toBe("XX5566");
+    });
+
+    test("SBI credited format", () => {
+      const sms =
+        "Your SBI a/c XX6672 is credited by Rs.25000.00 on 01-04-26. NEFT from Employer. Bal: Rs.50000.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(25000);
+      expect(txn.type).toBe("credit");
+      expect(txn.bank).toBe("SBI");
+    });
+
+    test("Sent Rs UPI format (UPI debit via sent)", () => {
+      const sms =
+        "sent Rs.500.00 to Grocery Store via UPI on 01-04-26. Ref 123456. -HDFC Bank";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(500);
+      expect(txn.type).toBe("debit");
+    });
+
+    test("received Rs UPI credit", () => {
+      const sms =
+        "received Rs.2000.00 from Amit Kumar via UPI on 01-04-26. Ref 654321. -HDFC Bank. Bal Rs.12000.00";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(2000);
+      expect(txn.type).toBe("credit");
+    });
+
+    test("Money Sent! format", () => {
+      const sms =
+        "Money Sent! Rs.1500.00 sent to XYZ on 01-04-26 via HDFC Bank. Ref 111222";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(1500);
+      expect(txn.type).toBe("debit");
+    });
+
+    test("US card charged format", () => {
+      const sms =
+        "Your credit card ending in 4567 was charged $89.99 at Target on 04/05. -Chase";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(89.99);
+      expect(txn.type).toBe("debit");
+      expect(txn.currency).toBe("USD");
+    });
+
+    test("US deposit format", () => {
+      const sms =
+        "A deposit of $3,500.00 was made to your account ending 7890 on 04/01/2026. -Bank of America";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.amount).toBe(3500);
+      expect(txn.type).toBe("credit");
+    });
   });
 });

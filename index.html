@@ -282,6 +282,19 @@
           </div>
         </div>
         <div class="settings-group">
+          <div class="settings-group-title">AI Classification</div>
+          <div class="settings-item" id="settingAI">
+            <div class="settings-icon">🤖</div>
+            <div class="settings-info">
+              <div class="settings-label">AI Merchant Detection</div>
+              <div class="settings-desc" id="aiStatusDesc">
+                Disabled — tap to configure
+              </div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div class="settings-group">
           <div class="settings-group-title">Diagnostics</div>
           <div class="settings-item" id="settingErrorLogs">
             <div class="settings-icon">📝</div>
@@ -534,7 +547,15 @@
         <button
           type="button"
           class="btn-secondary"
-          style="margin-top: 16px"
+          style="margin-top: 16px; color: var(--blue, #3b82f6); border-color: var(--blue, #3b82f6)"
+          id="btnReclassifyAI"
+        >
+          🤖 Reclassify with AI
+        </button>
+        <button
+          type="button"
+          class="btn-secondary"
+          style="margin-top: 8px"
           id="btnToggleInvalid"
         >
           Mark as Non-Transaction
@@ -611,6 +632,71 @@
           class="btn-secondary"
           id="btnCloseShortcut"
         >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: AI Classification Settings ═══ -->
+    <div class="modal-overlay" id="modalAI">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-title">🤖 AI Merchant Detection</div>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+          Uses Google Gemini (free tier) to identify merchant names and categories
+          for transactions the regex parser couldn't classify.
+        </p>
+        <div class="form-group">
+          <label class="form-label">Enable AI Classification</label>
+          <label class="toggle-switch" style="margin-bottom: 12px;">
+            <input type="checkbox" id="aiToggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div id="aiKeySection" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">Gemini API Key</label>
+            <input
+              type="password"
+              class="form-input"
+              id="aiApiKey"
+              placeholder="AIza..."
+              autocomplete="off"
+            />
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              Get a free key at
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color: var(--accent);">
+                aistudio.google.com
+              </a>
+              — stored locally on your device only.
+            </p>
+          </div>
+          <button type="button" class="btn-primary" id="btnTestAI" style="margin-bottom: 8px; width: 100%;">
+            🔑 Test API Key
+          </button>
+          <button type="button" class="btn-primary" id="btnRunAI" style="margin-bottom: 8px; width: 100%;">
+            🚀 Classify Unknown Merchants
+          </button>
+          <div class="form-group" style="margin-top: 12px;">
+            <label class="form-label">Auto-classify after import</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="aiAutoToggle" />
+              <span class="toggle-slider"></span>
+            </label>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              Automatically run AI on new Unknown transactions after file import.
+            </p>
+          </div>
+          <div id="aiProgress" style="display: none; margin-bottom: 8px;">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;" id="aiProgressText">
+              Processing...
+            </div>
+            <div style="background: var(--border); border-radius: 4px; height: 6px; overflow: hidden;">
+              <div id="aiProgressBar" style="background: var(--accent, #007AFF); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" id="btnCloseAI" style="margin-top: 8px;">
           Close
         </button>
       </div>
