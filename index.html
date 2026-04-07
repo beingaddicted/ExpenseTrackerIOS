@@ -577,7 +577,7 @@
       </div>
     </div>
 
-    <!-- ═══ Modal: Shortcut Instructions (Local File) ═══ -->
+    <!-- ═══ Modal: Shortcut Instructions — redirects to full setup page ═══ -->
     <div class="modal-overlay" id="modalShortcut">
       <div class="modal">
         <div class="modal-handle"></div>
@@ -589,116 +589,27 @@
             margin-bottom: 16px;
           "
         >
-          This Shortcut auto-saves every bank SMS to a JSON file in your
-          <strong>Files</strong> app. Then open this app and tap 📂 to load that
-          file.
+          Follow the full step-by-step guide to set up the iOS Shortcut that
+          exports your bank SMS automatically.
         </p>
-        <div class="shortcut-info">
-          <div class="shortcut-step">
-            <div class="step-num">1</div>
-            <div class="step-text">
-              Open <strong>Shortcuts</strong> app →
-              <strong>Automation</strong> tab → <strong>＋</strong> →
-              <strong>Create Personal Automation</strong>
-            </div>
-          </div>
-          <div class="shortcut-step">
-            <div class="step-num">2</div>
-            <div class="step-text">
-              Choose <strong>Message</strong> →
-              <strong>Sender Contains</strong> → add your bank IDs:<br /><em
-                >HDFCBK, ICICIB, SBIBNK, AXISBK, KOTAKB, PNBSMS, YESBK</em
-              >
-            </div>
-          </div>
-          <div class="shortcut-step">
-            <div class="step-num">3</div>
-            <div class="step-text">
-              Add these actions in order (see code block below)
-            </div>
-          </div>
-          <div class="shortcut-step">
-            <div class="step-num">4</div>
-            <div class="step-text">
-              Turn <strong>OFF</strong> "Ask Before Running" → Done!
-            </div>
-          </div>
-          <div class="shortcut-step">
-            <div class="step-num">5</div>
-            <div class="step-text">
-              Open this app anytime → tap <strong>📂</strong> → pick
-              <strong>bank_sms.json</strong> from Files
-            </div>
-          </div>
-        </div>
-
-        <p
-          style="
-            font-size: 12px;
-            color: var(--accent-light);
-            margin: 12px 0 4px;
-            font-weight: 600;
-          "
-        >
-          Shortcut Actions:
-        </p>
-        <div class="code-block">
-          Action 1: Text ───────────────────────── {"message":"[Shortcut
-          Input]","sender":"[Sender]","timestamp":"[Current Date]"} Action 2:
-          Get File ───────────────────────── File: Shortcuts/bank_sms.json (If
-          Not Found → skip to Action 5) Action 3: Get Text from [File]
-          ───────────────────────── Action 4: Text ─────────────────────────
-          (Check if file was empty or had content) If old text starts with
-          {"messages": → Replace closing ]} with: ,{new entry}]} Else → go to
-          Action 5 Action 5 (first time / fallback): Text
-          ───────────────────────── {"messages":[{entry from Action 1}]} Action
-          6: Save File ───────────────────────── Save to:
-          Shortcuts/bank_sms.json (Ask Where: OFF, Overwrite: ON)
-        </div>
-
-        <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px">
-          <strong>Simpler alternative:</strong> Use a Shortcut that just appends
-          each SMS as a new line to a <strong>.txt</strong> file. This app can
-          also parse plain-text files with one SMS per line.
-        </p>
-        <div class="code-block">
-          Simple version (append text): ───────────────────────── Action 1:
-          Append Text Text: [Shortcut Input] File: Shortcuts/bank_sms.txt Make
-          New Line: ON Then load the .txt file in this app → 📂
-        </div>
-
-        <div
+        <a
+          href="install-shortcut.html"
+          class="btn-primary"
           style="
             display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 16px;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            text-decoration: none;
+            margin-bottom: 12px;
           "
         >
-          <a
-            href="install-shortcut.html"
-            class="btn-primary"
-            style="
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              gap: 6px;
-              text-decoration: none;
-            "
-          >
-            📋 Full Setup Guide (Step-by-Step)
-          </a>
-        </div>
-
-        <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px">
-          <strong>Tip:</strong> The app auto-deduplicates, so loading the same
-          file twice won't create duplicates.
-        </p>
+          📋 Open Full Setup Guide
+        </a>
         <button
           type="button"
           class="btn-secondary"
           id="btnCloseShortcut"
-          style="margin-top: 12px"
         >
           Close
         </button>
