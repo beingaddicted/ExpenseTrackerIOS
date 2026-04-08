@@ -54,7 +54,7 @@ const KEYWORDS = [
 const MONEY_RE = /(?:rs\.?\s*|inr\s*|rupees\s*)\d|(?:\d+\.\d{2})/i;
 
 // Spam / promo filter — skip messages matching these even if they have keywords + money
-const SPAM_RE = /\b(?:congratulations|win\s|won\s|lottery|jackpot|prize|claim\s|free\s|offer\s|scheme|guaranteed|nominee|payout|pre.?approved\s+loan|pre.?approved\s+credit|personal\s*loan|top.?up|balance\s*transfer|limited\s+period|exclusive\s+deal|apply\s+now|click\s+here|bit\.ly|tinyurl|act\s+now|hurry|last\s+day|passbook\s+balance|statement\s+for.*card.*(?:generated|due)|statement\s+is\s+sent|one\s+time\s+payment\s+mandate)\b/i;
+const SPAM_RE = /\b(?:congratulations|win\s|won\s|lottery|jackpot|prize|claim\s|free\s|offer\s|scheme|guaranteed|nominee|payout|pre.?approved|personal\s*loan|top.?up|balance\s*transfer|limited\s+period|exclusive\s+deal|apply\s+now|click\s+here|bit\.ly|tinyurl|act\s+now|hurry|last\s+day|passbook\s+balance|statement\s+for.*card.*(?:generated|due)|statement\s+is\s+sent|one\s+time\s+payment\s+mandate|credit\s+facility|loan\s+on\s+credit\s+card)\b/i;
 
 // Note: iOS Shortcuts does not expose SMS sender — filtering is keyword + money only.
 
@@ -188,11 +188,13 @@ try {
   if (isInit) {
     // Read lastCompleted from the JSON file (or default)
     let val = null;
+    let startCount = 0;
     const initRaw = await read(SMS_FILE);
     if (initRaw) {
       try {
         const initData = JSON.parse(initRaw);
         val = initData.lastCompleted || null;
+        startCount = Array.isArray(initData.messages) ? initData.messages.length : 0;
       } catch (_) {}
     }
     let lastCompleted;
@@ -202,8 +204,8 @@ try {
     } else {
       lastCompleted = new Date(DEFAULT_START + "T00:00:00");
       lastCompleted.setDate(lastCompleted.getDate() - 1);
-      // Bootstrap the JSON file with lastCompleted
-      fm.writeString(SMS_FILE, JSON.stringify({ lastCompleted: fmt(lastCompleted), messages: [] }, null, 0));
+      // Bootstrap the JSON file with lastCompleted and runStartCount
+      fm.writeString(SMS_FILE, JSON.stringify({ lastCompleted: fmt(lastCompleted), runStartCount: 0, messages: [] }, null, 0));
     }
 
     const today = new Date();
@@ -219,8 +221,18 @@ try {
     const safeDays = Math.max(days + 1, 2);
 
     if (DEBUG) {
-      debugAppend(`INIT: tracker val="${val}", lastCompleted=${lastCompleted.toISOString()}, today=${today.toISOString()}, days=${days}, safeDays=${safeDays}`);
+      debugAppend(`INIT: tracker val="${val}", lastCompleted=${lastCompleted.toISOString()}, today=${today.toISOString()}, days=${days}, safeDays=${safeDays}, startCount=${startCount}`);
     }
+
+    // Save runStartCount so the final SAVE can compute delta
+    try {
+      const curRaw = await read(SMS_FILE);
+      if (curRaw) {
+        const curData = JSON.parse(curRaw);
+        curData.runStartCount = startCount;
+        fm.writeString(SMS_FILE, JSON.stringify(curData, null, 0));
+      }
+    } catch (_) {}
 
     Script.setShortcutOutput(String(safeDays));
 
@@ -365,7 +377,28 @@ try {
       );
     }
 
-    Script.setShortcutOutput("OK");
+    // Report total count when tracker reaches today (final iteration)
+    let totalMsgs = 0;
+    let runStartCount = 0;
+    try {
+      const finalRaw = await read(SMS_FILE);
+      if (finalRaw) {
+        const finalData = JSON.parse(finalRaw);
+        totalMsgs = Array.isArray(finalData.messages) ? finalData.messages.length : 0;
+        runStartCount = finalData.runStartCount || 0;
+      }
+    } catch (_) {}
+
+    if (trackerDate >= today) {
+      const delta = totalMsgs - runStartCount;
+      const n = new Notification();
+      n.title = "Bank SMS Export Done";
+      n.body = delta + " new SMS extracted (" + totalMsgs + " total) up to " + dateStr;
+      n.schedule();
+      Script.setShortcutOutput("Done! " + delta + " new SMS extracted up to " + dateStr);
+    } else {
+      Script.setShortcutOutput("OK");
+    }
   }
 } catch (err) {
   if (DEBUG) {
