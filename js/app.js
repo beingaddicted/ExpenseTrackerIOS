@@ -48,7 +48,7 @@ const App = (() => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 4096, responseMimeType: "application/json" },
+            generationConfig: { temperature: 0.1, maxOutputTokens: 16384, responseMimeType: "application/json" },
           }),
           signal,
         });
@@ -57,6 +57,11 @@ const App = (() => {
           throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
         }
         const data = await res.json();
+        const finishReason = data?.candidates?.[0]?.finishReason;
+        if (finishReason && finishReason !== "STOP") {
+          console.warn(`[AI] Gemini finishReason: ${finishReason}`);
+          ErrorLogger.log("ai_gemini_truncated", { finishReason, model });
+        }
         return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
       },
     },
@@ -88,7 +93,7 @@ const App = (() => {
             model,
             messages: [{ role: "user", content: prompt }],
             temperature: 0.1,
-            max_tokens: 4096,
+            max_tokens: 16384,
             response_format: { type: "json_object" },
           }),
           signal,
@@ -130,7 +135,7 @@ const App = (() => {
             model,
             messages: [{ role: "user", content: prompt }],
             temperature: 0.1,
-            max_tokens: 4096,
+            max_tokens: 16384,
           }),
           signal,
         });
@@ -171,7 +176,7 @@ const App = (() => {
             model,
             messages: [{ role: "user", content: prompt }],
             temperature: 0.1,
-            max_tokens: 4096,
+            max_tokens: 16384,
             response_format: { type: "json_object" },
           }),
           signal,
@@ -1989,6 +1994,24 @@ const App = (() => {
     }
 
     if (!parsed) {
+      // Try to salvage truncated JSON — extract all complete objects
+      const objectPattern = /\{[^{}]*"merchant"\s*:\s*"[^"]*"[^{}]*\}/g;
+      const salvaged = [];
+      let objMatch;
+      while ((objMatch = objectPattern.exec(cleaned)) !== null) {
+        try {
+          const obj = JSON.parse(objMatch[0]);
+          if (obj.merchant || obj.category || obj.invalid !== undefined) {
+            salvaged.push(obj);
+          }
+        } catch { /* skip malformed */ }
+      }
+      if (salvaged.length > 0) {
+        console.log(`[AI] parseAIBatchResponse: salvaged ${salvaged.length} items from truncated response`);
+        ErrorLogger.log("ai_parse_salvaged", { count: salvaged.length, rawLen: cleaned.length });
+        return salvaged;
+      }
+
       console.error("[AI] parseAIBatchResponse: could not parse response", cleaned.substring(0, 500));
       ErrorLogger.log("ai_parse_fail", { raw: cleaned.substring(0, 500) });
       return [];
@@ -2527,6 +2550,51 @@ ${footer}`;
     if (btn) btn.style.display = show ? "block" : "none";
   }
 
+  // Call AI for a batch of SMS, auto-retry with smaller batches on truncation
+  async function callAIBatch(batch, fn) {
+    const MIN_BATCH = 5;
+    let currentBatch = batch;
+    let currentSize = batch.length;
+
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const smsList = currentBatch
+        .map((t, i) => `${i + 1}. ${(t.originalSms || t.rawSMS || "").substring(0, 200)}`)
+        .join("\n");
+      const prompt = buildAIPrompt({ mode: "batch", smsContent: smsList });
+
+      ErrorLogger.log("ai_batch_call", { fn, attempt, smsCount: currentBatch.length, promptLen: prompt.length });
+      const raw = await callAI(prompt);
+      ErrorLogger.log("ai_batch_response", { fn, attempt, rawLen: (raw || "").length, rawPreview: (raw || "").substring(0, 200) });
+
+      const results = parseAIBatchResponse(raw);
+      ErrorLogger.log("ai_batch_parsed", { fn, attempt, sent: currentBatch.length, got: results.length });
+
+      // Good result: got at least half the items back
+      if (results.length >= currentBatch.length * 0.5) {
+        return { results, processedBatch: currentBatch };
+      }
+
+      // Truncation detected — reduce batch size by half
+      const newSize = Math.max(MIN_BATCH, Math.floor(currentSize / 2));
+      if (newSize >= currentSize) {
+        // Can't reduce further, return what we have
+        ErrorLogger.log("ai_batch_min_size", { fn, size: currentSize, got: results.length });
+        return { results, processedBatch: currentBatch };
+      }
+
+      console.warn(`[AI] Truncation detected (sent ${currentBatch.length}, got ${results.length}). Reducing batch to ${newSize} and retrying…`);
+      ErrorLogger.log("ai_batch_truncated_retry", { fn, attempt, sent: currentBatch.length, got: results.length, newSize });
+      showToast(`AI response truncated — retrying with batch size ${newSize}…`, "info");
+
+      currentBatch = batch.slice(0, newSize);
+      currentSize = newSize;
+    }
+
+    // Exhausted retries, return empty
+    ErrorLogger.log("ai_batch_retry_exhausted", { fn, finalSize: currentSize });
+    return { results: [], processedBatch: currentBatch };
+  }
+
   async function runAIClassification() {
     const cfg = getAIConfig();
     if (!cfg.enabled || !cfg.apiKeys?.length) {
@@ -2570,33 +2638,22 @@ ${footer}`;
 
       const batch = batches[b];
       const pct = Math.round(((b + 1) / batches.length) * 100);
-      progressText.textContent = `Batch ${b + 1}/${batches.length} · ${unknowns.length} total · batch size ${BATCH_SIZE}`;
+      progressText.textContent = `Batch ${b + 1}/${batches.length} · ${unknowns.length} total · batch size ${batch.length}`;
       progressBar.style.width = pct + "%";
 
-      const smsList = batch
-        .map((t, i) => `${i + 1}. ${(t.originalSms || t.rawSMS || "").substring(0, 200)}`)
-        .join("\n");
-
-      const prompt = buildAIPrompt({ mode: "batch", smsContent: smsList });
-
       try {
-        ErrorLogger.log("ai_batch_call", { fn: "classify", batch: b + 1, smsCount: batch.length, promptLen: prompt.length });
-        const raw = await callAI(prompt);
+        const { results, processedBatch } = await callAIBatch(batch, "classify");
         consecutiveErrors = 0;
-        ErrorLogger.log("ai_batch_response", { fn: "classify", batch: b + 1, rawLen: (raw || "").length, rawPreview: (raw || "").substring(0, 200) });
-        const results = parseAIBatchResponse(raw);
-        console.log(`[AI] Batch ${b + 1}: sent ${batch.length} SMS, got ${results.length} results`);
-        ErrorLogger.log("ai_batch_parsed", { fn: "classify", batch: b + 1, sent: batch.length, got: results.length });
+        console.log(`[AI] Batch ${b + 1}: sent ${processedBatch.length} SMS, got ${results.length} results`);
         if (results.length === 0) {
-          console.warn("[AI] Raw response (first 500 chars):", (raw || "").substring(0, 500));
-          ErrorLogger.log("ai_batch_zero_results", { fn: "classify", batch: b + 1, rawFull: (raw || "").substring(0, 1000) });
+          ErrorLogger.log("ai_batch_zero_results", { fn: "classify", batch: b + 1 });
         }
         const matched = new Set();
         results.forEach((r) => {
           const idx = (r.i || r.index || 0) - 1;
-          if (idx >= 0 && idx < batch.length) {
+          if (idx >= 0 && idx < processedBatch.length) {
             matched.add(idx);
-            const txn = batch[idx];
+            const txn = processedBatch[idx];
             if (r.invalid === true) {
               txn.invalid = true;
               txn.aiClassified = true;
@@ -2617,9 +2674,14 @@ ${footer}`;
           }
         });
         if (results.length > 0) {
-          batch.forEach((txn, i) => {
+          processedBatch.forEach((txn, i) => {
             if (!matched.has(i) && !txn.aiClassified) txn.aiFailed = true;
           });
+        }
+        // If batch was reduced due to truncation, re-queue remaining items
+        if (processedBatch.length < batch.length) {
+          const remaining = batch.slice(processedBatch.length);
+          batches.splice(b + 1, 0, remaining);
         }
       } catch (err) {
         errors++;
@@ -2697,28 +2759,20 @@ ${footer}`;
 
       const batch = batches[b];
       const pct = Math.round(((b + 1) / batches.length) * 100);
-      progressText.textContent = `Batch ${b + 1}/${batches.length} · ${targets.length} total · batch size ${BATCH_SIZE}`;
+      progressText.textContent = `Batch ${b + 1}/${batches.length} · ${targets.length} total · batch size ${batch.length}`;
       progressBar.style.width = pct + "%";
 
-      const smsList = batch
-        .map((t, i) => `${i + 1}. ${(t.originalSms || t.rawSMS || "").substring(0, 200)}`)
-        .join("\n");
-
-      const prompt = buildAIPrompt({ mode: "batch", smsContent: smsList });
-
       try {
-        const raw = await callAI(prompt);
+        const { results, processedBatch } = await callAIBatch(batch, "reclassify");
         consecutiveErrors = 0;
-        const results = parseAIBatchResponse(raw);
-        console.log(`[AI Reclassify] Batch ${b + 1}: sent ${batch.length} SMS, got ${results.length} results`);
+        console.log(`[AI Reclassify] Batch ${b + 1}: sent ${processedBatch.length} SMS, got ${results.length} results`);
         if (results.length === 0) {
-          console.warn("[AI Reclassify] Raw response (first 500 chars):", (raw || "").substring(0, 500));
-          ErrorLogger.log("ai_batch_zero_results", { fn: "reclassifyAll", batch: b + 1, rawPreview: (raw || "").substring(0, 300) });
+          ErrorLogger.log("ai_batch_zero_results", { fn: "reclassifyAll", batch: b + 1 });
         }
         results.forEach((r) => {
           const idx = (r.i || r.index || 0) - 1;
-          if (idx >= 0 && idx < batch.length) {
-            const txn = batch[idx];
+          if (idx >= 0 && idx < processedBatch.length) {
+            const txn = processedBatch[idx];
             txn.aiReclassified = true;
             if (r.invalid === true) {
               txn.invalid = true;
@@ -2737,9 +2791,14 @@ ${footer}`;
           }
         });
         if (results.length > 0) {
-          batch.forEach((txn) => {
+          processedBatch.forEach((txn) => {
             if (!txn.aiReclassified) txn.aiReclassified = true;
           });
+        }
+        // If batch was reduced due to truncation, re-queue remaining items
+        if (processedBatch.length < batch.length) {
+          const remaining = batch.slice(processedBatch.length);
+          batches.splice(b + 1, 0, remaining);
         }
       } catch (err) {
         errors++;
@@ -2823,28 +2882,17 @@ ${footer}`;
       progressText.textContent = `${monthName} · Batch ${b + 1}/${batches.length} · ${targets.length} total`;
       progressBar.style.width = pct + "%";
 
-      const smsList = batch
-        .map((t, i) => `${i + 1}. ${(t.originalSms || t.rawSMS || "").substring(0, 200)}`)
-        .join("\n");
-
-      const prompt = buildAIPrompt({ mode: "batch", smsContent: smsList });
-
       try {
-        ErrorLogger.log("ai_batch_call", { fn: "month", batch: b + 1, smsCount: batch.length, promptLen: prompt.length });
-        const raw = await callAI(prompt);
+        const { results, processedBatch } = await callAIBatch(batch, "month");
         consecutiveErrors = 0;
-        ErrorLogger.log("ai_batch_response", { fn: "month", batch: b + 1, rawLen: (raw || "").length, rawPreview: (raw || "").substring(0, 200) });
-        const results = parseAIBatchResponse(raw);
-        console.log(`[AI Month] Batch ${b + 1}: sent ${batch.length} SMS, got ${results.length} results`);
-        ErrorLogger.log("ai_batch_parsed", { fn: "month", batch: b + 1, sent: batch.length, got: results.length });
+        console.log(`[AI Month] Batch ${b + 1}: sent ${processedBatch.length} SMS, got ${results.length} results`);
         if (results.length === 0) {
-          console.warn("[AI Month] Raw response (first 500 chars):", (raw || "").substring(0, 500));
-          ErrorLogger.log("ai_batch_zero_results", { fn: "month", batch: b + 1, rawFull: (raw || "").substring(0, 1000) });
+          ErrorLogger.log("ai_batch_zero_results", { fn: "month", batch: b + 1 });
         }
         results.forEach((r) => {
           const idx = (r.i || r.index || 0) - 1;
-          if (idx >= 0 && idx < batch.length) {
-            const txn = batch[idx];
+          if (idx >= 0 && idx < processedBatch.length) {
+            const txn = processedBatch[idx];
             txn.aiReclassified = true;
             if (r.invalid === true) {
               txn.invalid = true;
@@ -2863,9 +2911,14 @@ ${footer}`;
           }
         });
         if (results.length > 0) {
-          batch.forEach((txn) => {
+          processedBatch.forEach((txn) => {
             if (!txn.aiReclassified) txn.aiReclassified = true;
           });
+        }
+        // If batch was reduced due to truncation, re-queue remaining items
+        if (processedBatch.length < batch.length) {
+          const remaining = batch.slice(processedBatch.length);
+          batches.splice(b + 1, 0, remaining);
         }
       } catch (err) {
         errors++;
