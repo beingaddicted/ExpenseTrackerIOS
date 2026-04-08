@@ -198,7 +198,8 @@ try {
 
     // Add 1 extra day of overlap so nightly automation never misses entries.
     // The SAVE phase's cross-day dedup (PREV_BATCH) filters out any duplicates.
-    const safeDays = days > 0 ? days + 1 : days;
+    // Always return at least 1 so re-running the shortcut same day still processes today.
+    const safeDays = days > 0 ? days + 1 : 1;
 
     Script.setShortcutOutput(String(safeDays));
 
@@ -207,6 +208,14 @@ try {
     const trackerStr = await read(TRACKER);
     const trackerDate = new Date(trackerStr + "T00:00:00");
     trackerDate.setDate(trackerDate.getDate() + 1);
+
+    // Clamp to today — never advance tracker past the current date
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (trackerDate > today) {
+      trackerDate.setTime(today.getTime());
+    }
+
     const dateStr = fmt(trackerDate);
 
     if (input.length > 0) {
@@ -295,8 +304,6 @@ try {
     fm.writeString(TRACKER, dateStr);
 
     // Notify when done
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     if (trackerDate >= today) {
       const n = new Notification();
       n.title = "Bank SMS Export Done";

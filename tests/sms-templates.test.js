@@ -362,13 +362,27 @@ describe("SMSTemplates", () => {
   });
 
   describe("hdfc_credit_alert", () => {
-    test("matches credit alert", () => {
-      const sms = "HDFC Bank: Rs 5000.00 credited to a/c **1234 on 01-04-26";
+    test("matches credit alert with VPA", () => {
+      const sms = "Credit Alert! Rs.40000.00 credited to HDFC Bank A/c XX7782 on 31-03-26 from VPA rajeshmandal360@okaxis (UPI 609092656493)";
       const r = SMSTemplates.tryMatch(sms);
       expect(r).not.toBeNull();
       expect(r._template).toBe("hdfc_credit_alert");
-      expect(r.amount).toBe(5000);
+      expect(r.amount).toBe(40000);
       expect(r.type).toBe("credit");
+      expect(r.bank).toBe("HDFC Bank");
+      expect(r.account).toBe("XX7782");
+      expect(r.merchant).toBe("Rajeshmandal360");
+      expect(r.mode).toBe("UPI");
+      expect(r.date).toBe("2026-03-31");
+    });
+
+    test("matches credit alert without VPA", () => {
+      const sms = "Credit Alert! Rs.1500.00 credited to HDFC Bank A/c XX7782 on 02-03-26";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("hdfc_credit_alert");
+      expect(r.amount).toBe(1500);
+      expect(r.merchant).toBe("Unknown");
     });
   });
 
@@ -635,19 +649,180 @@ describe("SMSTemplates", () => {
     });
   });
 
+  // ═══ HDFC UPI Sent (no pipe - real iOS format) ═══
+  describe("hdfc_upi_sent (no pipe)", () => {
+    test("matches HDFC UPI Sent without pipe delimiters", () => {
+      const sms = "Sent Rs.45.00 From HDFC Bank A/C *7782 To HARISH CHAND GUPTA On 07/04/26 Ref 646358731281 Not You? Call 18002586161/SMS BLOCK UPI to 7308080808";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("hdfc_upi_sent");
+      expect(r.amount).toBe(45);
+      expect(r.type).toBe("debit");
+      expect(r.bank).toBe("HDFC Bank");
+      expect(r.account).toBe("XX7782");
+      expect(r.merchant).toBe("Harish Chand Gupta");
+      expect(r.mode).toBe("UPI");
+      expect(r.date).toBe("2026-04-07");
+      expect(r.refNumber).toBe("646358731281");
+    });
+
+    test("matches with multi-word merchant", () => {
+      const sms = "Sent Rs.20.00 From HDFC Bank A/C *7782 To MARKET PLACE DELOITTE On 07/04/26 Ref 646303300778 Not You? Call 18002586161/SMS BLOCK UPI to 7308080808";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("hdfc_upi_sent");
+      expect(r.merchant).toBe("Market Place Deloitte");
+    });
+  });
+
+  // ═══ HDFC NEFT Deposit ═══
+  describe("hdfc_neft_deposit", () => {
+    test("matches NEFT deposit", () => {
+      const sms = "Update! INR 6,589.34 deposited in HDFC Bank A/c XX7782 on 20-MAR-26 for NEFT Cr-RBIS0MBPA04-Sovereign Gold Bonds Interest-RAJESH MANDAL-U000000999805592.Avl bal INR 32,084.59.";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("hdfc_neft_deposit");
+      expect(r.amount).toBe(6589.34);
+      expect(r.type).toBe("credit");
+      expect(r.mode).toBe("NEFT");
+    });
+  });
+
+  // ═══ Axis UPI Debit (no pipe) ═══
+  describe("axis_upi_debit (no pipe)", () => {
+    test("matches Axis UPI debit without pipes", () => {
+      const sms = "INR 220.00 debited A/c no. XX2912 01-04-26, 14:02:06 UPI/P2M/645716747242/A1 MOBILES Not you? SMS BLOCKUPI Cust ID to 919951860002 Axis Bank";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("axis_upi_debit");
+      expect(r.amount).toBe(220);
+      expect(r.merchant).toBe("A1 Mobiles");
+    });
+  });
+
+  // ═══ Axis Card Spent ═══
+  describe("axis_card_spent", () => {
+    test("matches Axis card spend", () => {
+      const sms = "Spent INR 5535 Axis Bank Card no. XX1132 30-03-26 12:56:52 IST Flipkart Avl Limit: INR 862465 Not you? SMS BLOCK 1132 to 919951860002";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("axis_card_spent");
+      expect(r.amount).toBe(5535);
+      expect(r.bank).toBe("Axis Bank");
+      expect(r.merchant).toBe("Flipkart");
+      expect(r.mode).toBe("Credit Card");
+      expect(r.date).toBe("2026-03-30");
+    });
+
+    test("matches PYU* prefixed merchant", () => {
+      const sms = "Spent INR 317 Axis Bank Card no. XX5081 09-03-26 22:50:43 IST PYU*Swiggy Avl Limit: INR 866028 Not you? SMS BLOCK 5081 to 919951860002";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("axis_card_spent");
+      expect(r.amount).toBe(317);
+    });
+  });
+
+  // ═══ Axis CC Payment ═══
+  describe("axis_cc_payment", () => {
+    test("matches Axis CC payment received", () => {
+      const sms = "Payment of INR 1655 has been received towards your Axis Bank Credit Card XX5081 on 19-03-26 - Axis Bank";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("axis_cc_payment");
+      expect(r.amount).toBe(1655);
+      expect(r.type).toBe("credit");
+      expect(r.bank).toBe("Axis Bank");
+    });
+  });
+
+  // ═══ Citi Card Spent ═══
+  describe("citi_card_spent", () => {
+    test("matches Citi card spent", () => {
+      const sms = "Rs. 490.00 spent on card 1132 on 08-JUL-24 at BOMBAY HOSPITAL TRUS. Limit available=Rs. 632,510.00.If not done by you, click www.citi.asia/DIS?cn=1132";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("citi_card_spent");
+      expect(r.amount).toBe(490);
+      expect(r.bank).toBe("Citibank");
+      expect(r.account).toBe("XX1132");
+      expect(r.merchant).toBe("Bombay Hospital Trus");
+      expect(r.mode).toBe("Credit Card");
+      expect(r.date).toBe("2024-07-08");
+    });
+  });
+
+  // ═══ AMEX Corp Card ═══
+  describe("amex_spent (Corp Card)", () => {
+    test("matches AMEX Corp Card spend", () => {
+      const sms = "Alert: You've spent INR 15,799.00 on your AMEX Corp Card ** 31009 at PAYU RETAIL  on 1 April 2026 at 05:28 PM IST. Call 18004190691 if this was not made by you.";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("amex_spent");
+      expect(r.amount).toBe(15799);
+      expect(r.bank).toBe("American Express");
+      expect(r.merchant).toBe("Payu Retail");
+      expect(r.date).toBe("2026-04-01");
+    });
+  });
+
+  // ═══ Canara Bank ═══
+  describe("canara_debit", () => {
+    test("matches Canara debit SMS", () => {
+      const sms = "From : VM-CANBNK-S() An amount of INR 1,56,628.00 has been DEBITED to your account XXXXX07104 on 07/04/2026. Total Avail.bal INR 20,67,582.62. - Canara Bank";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("canara_debit");
+      expect(r.amount).toBe(156628);
+      expect(r.bank).toBe("Canara Bank");
+      expect(r.date).toBe("2026-04-07");
+    });
+  });
+
+  // ═══ DBS Fresh Funds ═══
+  describe("dbs_fresh_funds", () => {
+    test("matches DBS fresh funds credit", () => {
+      const sms = "You've got fresh funds! Your account ending with ********4637 has been credited with Rs. 160000. Updated account balance is Rs. 617094.21";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("dbs_fresh_funds");
+      expect(r.amount).toBe(160000);
+      expect(r.type).toBe("credit");
+      expect(r.bank).toBe("DBS Bank");
+      expect(r.account).toBe("XX4637");
+      expect(r.balance).toBe(617094.21);
+    });
+  });
+
+  // ═══ DBS ATM ═══
+  describe("dbs_atm", () => {
+    test("matches DBS ATM withdrawal", () => {
+      const sms = "INR 5,000.00 withdrawn via card 6952 on 31/01/26. Avl Bal: INR 344,672.27. If not you SMS HOTLIST 6952 to 7065154444. For Non-DBS ATM usage fee go.dbs.bank.in/ratesfees - DBS BANK";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("dbs_atm");
+      expect(r.amount).toBe(5000);
+      expect(r.type).toBe("debit");
+      expect(r.mode).toBe("ATM");
+      expect(r.merchant).toBe("ATM Withdrawal");
+      expect(r.balance).toBe(344672.27);
+    });
+  });
+
   // ═══ Template count ═══
   describe("template registry", () => {
     test("has all expected templates registered", () => {
       const ids = SMSTemplates.getTemplates();
-      // Total should be 45+ templates
-      expect(ids.length).toBeGreaterThanOrEqual(40);
+      expect(ids.length).toBeGreaterThanOrEqual(45);
       // Spot-check some bank coverage
       expect(ids.filter(id => id.startsWith("hdfc_")).length).toBeGreaterThanOrEqual(5);
       expect(ids.filter(id => id.startsWith("icici_")).length).toBeGreaterThanOrEqual(3);
       expect(ids.filter(id => id.startsWith("sbi_")).length).toBeGreaterThanOrEqual(3);
-      expect(ids.filter(id => id.startsWith("axis_")).length).toBeGreaterThanOrEqual(2);
-      expect(ids.filter(id => id.startsWith("dbs_")).length).toBeGreaterThanOrEqual(4);
+      expect(ids.filter(id => id.startsWith("axis_")).length).toBeGreaterThanOrEqual(4);
+      expect(ids.filter(id => id.startsWith("dbs_")).length).toBeGreaterThanOrEqual(6);
       expect(ids.filter(id => id.startsWith("kotak_")).length).toBeGreaterThanOrEqual(2);
+      expect(ids.filter(id => id.startsWith("citi_")).length).toBeGreaterThanOrEqual(2);
+      expect(ids.filter(id => id.startsWith("canara_")).length).toBeGreaterThanOrEqual(2);
     });
   });
 });

@@ -947,7 +947,7 @@ describe("SMSParser", () => {
       expect(txn.type).toBe("debit");
       expect(txn.bank).toBe("HDFC Bank");
       expect(txn.date).toBe("2026-04-05");
-      expect(txn.merchant).toBe("POORNIMA D/O VINAY DEV SH");
+      expect(txn.merchant).toBe("Poornima D/O Vinay Dev Sh");
       expect(txn.refNumber).toBe("646127679643");
       expect(txn.account).toBe("XX7782");
       expect(txn.mode).toBe("UPI");
@@ -969,7 +969,7 @@ describe("SMSParser", () => {
       const txn = SMSParser.parse(sms);
       expect(txn).not.toBeNull();
       expect(txn.amount).toBe(250);
-      expect(txn.merchant).toBe("CHAI POINT");
+      expect(txn.merchant).toBe("Chai Point");
       expect(txn.refNumber).toBe("123456789012");
     });
   });

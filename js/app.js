@@ -41,7 +41,7 @@ const App = (() => {
           }))
           .sort((a, b) => b.contextWindow - a.contextWindow);
       },
-      async call(key, model, prompt) {
+      async call(key, model, prompt, signal) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
         const res = await fetch(url, {
           method: "POST",
@@ -50,6 +50,7 @@ const App = (() => {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.1, maxOutputTokens: 4096, responseMimeType: "application/json" },
           }),
+          signal,
         });
         if (!res.ok) {
           const errBody = await res.text();
@@ -79,7 +80,7 @@ const App = (() => {
           }))
           .sort((a, b) => b.contextWindow - a.contextWindow);
       },
-      async call(key, model, prompt) {
+      async call(key, model, prompt, signal) {
         const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
@@ -90,6 +91,7 @@ const App = (() => {
             max_tokens: 4096,
             response_format: { type: "json_object" },
           }),
+          signal,
         });
         if (!res.ok) {
           const errBody = await res.text();
@@ -120,7 +122,7 @@ const App = (() => {
           .sort((a, b) => b.contextWindow - a.contextWindow)
           .slice(0, 100); // limit list size
       },
-      async call(key, model, prompt) {
+      async call(key, model, prompt, signal) {
         const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
@@ -130,6 +132,7 @@ const App = (() => {
             temperature: 0.1,
             max_tokens: 4096,
           }),
+          signal,
         });
         if (!res.ok) {
           const errBody = await res.text();
@@ -160,7 +163,7 @@ const App = (() => {
           }))
           .sort((a, b) => b.contextWindow - a.contextWindow);
       },
-      async call(key, model, prompt) {
+      async call(key, model, prompt, signal) {
         const res = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
@@ -171,6 +174,7 @@ const App = (() => {
             max_tokens: 4096,
             response_format: { type: "json_object" },
           }),
+          signal,
         });
         if (!res.ok) {
           const errBody = await res.text();
@@ -2481,12 +2485,25 @@ ${footer}`;
       if (!provider) continue;
 
       const model = entry.model || provider.defaultModel;
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 60000);
       try {
-        const result = await provider.call(entry.key, model, prompt);
+        const result = await provider.call(entry.key, model, prompt, ac.signal);
+        clearTimeout(timer);
         state.errorCount = 0;
         state.lastError = null;
         return result;
       } catch (err) {
+        clearTimeout(timer);
+        if (err.name === "AbortError") {
+          const timeoutErr = Object.assign(new Error(`Timeout (60s) — ${provider.name}`), { status: 408 });
+          markKeyError(entry.key, 408, timeoutErr.message);
+          ErrorLogger.log("ai_call_error", { provider: provider.name, model, status: 408, message: timeoutErr.message });
+          console.warn(`[AI] ${provider.name} timed out (60s), trying next key…`);
+          showToast(`${provider.icon} ${provider.name} timed out, switching…`, "info");
+          lastError = timeoutErr;
+          continue;
+        }
         const status = err.status || 0;
         markKeyError(entry.key, status, err.message);
         ErrorLogger.log("ai_call_error", { provider: provider.name, model, status, message: err.message });

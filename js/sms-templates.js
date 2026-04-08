@@ -9,7 +9,8 @@ const SMSTemplates = (() => {
 
   function parseIndianDate(dateStr) {
     if (!dateStr) return null;
-    // dd-Mon-yy / dd Mon yyyy (e.g. 01-Apr-26, 5 Mar 2026)
+    // dd-Mon-yy / dd Mon yyyy / dd Month, yyyy (e.g. 01-Apr-26, 5 Mar 2026, 21 December, 2024)
+    dateStr = dateStr.replace(/,/g, '').trim();
     const monParts = dateStr.match(/^(\d{1,2})[-\s]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*[-\s]*(\d{2,4})$/i);
     if (monParts) {
       let year = parseInt(monParts[3]);
@@ -85,10 +86,12 @@ const SMSTemplates = (() => {
   //  HDFC BANK
   // ═══════════════════════════════════════════════════════════════
 
-  // HDFC UPI Sent (pipe-delimited): Sent Rs.500.56 | From HDFC Bank A/C *7782 | To MERCHANT | On 02/04/26 | Ref 609200062538
+  // HDFC UPI Sent (pipe or space): Sent Rs.500.56 | From HDFC Bank A/C *7782 | To MERCHANT | On 02/04/26 | Ref 609200062538
+  // Also matches: Sent Rs.500.56 From HDFC Bank A/C *7782 To MERCHANT On 02/04/26 Ref 609200062538
+  // Also matches: UPI Mandate: Sent Rs.99.00 from HDFC Bank A/c 7782 To Google Play 18/03/26 Ref 696214840776
   register({
     id: "hdfc_upi_sent",
-    regex: /Sent\s+Rs\.?([\d,]+\.?\d*)\s*\|\s*From\s+HDFC\s+Bank\s+A\/C\s*\*(\d+)\s*\|\s*To\s+(.+?)\s*\|\s*On\s+(\d{2}\/\d{2}\/\d{2,4})\s*\|\s*Ref\s+(\d+)/i,
+    regex: /Sent\s+Rs\.?([\d,]+\.?\d*)\s*(?:\|\s*)?[Ff]rom\s+HDFC\s+Bank\s+A\/[Cc]\s*[*x]?(\d+)\s*(?:\|\s*)?To\s+(.+?)\s+(?:\|\s*)?(?:On\s+)?(\d{2}\/\d{2}\/\d{2,4})\s*(?:\|\s*)?Ref\s+(\d+)/i,
     parse(m) {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
@@ -96,10 +99,10 @@ const SMSTemplates = (() => {
     },
   });
 
-  // HDFC UPI Received (pipe-delimited): Received Rs.500 | In HDFC Bank A/C *7782 | From SENDER | On dd/mm/yy | Ref X
+  // HDFC UPI Received (pipe or space): Received Rs.500 | In HDFC Bank A/C *7782 | From SENDER | On dd/mm/yy | Ref X
   register({
     id: "hdfc_upi_received",
-    regex: /Received\s+Rs\.?([\d,]+\.?\d*)\s*\|\s*In\s+HDFC\s+Bank\s+A\/C\s*\*(\d+)\s*\|\s*From\s+(.+?)\s*\|\s*On\s+(\d{2}\/\d{2}\/\d{2,4})\s*\|\s*Ref\s+(\d+)/i,
+    regex: /Received\s+Rs\.?([\d,]+\.?\d*)\s*(?:\|\s*)?In\s+HDFC\s+Bank\s+A\/C\s*\*(\d+)\s*(?:\|\s*)?From\s+(.+?)\s+(?:\|\s*)?On\s+(\d{2}\/\d{2}\/\d{2,4})\s*(?:\|\s*)?Ref\s+(\d+)/i,
     parse(m) {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
@@ -161,14 +164,37 @@ const SMSTemplates = (() => {
     },
   });
 
-  // HDFC Credit Alert: HDFC Bank: Rs 1000.00 credited to a/c **1234 on 01-04-26
+  // HDFC Credit Alert: Credit Alert! Rs.40000.00 credited to HDFC Bank A/c XX7782 on 31-03-26 from VPA rajeshmandal360@okaxis (UPI 609092656493)
   register({
     id: "hdfc_credit_alert",
-    regex: /HDFC\s*Bank.*?(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*credited\s*to\s*(?:a\/c|ac)\s*\*+(\d{4})\s*on\s*(\d{2}-\d{2}-\d{2,4})/i,
+    regex: /Credit\s*Alert!\s*(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*credited\s*to\s*HDFC\s*Bank\s*A\/c\s*(?:XX|\*+)(\d{4})\s*on\s*(\d{2}-\d{2}-\d{2,4})(?:\s*from\s*VPA\s*(\S+))?/i,
     parse(m) {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
-      return { amount, type: "credit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant: "Unknown", mode: "Other", date: parseIndianDate(m[3]) };
+      let merchant = "Unknown";
+      if (m[4]) {
+        merchant = m[4].trim();
+        const atIdx = merchant.indexOf("@");
+        if (atIdx > 0) merchant = merchant.substring(0, atIdx);
+        merchant = merchant.replace(/[._]/g, " ").trim();
+        if (merchant.length > 1) merchant = merchant.charAt(0).toUpperCase() + merchant.slice(1);
+      }
+      return { amount, type: "credit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant, mode: "UPI", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // HDFC NEFT/Deposit: Update! INR 6,589.34 deposited in HDFC Bank A/c XX7782 on 20-MAR-26 for NEFT Cr-RBIS0MBPA04-Sovereign Gold Bonds Interest-RAJESH MANDAL-...
+  register({
+    id: "hdfc_neft_deposit",
+    regex: /(?:Update!?\s+)?(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*deposited\s*in\s*HDFC\s*Bank\s*A\/c\s*(?:XX|\*+)(\d{4})\s*on\s*(\d{2}-\w{3}-\d{2,4})\s*for\s*(.+?)(?:\.?\s*Avl\s*bal|$)/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      let desc = (m[4] || "").trim();
+      // Extract meaningful part from NEFT description
+      const neftMatch = desc.match(/NEFT\s+Cr-[^-]+-(.+)/i);
+      const merchant = neftMatch ? cleanMerchant(neftMatch[1].split("-")[0]) : cleanMerchant(desc);
+      return { amount, type: "credit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant, mode: "NEFT", date: parseIndianDate(m[3]) };
     },
   });
 
@@ -180,6 +206,40 @@ const SMSTemplates = (() => {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
       return { amount, type: "debit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant: "Unknown", mode: m[3].toUpperCase(), date: parseIndianDate(m[4]) };
+    },
+  });
+
+  // HDFC debited from a/c: HDFC Bank:Rs. 15000.00 debited from a/c *7782 on 14/10/25 to a/c **7104 (UPI Ref No. 528718016571)
+  register({
+    id: "hdfc_debit_ac",
+    regex: /HDFC\s*Bank.*?(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*debited\s*from\s*a\/c\s*[*x]+(\d+)\s*on\s*(\d{2}\/\d{2}\/\d{2,4})(?:\s*to\s*a\/c\s*[*x]+(\d+))?(?:\s*\(UPI\s*Ref\s*No\.?\s*(\d+)\))?/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant: m[4] ? "Transfer to XX" + m[4] : "Unknown", mode: m[5] ? "UPI" : "Other", date: parseIndianDate(m[3]), refNumber: m[5] || null };
+    },
+  });
+
+  // HDFC credited to a/c: HDFC Bank: Rs. X credited to a/c XXXXXX7782 on DD-MM-YY by a/c linked to VPA ...
+  register({
+    id: "hdfc_credit_ac",
+    regex: /HDFC\s*Bank.*?(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*credited\s*to\s*a\/c\s*\w*(\d{4})\s*on\s*(\d{2}-\d{2}-\d{2,4})(?:.*?VPA\s+(\S+))?/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      let merchant = m[4] ? cleanMerchant(m[4].replace(/@.*/, '')) : "Unknown";
+      return { amount, type: "credit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant, mode: m[4] ? "UPI" : "Other", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // HDFC UPDATE debited: UPDATE: INR 5,22,697.00 debited from HDFC Bank XX7782 on 20-SEP-23. Info: ...
+  register({
+    id: "hdfc_update_debit",
+    regex: /UPDATE.*?(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*debited\s*from\s*HDFC\s*Bank\s*(?:XX|\**)(\d{4})\s*on\s*(\d{2}-\w{3}-\d{2,4})/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant: "Unknown", mode: "Other", date: parseIndianDate(m[3]) };
     },
   });
 
@@ -236,6 +296,17 @@ const SMSTemplates = (() => {
     },
   });
 
+  // ICICI CC Payment: Payment of Rs X has been received on your ICICI Bank Credit Card XX7006 through ...
+  register({
+    id: "icici_cc_payment",
+    regex: /Payment\s+of\s+(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s+has\s+been\s+received\s+on\s+your\s+ICICI\s+Bank\s+Credit\s+Card\s+(?:XX|\*+)(\d{4})\s+(?:through\s+.+?\s+)?on\s+(\d{2}-\w{3}-\d{2,4})/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "credit", currency: "INR", bank: "ICICI Bank", account: "XX" + m[2], merchant: "ICICI Bank Credit Card", mode: "Credit Card", date: parseIndianDate(m[3]) };
+    },
+  });
+
   // ═══════════════════════════════════════════════════════════════
   //  SBI (State Bank of India)
   // ═══════════════════════════════════════════════════════════════
@@ -277,10 +348,11 @@ const SMSTemplates = (() => {
   //  AXIS BANK
   // ═══════════════════════════════════════════════════════════════
 
-  // Axis UPI Debit (pipe-delimited): INR 220.00 debited | A/c no. XX2912 | 01-04-26, 14:02:06 | UPI/P2M/ref/MERCHANT | Axis Bank
+  // Axis UPI Debit (pipe or space): INR 220.00 debited | A/c no. XX2912 | 01-04-26, 14:02:06 | UPI/P2M/ref/MERCHANT | Axis Bank
+  // Also: INR 18 debited from A/c no. XX2912 on 28-10-21 18:43:27 IST at UPI/P2M/ref/MERCHANT. Avl Bal- ...
   register({
     id: "axis_upi_debit",
-    regex: /INR\s+([\d,]+\.?\d*)\s+debited\s*\|\s*A\/c\s+no\.\s*(?:XX|\*+)(\d+)\s*\|\s*(\d{2}-\d{2}-\d{2,4}),?\s*[\d:]+\s*\|\s*UPI\/P2[AMBP]\/(\d+)\/([^|]+)/i,
+    regex: /INR\s+([\d,]+\.?\d*)\s+debited\s*(?:from\s*)?(?:\|\s*)?A\/c\s+no\.\s*(?:XX|\*+)(\d+)\s*(?:\|\s*)?(?:on\s+)?(\d{2}-\d{2}-\d{2,4}),?\s*[\d:]+(?:\s*(?:IST\s*)?)?\s*(?:\|\s*)?(?:at\s+)?UPI\/P2[AMBP]\/(\d+)\/([^|\s.]+(?:\s+[^|\s.]+)*?)(?:\s*\.?\s*Avl|\s+(?:Not|Axis|$)|\s*\|)/i,
     parse(m) {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
@@ -288,10 +360,10 @@ const SMSTemplates = (() => {
     },
   });
 
-  // Axis UPI Credit (pipe-delimited)
+  // Axis UPI Credit (pipe or space)
   register({
     id: "axis_upi_credit",
-    regex: /INR\s+([\d,]+\.?\d*)\s+credited\s*\|\s*A\/c\s+no\.\s*(?:XX|\*+)(\d+)\s*\|\s*(\d{2}-\d{2}-\d{2,4}),?\s*[\d:]+\s*\|\s*UPI\/P2[AMBP]\/(\d+)\/([^|]+)/i,
+    regex: /INR\s+([\d,]+\.?\d*)\s+credited\s*(?:to\s*)?(?:\|\s*)?A\/c\s+no\.\s*(?:XX|\*+)(\d+)\s*(?:\|\s*)?(?:on\s+)?(\d{2}-\d{2}-\d{2,4}),?\s*[\d:]+(?:\s*(?:IST\s*)?)?\s*(?:\|\s*)?(?:at\s+)?UPI\/P2[AMBP]\/(\d+)\/([^|\s.]+(?:\s+[^|\s.]+)*?)(?:\s*\.?\s*Avl|\s+(?:Not|Axis|$)|\s*\|)/i,
     parse(m) {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
@@ -299,10 +371,11 @@ const SMSTemplates = (() => {
     },
   });
 
-  // Axis Debit generic: INR 500.00 debited from A/c no. XX1234 on 01-04-26. Axis Bank
+  // Axis Debit (pipe or space, generic): INR 220.00 debited A/c no. XX2912 01-04-26, 14:02:06 ... Axis Bank
+  // Also: Debit INR 30.00 A/c no. XX2912 08-07-23 ... Axis Bank
   register({
     id: "axis_debit",
-    regex: /(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*debited\s*(?:from\s*)?(?:A\/c|a\/c)\s*(?:no\.?\s*)?(?:XX|\*+)(\d+)\s*on\s*(\d{2}-\d{2}-\d{2,4}).*?(?:^|[\s.,-])Axis\s*Bank/im,
+    regex: /(?:Debit\s+)?(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*(?:debited\s*(?:from\s*)?)?A\/c\s*(?:no\.?\s*)?(?:XX|\*+)(\d+)\s*(\d{2}-\d{2}-\d{2,4}).*?(?:^|[\s.,-])Axis\s*Bank/im,
     parse(m) {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
@@ -318,6 +391,75 @@ const SMSTemplates = (() => {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
       return { amount, type: "credit", currency: "INR", bank: "Axis Bank", account: "XX" + m[2], merchant: "Unknown", mode: "Other", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // Axis Card Spent: Spent INR 5535 Axis Bank Card no. XX1132 30-03-26 12:56:52 IST Flipkart Avl Limit: INR 862465
+  register({
+    id: "axis_card_spent",
+    regex: /Spent\s+INR\s+([\d,]+\.?\d*)\s+Axis\s+Bank\s+Card\s+no\.\s*(?:XX|\*+)(\d{4})\s+(\d{2}-\d{2}-\d{2,4})\s+[\d:]+\s*(?:IST\s+)?(.+?)\s+Avl\s+Limit/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "Axis Bank", account: "XX" + m[2], merchant: cleanMerchant(m[4]), mode: "Credit Card", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // Axis CC Payment Received: Payment of INR 1655 has been received towards your Axis Bank Credit Card XX5081 on 19-03-26 - Axis Bank
+  register({
+    id: "axis_cc_payment",
+    regex: /Payment\s+of\s+INR\s+([\d,]+\.?\d*)\s+has\s+been\s+received\s+towards\s+your\s+Axis\s+Bank\s+Credit\s+Card\s+(?:XX|\*+)(\d{4})\s+on\s+(\d{2}-\d{2}-\d{2,4})/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "credit", currency: "INR", bank: "Axis Bank", account: "XX" + m[2], merchant: "Axis Bank Credit Card", mode: "Credit Card", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // Axis Card Spent (alt format): Spent Card no. XX1132 INR 7003 30-08-25 19:41:08 SHOPPERS ST Avl Lmt INR ...
+  register({
+    id: "axis_card_spent_alt",
+    regex: /Spent\s+Card\s+no\.\s*(?:XX|\*+)(\d{4})\s+INR\s+([\d,]+\.?\d*)\s+(\d{2}-\d{2}-\d{2,4})\s+[\d:]+\s*(.+?)\s+Avl\s+Lmt/i,
+    parse(m) {
+      const amount = cleanAmount(m[2]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "Axis Bank", account: "XX" + m[1], merchant: cleanMerchant(m[4]), mode: "Credit Card", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // Axis NEFT/ACH Debit: Debit INR 40558.00 Axis Bank A/c XX2912 10-03-26 07:55:35 ACH-DR-HDFC BANK LTD-45351
+  // Also: Debit INR 150000.00 Axis Bank A/c XX2912 27-02-26 12:19:15 NEFT/MB/...
+  register({
+    id: "axis_neft_debit",
+    regex: /Debit\s+INR\s+([\d,]+\.?\d*)\s+Axis\s+Bank\s+A\/[Cc]\s*(?:XX|\*+)(\d{4})\s+(\d{2}-\d{2}-\d{2,4})\s+[\d:]+\s+(.+?)(?:\s+WhatsApp|\s+Not\s+You|\s*$)/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      let merchant = m[4].replace(/^(?:ACH-DR-|NEFT\/\w+\/)/, '').trim();
+      const mode = /NEFT/i.test(m[4]) ? 'NEFT' : /ACH/i.test(m[4]) ? 'Auto Pay' : 'Other';
+      return { amount, type: "debit", currency: "INR", bank: "Axis Bank", account: "XX" + m[2], merchant: cleanMerchant(merchant), mode, date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // Axis "Your A/c has been debited towards X for INR Y on date"
+  register({
+    id: "axis_ac_debited",
+    regex: /Your\s+A\/c\s+has\s+been\s+debited\s+towards\s+(.+?)\s+for\s+INR\s+([\d,]+\.?\d*)\s+on\s+(\d{2}-\d{2}-\d{2,4})/i,
+    parse(m) {
+      const amount = cleanAmount(m[2]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "Axis Bank", merchant: cleanMerchant(m[1]), mode: "UPI", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // Axis CC payment (alt): Dear Customer, payment of Rs. X towards your Axis Bank Credit Card XXXX5081 has been received on DD-MON-YY
+  register({
+    id: "axis_cc_payment_alt",
+    regex: /payment\s+of\s+Rs\.?\s*([\d,]+\.?\d*)\s+towards\s+your\s+Axis\s+Bank\s+Credit\s+Card\s+\w*(\d{4})\s+has\s+been\s+received\s+on\s+(\d{2}-\w{3}-\d{2,4})/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "credit", currency: "INR", bank: "Axis Bank", account: "XX" + m[2], merchant: "Axis Bank Credit Card", mode: "Credit Card", date: parseIndianDate(m[3]) };
     },
   });
 
@@ -491,14 +633,36 @@ const SMSTemplates = (() => {
   //  CANARA BANK
   // ═══════════════════════════════════════════════════════════════
 
-  // Canara Debit: Your Canara Bank A/c XX1234 debited Rs.500 on 01-04-26
+  // Canara Debit: From : VM-CANBNK-S() An amount of INR 1,56,628.00 has been DEBITED to your account XXXXX07104 on 07/04/2026.
+  // Also: Your Canara Bank A/c XX1234 debited Rs.500 on 01-04-26
   register({
     id: "canara_debit",
+    regex: /(?:An\s+amount\s+of\s+)?(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*has\s+been\s+DEBITED\s+(?:to|from)\s+your\s+account\s*(?:XX+|\*+)(\d{3,5})\s*on\s*(\d{2}\/\d{2}\/\d{4}).*?(?:Canara|CANBNK)/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "Canara Bank", account: "XX" + m[2].slice(-4), merchant: "Unknown", mode: "Other", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  register({
+    id: "canara_debit2",
     regex: /Canara.*?(?:A\/c|ac)\s*(?:XX|\*+)(\d{4})\s*debited\s*(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*on\s*(\d{2}-\d{2}-\d{2,4})/i,
     parse(m) {
       const amount = cleanAmount(m[2]);
       if (!amount || amount <= 0) return null;
       return { amount, type: "debit", currency: "INR", bank: "Canara Bank", account: "XX" + m[1], merchant: "Unknown", mode: "Other", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // Canara Credit: An amount of INR X has been CREDITED to your account XXXXX07104 on DD/MM/YYYY
+  register({
+    id: "canara_credit",
+    regex: /(?:An\s+amount\s+of\s+)?(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*has\s+been\s+CREDITED\s+to\s+your\s+account\s*(?:XX+|\*+)(\d{3,5})\s*on\s*(\d{2}\/\d{2}\/\d{4}).*?(?:Canara|CANBNK)/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "credit", currency: "INR", bank: "Canara Bank", account: "XX" + m[2].slice(-4), merchant: "Unknown", mode: "Other", date: parseIndianDate(m[3]) };
     },
   });
 
@@ -562,10 +726,11 @@ const SMSTemplates = (() => {
   //  AMEX (American Express)
   // ═══════════════════════════════════════════════════════════════
 
-  // AMEX: Alert: You've spent INR 500.00 on your AMEX card ** 1234 at MERCHANT on 01 April 2026 at 02:30 PM
+  // AMEX: Alert: You've spent INR 500.00 on your AMEX card ** 1234 at MERCHANT on 01 April 2026
+  // Also: Alert: You've spent INR 15,799.00 on your AMEX Corp Card ** 31009 at PAYU RETAIL on 1 April 2026 at 05:28 PM IST.
   register({
     id: "amex_spent",
-    regex: /(?:spent|charged)\s*(?:\$|INR)\s*([\d,]+\.?\d*)\s*on\s*your\s*AMEX\s*card\s*\*+\s*(\d{4,5})\s*(?:at|on)\s*(.+?)\s*on\s*(\d{1,2}\s+\w+\s+\d{4})/i,
+    regex: /(?:spent|charged)\s*(?:\$|INR)\s*([\d,]+\.?\d*)\s*on\s*your\s*AMEX\s*(?:Corp\s+)?Card?\s*\*+\s*(\d{4,5})\s*(?:at|on)\s*(.+?)\s*on\s*(\d{1,2}\s+\w+,?\s+\d{4})/i,
     parse(m) {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
@@ -577,6 +742,19 @@ const SMSTemplates = (() => {
   //  CITI BANK
   // ═══════════════════════════════════════════════════════════════
 
+  // Citi card spent: Rs. 490.00 spent on card 1132 on 08-JUL-24 at BOMBAY HOSPITAL TRUS. Limit available=Rs. 632,510.00
+  register({
+    id: "citi_card_spent",
+    regex: /(?:Rs\.?|INR)?\s*([\d,]+\.?\d*)\s*(?:INR\s+)?spent\s*on\s*card\s*(\d{4})\s*on\s*(\d{2}-\w{3}-\d{2,4})\s*at\s*([^.]+)/i,
+    parse(m, text) {
+      if (!/citi/i.test(text)) return null;
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "Citibank", account: "XX" + m[2], merchant: cleanMerchant(m[4]), mode: "Credit Card", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // Citi generic charged/debited
   register({
     id: "citi_debit",
     regex: /Citi.*?(?:Card|A\/c)\s*(?:ending\s*(?:in\s*)?|XX|\*+)(\d{4})\s*(?:has been\s+)?(?:charged|debited)\s*(?:for\s*)?(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*(?:on|at)\s*(.+?)\s*on\s*(\d{2}[-\/]\d{2}[-\/]\d{2,4})/i,
@@ -668,6 +846,28 @@ const SMSTemplates = (() => {
     },
   });
 
+  // DBS Fresh Funds Credit: You've got fresh funds! Your account ending with ********4637 has been credited with Rs. 160000. Updated account balance is Rs. 617094.21
+  register({
+    id: "dbs_fresh_funds",
+    regex: /fresh\s+funds.*?account\s+ending\s+with\s+\*+(\d{4})\s+has\s+been\s+credited\s+with\s+(?:Rs\.?\s*|INR\s*)([\d,]+\.?\d*).*?balance\s+is\s+(?:Rs\.?\s*|INR\s*)([\d,]+\.?\d*)/i,
+    parse(m) {
+      const amount = cleanAmount(m[2]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "credit", currency: "INR", bank: "DBS Bank", account: "XX" + m[1], merchant: "Unknown", mode: "Other", date: null, balance: cleanAmount(m[3]) };
+    },
+  });
+
+  // DBS ATM Withdrawal: INR 5,000.00 withdrawn via card 6952 on 31/01/26. Avl Bal: INR 344,672.27. ... DBS BANK
+  register({
+    id: "dbs_atm",
+    regex: /(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*withdrawn\s*via\s*card\s*(\d{4})\s*on\s*(\d{2}\/\d{2}\/\d{2,4}).*?Avl\s*Bal:\s*(?:INR|Rs\.?)\s*([\d,]+\.?\d*)/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "DBS Bank", account: "XX" + m[2], merchant: "ATM Withdrawal", mode: "ATM", date: parseIndianDate(m[3]), balance: cleanAmount(m[4]) };
+    },
+  });
+
   // ═══════════════════════════════════════════════════════════════
   //  PAYTM / WALLET / PHONEPE
   // ═══════════════════════════════════════════════════════════════
@@ -717,6 +917,66 @@ const SMSTemplates = (() => {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
       return { amount, type: "debit", currency: "INR", bank: null, account: "XX" + m[2], merchant: cleanMerchant(m[4]), mode: "Auto Pay", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  //  PINE LABS / APAY
+  // ═══════════════════════════════════════════════════════════════
+
+  // Payment of Rs 1597.00 using Apay balance is successful at A.in. Updated balance is Rs 6904.05.
+  register({
+    id: "apay_payment",
+    regex: /Payment\s+of\s+Rs\s*([\d,]+\.?\d*)\s+using\s+Apay\s+balance\s+is\s+successful\s+at\s+(.+?)\.\s*Updated\s+balance\s+is\s+Rs\s*([\d,]+\.?\d*)/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "Pine Labs", merchant: cleanMerchant(m[2]), mode: "Wallet", balance: cleanAmount(m[3]) };
+    },
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  //  PLUXEE (Meal Card)
+  // ═══════════════════════════════════════════════════════════════
+
+  // Your Pluxee Card has been successfully credited with Rs.2200 towards  Meal Wallet on ...
+  register({
+    id: "pluxee_credit",
+    regex: /Pluxee\s+Card\s+has\s+been\s+successfully\s+credited\s+with\s+Rs\.?([\d,]+\.?\d*)\s+towards\s+(.+?)\s+(?:Wallet\s+)?on\s/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "credit", currency: "INR", bank: "Pluxee", merchant: cleanMerchant(m[2].replace(/\s*Wallet\s*$/, '')), mode: "Wallet" };
+    },
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  //  AXIS NACH / AUTO-DEBIT
+  // ═══════════════════════════════════════════════════════════════
+
+  // INR 32162.00 debited from A/c no. XX2912 on 10-02-23 13:14:27 IST at NACH-DR- HDFCLTD. Avl Bal- INR 51238.43
+  register({
+    id: "axis_nach_debit",
+    regex: /INR\s*([\d,]+\.?\d*)\s*debited\s*(?:from\s*)?A\/c\s*no\.\s*(?:XX|\**)(\d{4})\s*on\s*(\d{2}-\d{2}-\d{2,4})\s*[\d:]*\s*(?:IST\s*)?at\s*NACH[-\s]*DR[-\s]*(.+?)(?:\.\s*Avl|$)/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "Axis Bank", account: "XX" + m[2], merchant: cleanMerchant(m[4]), mode: "Auto Pay", date: parseIndianDate(m[3]) };
+    },
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  //  AMEX STATEMENT
+  // ═══════════════════════════════════════════════════════════════
+
+  // statement for AMEX Corporate Card ***********31009 has been generated. Total payment of Rs.164311.00 is due by 27/04/26
+  register({
+    id: "amex_statement",
+    regex: /statement\s+for\s+AMEX\s+(?:Corp(?:orate)?\s+)?Card\s*\*+\s*(\d{4,5}).*?(?:Total\s+)?payment\s+of\s+Rs\.?([\d,]+\.?\d*)\s+is\s+due\s+by\s+(\d{2}\/\d{2}\/\d{2,4})/i,
+    parse(m) {
+      const amount = cleanAmount(m[2]);
+      if (!amount || amount <= 0) return null;
+      return { amount, type: "debit", currency: "INR", bank: "American Express", account: "XX" + m[1].slice(-4), merchant: "AMEX Statement", mode: "Credit Card", date: parseIndianDate(m[3]) };
     },
   });
 
