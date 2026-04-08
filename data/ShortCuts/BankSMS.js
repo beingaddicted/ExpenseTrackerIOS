@@ -15,7 +15,7 @@
 // INIT adds +1 day overlap so nightly automation never misses entries.
 // SAVE deduplicates against the previous day's batch (stored in JSON).
 // Output: iCloud Drive → Scriptable → expense tracker → SmsExtracts.json
-//   JSON shape: { lastCompleted: "YYYY-MM-DD", prevBatch: [...], messages: [...] }
+//   JSON shape: { lastCompleted: "YYYY-MM-DD", prevBatch: { "YYYY-MM-DD": [...], ... }, messages: [...] }
 
 const fm = FileManager.iCloud();
 const root = fm.documentsDirectory();
@@ -54,7 +54,7 @@ const KEYWORDS = [
 const MONEY_RE = /(?:rs\.?\s*|inr\s*|rupees\s*)\d|(?:\d+\.\d{2})/i;
 
 // Spam / promo filter — skip messages matching these even if they have keywords + money
-const SPAM_RE = /\b(?:congratulations|win\s|won\s|lottery|jackpot|prize|claim\s|free\s|offer\s|scheme|guaranteed|nominee|payout|pre.?approved\s+loan|pre.?approved\s+credit|personal\s*loan|top.?up|balance\s*transfer|limited\s+period|exclusive\s+deal|apply\s+now|click\s+here|bit\.ly|tinyurl|act\s+now|hurry|last\s+day)\b/i;
+const SPAM_RE = /\b(?:congratulations|win\s|won\s|lottery|jackpot|prize|claim\s|free\s|offer\s|scheme|guaranteed|nominee|payout|pre.?approved\s+loan|pre.?approved\s+credit|personal\s*loan|top.?up|balance\s*transfer|limited\s+period|exclusive\s+deal|apply\s+now|click\s+here|bit\.ly|tinyurl|act\s+now|hurry|last\s+day|passbook\s+balance|statement\s+for.*card.*(?:generated|due)|statement\s+is\s+sent|one\s+time\s+payment\s+mandate)\b/i;
 
 // Note: iOS Shortcuts does not expose SMS sender — filtering is keyword + money only.
 
@@ -214,8 +214,9 @@ try {
 
     // Add 1 extra day of overlap so nightly automation never misses entries.
     // The SAVE phase deduplicates against the previous day's batch.
-    // Always return at least 1 so re-running the shortcut same day still processes today.
-    const safeDays = days > 0 ? days + 1 : 1;
+    // Always return at least 2 so re-running covers both yesterday and today,
+    // regardless of Shortcut Repeat Index base (0 or 1).
+    const safeDays = Math.max(days + 1, 2);
 
     if (DEBUG) {
       debugAppend(`INIT: tracker val="${val}", lastCompleted=${lastCompleted.toISOString()}, today=${today.toISOString()}, days=${days}, safeDays=${safeDays}`);
@@ -277,9 +278,10 @@ try {
         return hasKw && hasMoney && !isSpam;
       });
 
-      // Cross-day dedup: skip messages already saved in the previous day's batch
+      // Sliding-window dedup: keep last 3 days of messages in prevBatch
+      // prevBatch is date-keyed: { "2020-01-01": ["sms1",...], "2020-01-02": [...] }
       let existing = [];
-      let prevBatch = [];
+      let prevBatch = {};
       if (saveRaw) {
         try {
           const curData = JSON.parse(saveRaw);
@@ -288,12 +290,22 @@ try {
             : Array.isArray(curData)
               ? curData
               : [];
-          prevBatch = Array.isArray(curData.prevBatch) ? curData.prevBatch : [];
+          // Support old flat array format (migrate to object)
+          if (Array.isArray(curData.prevBatch)) {
+            prevBatch = {};
+          } else if (curData.prevBatch && typeof curData.prevBatch === "object") {
+            prevBatch = curData.prevBatch;
+          }
         } catch (_) {
           existing = [];
         }
       }
-      const prevSet = new Set(prevBatch);
+
+      // Build dedup set from all dates in prevBatch
+      const prevSet = new Set();
+      for (const msgs of Object.values(prevBatch)) {
+        if (Array.isArray(msgs)) msgs.forEach((s) => prevSet.add(s));
+      }
 
       const seen = new Set();
       const uniqueBankMsgs = [];
@@ -312,31 +324,44 @@ try {
         }
       }
 
+      // Update prevBatch: add/replace current date, prune dates older than 3-day window
+      prevBatch[dateStr] = (prevBatch[dateStr] || []).concat(uniqueBankMsgs);
+      const cutoff = new Date(dateStr + "T00:00:00");
+      cutoff.setDate(cutoff.getDate() - 2); // keep dateStr, dateStr-1, dateStr-2
+      const cutoffStr = fmt(cutoff);
+      for (const key of Object.keys(prevBatch)) {
+        if (key < cutoffStr) delete prevBatch[key];
+      }
+
       if (newEntries.length > 0) {
         const merged = existing.concat(newEntries);
         fm.writeString(
           SMS_FILE,
-          JSON.stringify({ lastCompleted: dateStr, prevBatch: uniqueBankMsgs, messages: merged }, null, 0),
+          JSON.stringify({ lastCompleted: dateStr, prevBatch: prevBatch, messages: merged }, null, 0),
         );
       } else {
-        // No new entries but still advance tracker + save this day's batch
+        // No new entries but still advance tracker
         fm.writeString(
           SMS_FILE,
-          JSON.stringify({ lastCompleted: dateStr, prevBatch: uniqueBankMsgs, messages: existing }, null, 0),
+          JSON.stringify({ lastCompleted: dateStr, prevBatch: prevBatch, messages: existing }, null, 0),
         );
       }
     } else {
-      // Empty input day — still advance tracker, clear prevBatch
+      // Empty input day — still advance tracker, keep prevBatch intact
       let existing = [];
+      let prevBatch = {};
       if (saveRaw) {
         try {
           const d = JSON.parse(saveRaw);
           existing = Array.isArray(d.messages) ? d.messages : [];
+          if (d.prevBatch && typeof d.prevBatch === "object" && !Array.isArray(d.prevBatch)) {
+            prevBatch = d.prevBatch;
+          }
         } catch (_) {}
       }
       fm.writeString(
         SMS_FILE,
-        JSON.stringify({ lastCompleted: dateStr, prevBatch: [], messages: existing }, null, 0),
+        JSON.stringify({ lastCompleted: dateStr, prevBatch: prevBatch, messages: existing }, null, 0),
       );
     }
 

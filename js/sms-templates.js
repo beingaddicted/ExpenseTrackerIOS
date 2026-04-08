@@ -970,13 +970,12 @@ const SMSTemplates = (() => {
   // ═══════════════════════════════════════════════════════════════
 
   // statement for AMEX Corporate Card ***********31009 has been generated. Total payment of Rs.164311.00 is due by 27/04/26
+  // AMEX statement notifications are reminders, not transactions — skip them
   register({
     id: "amex_statement",
     regex: /statement\s+for\s+AMEX\s+(?:Corp(?:orate)?\s+)?Card\s*\*+\s*(\d{4,5}).*?(?:Total\s+)?payment\s+of\s+Rs\.?([\d,]+\.?\d*)\s+is\s+due\s+by\s+(\d{2}\/\d{2}\/\d{2,4})/i,
-    parse(m) {
-      const amount = cleanAmount(m[2]);
-      if (!amount || amount <= 0) return null;
-      return { amount, type: "debit", currency: "INR", bank: "American Express", account: "XX" + m[1].slice(-4), merchant: "AMEX Statement", mode: "Credit Card", date: parseIndianDate(m[3]) };
+    parse() {
+      return null;
     },
   });
 

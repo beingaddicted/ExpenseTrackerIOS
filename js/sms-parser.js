@@ -957,7 +957,7 @@ const SMSParser = (() => {
   const NON_TRANSACTION_RE =
     /\b(?:OTP|PIN|password|IPIN|MPIN|CVV|one.?time|verification|verify|blocked|unblocked|locked|unlocked|activated|deactivated|registered|linked|unlinked|app download|set up|setup|login|log.?in|sign.?in|device|browser|new device|maintenance|replacement|request.{0,10}card|card.{0,10}dispatch|dispatch|dispatch|shipped|delivered|generated|reset|changed|updated|enabled|disabled|limit.{0,10}(?:set|changed|updated))\b/i;
   const NON_TRANSACTION_STRONG_RE =
-    /\bOTP\s+(?:is|:|for)\b|\bPIN\s+(?:on|for|could)\b|\bblocked\b.*\bcard\b|\bcard\b.*\bblocked\b|\bset\s+(?:the\s+)?UPI\s+PIN\b|\bverify\s+your\s+mobile\b|\bIPIN\s*\(|\bregistered\s+your\s+new\s+device\b/i;
+    /\bOTP\s+(?:is|:|for)\b|\bPIN\s+(?:on|for|could)\b|\bblocked\b.*\bcard\b|\bcard\b.*\bblocked\b|\bset\s+(?:the\s+)?UPI\s+PIN\b|\bverify\s+your\s+mobile\b|\bIPIN\s*\(|\bregistered\s+your\s+new\s+device\b|\bpassbook\s+balance\b|\bstatement\s+for\b.*\bCard\b.*\b(?:generated|due)\b|\bStatement\s+is\s+sent\b|\bcreated\s+your\s+one\s+time\s+payment\s+mandate\b/i;
 
   // ─── Is Bank Transaction SMS? ───
   function isBankSMS(text) {
