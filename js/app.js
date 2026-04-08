@@ -1761,7 +1761,7 @@ const App = (() => {
     // ── FILE IMPORT (the main way to get Shortcut data in) ──
     const fileInput = document.getElementById("fileInput");
     function triggerFileImport() {
-      showToast("Navigate to: iCloud Drive → Scriptable → expense tracker → exportSms.json", "info");
+      showToast("Navigate to: iCloud Drive → Scriptable → expense tracker → SmsExtracts.json", "info");
       fileInput.click();
     }
     document

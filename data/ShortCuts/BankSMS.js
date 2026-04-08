@@ -14,19 +14,19 @@
 //
 // INIT adds +1 day overlap so nightly automation never misses entries.
 // SAVE deduplicates against the previous day's batch (PREV_BATCH).
-// Output: iCloud Drive → Scriptable → expense tracker → exportSms.json
+// Output: iCloud Drive → Scriptable → expense tracker → SmsExtracts.json
+//   JSON shape: { lastCompleted: "YYYY-MM-DD", messages: [...] }
 
 const fm = FileManager.iCloud();
 const root = fm.documentsDirectory();
 const dir = fm.joinPath(root, "expense tracker");
 if (!fm.fileExists(dir)) fm.createDirectory(dir);
-const SMS_FILE = fm.joinPath(dir, "exportSms.json");
-const TRACKER = fm.joinPath(dir, "exportSmstracker.txt");
-const PREV_BATCH = fm.joinPath(dir, "exportSmsPrevBatch.txt");
-const DEBUG_FILE = fm.joinPath(dir, "exportSmsDebug.txt");
+const SMS_FILE = fm.joinPath(dir, "SmsExtracts.json");
+const PREV_BATCH = fm.joinPath(dir, "SmsExtractsPrevBatch.txt");
+const DEBUG_FILE = fm.joinPath(dir, "SmsExtractsDebug.txt");
 
 // ── CONFIG ──────────────────────────────────────────
-const DEBUG = true; // flip to true to write exportSmsDebug.txt
+const DEBUG = true; // flip to true to write SmsExtractsDebug.txt
 const DEFAULT_START = "2020-01-01";
 
 const KEYWORDS = [
@@ -151,9 +151,6 @@ function fmt(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// ── MAIN EXECUTION (Scriptable only) ────────────────
-if (typeof module === "undefined") {
-
 function debugAppend(text) {
   try {
     let prev = "";
@@ -164,39 +161,41 @@ function debugAppend(text) {
   } catch (_) {}
 }
 
-(async () => {
-
 debugAppend(`=== BOOT ${new Date().toISOString()} === DEBUG=${DEBUG}`);
 
+// ── INPUT EXTRACTION ────────────────────────────────
+const raw = args.shortcutParameter;
+
+let input = "";
+if (typeof raw === "string") {
+  input = raw.trim();
+} else if (Array.isArray(raw) && raw.length > 0) {
+  input = raw
+    .map((s) => String(s))
+    .join("\n")
+    .trim();
+}
+
+// INIT when no parameter; SAVE otherwise
+const isInit = raw === null || raw === undefined;
+
+// Guard: skip bare date strings leaked by Shortcuts on first iteration
+if (!isInit && DATE_ONLY_RE.test(input)) {
+  input = "";
+}
+
 try {
-  // ── INPUT EXTRACTION ────────────────────────────────
-  const raw = args.shortcutParameter;
-
-  if (DEBUG) {
-    debugAppend(`=== ENTRY ${new Date().toISOString()} ===\nraw type: ${typeof raw}\nraw isArray: ${Array.isArray(raw)}\nraw value (first 200): ${String(raw).substring(0, 200)}\nraw === null: ${raw === null}\nraw === undefined: ${raw === undefined}`);
-  }
-
-  let input = "";
-  if (typeof raw === "string") {
-    input = raw.trim();
-  } else if (Array.isArray(raw) && raw.length > 0) {
-    input = raw
-      .map((s) => String(s))
-      .join("\n")
-      .trim();
-  }
-
-  // INIT when no parameter; SAVE otherwise
-  const isInit = raw === null || raw === undefined;
-
-  // Guard: skip bare date strings leaked by Shortcuts on first iteration
-  if (!isInit && DATE_ONLY_RE.test(input)) {
-    input = "";
-  }
-
   // ── INIT ────────────────────────────────────────────
   if (isInit) {
-    const val = await read(TRACKER);
+    // Read lastCompleted from the JSON file (or default)
+    let val = null;
+    const initRaw = await read(SMS_FILE);
+    if (initRaw) {
+      try {
+        const initData = JSON.parse(initRaw);
+        val = initData.lastCompleted || null;
+      } catch (_) {}
+    }
     let lastCompleted;
 
     if (val) {
@@ -204,7 +203,8 @@ try {
     } else {
       lastCompleted = new Date(DEFAULT_START + "T00:00:00");
       lastCompleted.setDate(lastCompleted.getDate() - 1);
-      fm.writeString(TRACKER, fmt(lastCompleted));
+      // Bootstrap the JSON file with lastCompleted
+      fm.writeString(SMS_FILE, JSON.stringify({ lastCompleted: fmt(lastCompleted), messages: [] }, null, 0));
     }
 
     const today = new Date();
@@ -224,9 +224,18 @@ try {
 
     Script.setShortcutOutput(String(safeDays));
 
-  // ── SAVE ──────────────────────────────────────────
+    // ── SAVE ──────────────────────────────────────────
   } else {
-    const trackerStr = await read(TRACKER);
+    // Read lastCompleted from the JSON file
+    let trackerStr = null;
+    const saveRaw = await read(SMS_FILE);
+    if (saveRaw) {
+      try {
+        const saveData = JSON.parse(saveRaw);
+        trackerStr = saveData.lastCompleted || null;
+      } catch (_) {}
+    }
+    if (!trackerStr) trackerStr = DEFAULT_START;
     const trackerDate = new Date(trackerStr + "T00:00:00");
     trackerDate.setDate(trackerDate.getDate() + 1);
 
@@ -297,16 +306,15 @@ try {
       fm.writeString(PREV_BATCH, uniqueBankMsgs.join("\n===\n"));
 
       if (newEntries.length > 0) {
-        // Read existing JSON array (or start fresh)
         let existing = [];
-        const jsonRaw = await read(SMS_FILE);
-        if (jsonRaw) {
+        let curData = {};
+        if (saveRaw) {
           try {
-            const parsed = JSON.parse(jsonRaw);
-            existing = Array.isArray(parsed.messages)
-              ? parsed.messages
-              : Array.isArray(parsed)
-                ? parsed
+            curData = JSON.parse(saveRaw);
+            existing = Array.isArray(curData.messages)
+              ? curData.messages
+              : Array.isArray(curData)
+                ? curData
                 : [];
           } catch (_) {
             existing = [];
@@ -315,16 +323,30 @@ try {
         const merged = existing.concat(newEntries);
         fm.writeString(
           SMS_FILE,
-          JSON.stringify({ messages: merged }, null, 0),
+          JSON.stringify({ lastCompleted: dateStr, messages: merged }, null, 0),
+        );
+      } else {
+        // No new entries but still advance tracker in the JSON
+        let curData = {};
+        if (saveRaw) {
+          try { curData = JSON.parse(saveRaw); } catch (_) {}
+        }
+        fm.writeString(
+          SMS_FILE,
+          JSON.stringify({ lastCompleted: dateStr, messages: curData.messages || [] }, null, 0),
         );
       }
+    } else {
+      // Empty input day — still advance tracker
+      let curData = {};
+      if (saveRaw) {
+        try { curData = JSON.parse(saveRaw); } catch (_) {}
+      }
+      fm.writeString(
+        SMS_FILE,
+        JSON.stringify({ lastCompleted: dateStr, messages: curData.messages || [] }, null, 0),
+      );
     }
-
-    // Always advance tracker
-    fm.writeString(TRACKER, dateStr);
-
-    // Notify when done (skip Notification — its .schedule() returns a Promise
-    // which causes "Script completed without output" in Shortcuts)
 
     Script.setShortcutOutput("OK");
   }
@@ -336,12 +358,3 @@ try {
 }
 
 Script.complete();
-
-})(); // end async IIFE
-
-} // end Scriptable-only block
-
-// ── Test exports (Node.js only) ──
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = { extractTime, splitMessages, reassembleMessages, KEYWORDS, MONEY_RE, SPAM_RE, DATE_ONLY_RE, fmt };
-}
