@@ -141,14 +141,10 @@ function reassembleMessages(text) {
 }
 // ────────────────────────────────────────────────────
 
-function read(path) {
+async function read(path) {
   if (!fm.fileExists(path)) return null;
-  // fm.readString handles iCloud download automatically (blocking)
-  try {
-    return fm.readString(path).trim();
-  } catch (_) {
-    return null;
-  }
+  if (!fm.isFileDownloaded(path)) await fm.downloadFileFromiCloud(path);
+  return fm.readString(path).trim();
 }
 
 function fmt(d) {
@@ -160,7 +156,6 @@ if (typeof module === "undefined") {
 
 function debugAppend(text) {
   try {
-    // Only read previous content if file is already local — avoid blocking iCloud download
     let prev = "";
     if (fm.fileExists(DEBUG_FILE) && fm.isFileDownloaded(DEBUG_FILE)) {
       prev = fm.readString(DEBUG_FILE);
@@ -169,7 +164,8 @@ function debugAppend(text) {
   } catch (_) {}
 }
 
-// Always write a boot marker so we know the script actually ran
+(async () => {
+
 debugAppend(`=== BOOT ${new Date().toISOString()} === DEBUG=${DEBUG}`);
 
 try {
@@ -200,7 +196,7 @@ try {
 
   // ── INIT ────────────────────────────────────────────
   if (isInit) {
-    const val = read(TRACKER);
+    const val = await read(TRACKER);
     let lastCompleted;
 
     if (val) {
@@ -230,7 +226,7 @@ try {
 
   // ── SAVE ──────────────────────────────────────────
   } else {
-    const trackerStr = read(TRACKER);
+    const trackerStr = await read(TRACKER);
     const trackerDate = new Date(trackerStr + "T00:00:00");
     trackerDate.setDate(trackerDate.getDate() + 1);
 
@@ -274,7 +270,7 @@ try {
       });
 
       // Cross-day dedup: skip messages already written in the previous day
-      const prevStr = read(PREV_BATCH) || "";
+      const prevStr = (await read(PREV_BATCH)) || "";
       const prevSet = new Set(
         prevStr.split("\n===\n").filter((s) => s.length > 0),
       );
@@ -303,7 +299,7 @@ try {
       if (newEntries.length > 0) {
         // Read existing JSON array (or start fresh)
         let existing = [];
-        const jsonRaw = read(SMS_FILE);
+        const jsonRaw = await read(SMS_FILE);
         if (jsonRaw) {
           try {
             const parsed = JSON.parse(jsonRaw);
@@ -337,12 +333,11 @@ try {
     debugAppend(`ERROR: ${err.message}\n${err.stack || ""}`);
   }
   Script.setShortcutOutput("ERROR: " + (err.message || String(err)));
-} finally {
-  if (DEBUG) {
-    debugAppend(`FINALLY: calling Script.complete() at ${new Date().toISOString()}`);
-  }
-  Script.complete();
 }
+
+Script.complete();
+
+})(); // end async IIFE
 
 } // end Scriptable-only block
 
