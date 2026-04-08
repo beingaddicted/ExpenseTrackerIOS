@@ -13,16 +13,15 @@
 //   (loop ends)
 //
 // INIT adds +1 day overlap so nightly automation never misses entries.
-// SAVE deduplicates against the previous day's batch (PREV_BATCH).
+// SAVE deduplicates against the previous day's batch (stored in JSON).
 // Output: iCloud Drive → Scriptable → expense tracker → SmsExtracts.json
-//   JSON shape: { lastCompleted: "YYYY-MM-DD", messages: [...] }
+//   JSON shape: { lastCompleted: "YYYY-MM-DD", prevBatch: [...], messages: [...] }
 
 const fm = FileManager.iCloud();
 const root = fm.documentsDirectory();
 const dir = fm.joinPath(root, "expense tracker");
 if (!fm.fileExists(dir)) fm.createDirectory(dir);
 const SMS_FILE = fm.joinPath(dir, "SmsExtracts.json");
-const PREV_BATCH = fm.joinPath(dir, "SmsExtractsPrevBatch.txt");
 const DEBUG_FILE = fm.joinPath(dir, "SmsExtractsDebug.txt");
 
 // ── CONFIG ──────────────────────────────────────────
@@ -214,7 +213,7 @@ try {
     const days = Math.max(0, Math.round((today - lastCompleted) / 86400000));
 
     // Add 1 extra day of overlap so nightly automation never misses entries.
-    // The SAVE phase's cross-day dedup (PREV_BATCH) filters out any duplicates.
+    // The SAVE phase deduplicates against the previous day's batch.
     // Always return at least 1 so re-running the shortcut same day still processes today.
     const safeDays = days > 0 ? days + 1 : 1;
 
@@ -278,13 +277,24 @@ try {
         return hasKw && hasMoney && !isSpam;
       });
 
-      // Cross-day dedup: skip messages already written in the previous day
-      const prevStr = (await read(PREV_BATCH)) || "";
-      const prevSet = new Set(
-        prevStr.split("\n===\n").filter((s) => s.length > 0),
-      );
+      // Cross-day dedup: skip messages already saved in the previous day's batch
+      let existing = [];
+      let prevBatch = [];
+      if (saveRaw) {
+        try {
+          const curData = JSON.parse(saveRaw);
+          existing = Array.isArray(curData.messages)
+            ? curData.messages
+            : Array.isArray(curData)
+              ? curData
+              : [];
+          prevBatch = Array.isArray(curData.prevBatch) ? curData.prevBatch : [];
+        } catch (_) {
+          existing = [];
+        }
+      }
+      const prevSet = new Set(prevBatch);
 
-      // Dedup within this day and against previous day
       const seen = new Set();
       const uniqueBankMsgs = [];
       const newEntries = [];
@@ -302,49 +312,31 @@ try {
         }
       }
 
-      // Save deduplicated batch for next day's cross-day dedup
-      fm.writeString(PREV_BATCH, uniqueBankMsgs.join("\n===\n"));
-
       if (newEntries.length > 0) {
-        let existing = [];
-        let curData = {};
-        if (saveRaw) {
-          try {
-            curData = JSON.parse(saveRaw);
-            existing = Array.isArray(curData.messages)
-              ? curData.messages
-              : Array.isArray(curData)
-                ? curData
-                : [];
-          } catch (_) {
-            existing = [];
-          }
-        }
         const merged = existing.concat(newEntries);
         fm.writeString(
           SMS_FILE,
-          JSON.stringify({ lastCompleted: dateStr, messages: merged }, null, 0),
+          JSON.stringify({ lastCompleted: dateStr, prevBatch: uniqueBankMsgs, messages: merged }, null, 0),
         );
       } else {
-        // No new entries but still advance tracker in the JSON
-        let curData = {};
-        if (saveRaw) {
-          try { curData = JSON.parse(saveRaw); } catch (_) {}
-        }
+        // No new entries but still advance tracker + save this day's batch
         fm.writeString(
           SMS_FILE,
-          JSON.stringify({ lastCompleted: dateStr, messages: curData.messages || [] }, null, 0),
+          JSON.stringify({ lastCompleted: dateStr, prevBatch: uniqueBankMsgs, messages: existing }, null, 0),
         );
       }
     } else {
-      // Empty input day — still advance tracker
-      let curData = {};
+      // Empty input day — still advance tracker, clear prevBatch
+      let existing = [];
       if (saveRaw) {
-        try { curData = JSON.parse(saveRaw); } catch (_) {}
+        try {
+          const d = JSON.parse(saveRaw);
+          existing = Array.isArray(d.messages) ? d.messages : [];
+        } catch (_) {}
       }
       fm.writeString(
         SMS_FILE,
-        JSON.stringify({ lastCompleted: dateStr, messages: curData.messages || [] }, null, 0),
+        JSON.stringify({ lastCompleted: dateStr, prevBatch: [], messages: existing }, null, 0),
       );
     }
 
