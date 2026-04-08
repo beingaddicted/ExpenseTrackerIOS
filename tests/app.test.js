@@ -20,7 +20,7 @@ describe("Data file integrity", () => {
     beforeAll(() => {
       data = JSON.parse(
         fs.readFileSync(
-          path.join(__dirname, "..", "data", "expenses.json"),
+          path.join(__dirname, "..", "data", "ShortCuts", "expenses.json"),
           "utf-8",
         ),
       );

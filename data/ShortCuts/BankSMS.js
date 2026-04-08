@@ -153,173 +153,175 @@ function fmt(d) {
 
 // ── MAIN EXECUTION (Scriptable only) ────────────────
 if (typeof module === "undefined") {
-(async () => {
 
-// ── INPUT EXTRACTION ────────────────────────────────
-const raw = args.shortcutParameter;
+async function main() {
+  try {
+    // ── INPUT EXTRACTION ────────────────────────────────
+    const raw = args.shortcutParameter;
 
-let input = "";
-if (typeof raw === "string") {
-  input = raw.trim();
-} else if (Array.isArray(raw) && raw.length > 0) {
-  input = raw
-    .map((s) => String(s))
-    .join("\n")
-    .trim();
-}
-
-// INIT when no parameter; SAVE otherwise
-const isInit = raw === null || raw === undefined;
-
-// Guard: skip bare date strings leaked by Shortcuts on first iteration
-if (!isInit && DATE_ONLY_RE.test(input)) {
-  input = "";
-}
-
-try {
-  // ── INIT ────────────────────────────────────────────
-  if (isInit) {
-    const val = await read(TRACKER);
-    let lastCompleted;
-
-    if (val) {
-      lastCompleted = new Date(val + "T00:00:00");
-    } else {
-      lastCompleted = new Date(DEFAULT_START + "T00:00:00");
-      lastCompleted.setDate(lastCompleted.getDate() - 1);
-      fm.writeString(TRACKER, fmt(lastCompleted));
+    let input = "";
+    if (typeof raw === "string") {
+      input = raw.trim();
+    } else if (Array.isArray(raw) && raw.length > 0) {
+      input = raw
+        .map((s) => String(s))
+        .join("\n")
+        .trim();
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    lastCompleted.setHours(0, 0, 0, 0);
+    // INIT when no parameter; SAVE otherwise
+    const isInit = raw === null || raw === undefined;
 
-    const days = Math.max(0, Math.round((today - lastCompleted) / 86400000));
+    // Guard: skip bare date strings leaked by Shortcuts on first iteration
+    if (!isInit && DATE_ONLY_RE.test(input)) {
+      input = "";
+    }
 
-    // Add 1 extra day of overlap so nightly automation never misses entries.
-    // The SAVE phase's cross-day dedup (PREV_BATCH) filters out any duplicates.
-    // Always return at least 1 so re-running the shortcut same day still processes today.
-    const safeDays = days > 0 ? days + 1 : 1;
+    // ── INIT ────────────────────────────────────────────
+    if (isInit) {
+      const val = await read(TRACKER);
+      let lastCompleted;
 
-    Script.setShortcutOutput(String(safeDays));
+      if (val) {
+        lastCompleted = new Date(val + "T00:00:00");
+      } else {
+        lastCompleted = new Date(DEFAULT_START + "T00:00:00");
+        lastCompleted.setDate(lastCompleted.getDate() - 1);
+        fm.writeString(TRACKER, fmt(lastCompleted));
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      lastCompleted.setHours(0, 0, 0, 0);
+
+      const days = Math.max(0, Math.round((today - lastCompleted) / 86400000));
+
+      // Add 1 extra day of overlap so nightly automation never misses entries.
+      // The SAVE phase's cross-day dedup (PREV_BATCH) filters out any duplicates.
+      // Always return at least 1 so re-running the shortcut same day still processes today.
+      const safeDays = days > 0 ? days + 1 : 1;
+
+      Script.setShortcutOutput(String(safeDays));
 
     // ── SAVE ──────────────────────────────────────────
-  } else {
-    const trackerStr = await read(TRACKER);
-    const trackerDate = new Date(trackerStr + "T00:00:00");
-    trackerDate.setDate(trackerDate.getDate() + 1);
+    } else {
+      const trackerStr = await read(TRACKER);
+      const trackerDate = new Date(trackerStr + "T00:00:00");
+      trackerDate.setDate(trackerDate.getDate() + 1);
 
-    // Clamp to today — never advance tracker past the current date
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (trackerDate > today) {
-      trackerDate.setTime(today.getTime());
-    }
+      // Clamp to today — never advance tracker past the current date
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (trackerDate > today) {
+        trackerDate.setTime(today.getTime());
+      }
 
-    const dateStr = fmt(trackerDate);
+      const dateStr = fmt(trackerDate);
 
-    if (input.length > 0) {
-      const allMsgs = splitMessages(input);
+      if (input.length > 0) {
+        const allMsgs = splitMessages(input);
 
-      // ── Debug log (only when DEBUG === true) ──
-      if (DEBUG) {
-        const debugLines = [];
-        debugLines.push(`\n=== ${dateStr} ===`);
-        debugLines.push(`Raw input length: ${input.length}`);
-        debugLines.push(`Messages split: ${allMsgs.length}`);
-        for (const sms of allMsgs) {
+        // ── Debug log (only when DEBUG === true) ──
+        if (DEBUG) {
+          const debugLines = [];
+          debugLines.push(`\n=== ${dateStr} ===`);
+          debugLines.push(`Raw input length: ${input.length}`);
+          debugLines.push(`Messages split: ${allMsgs.length}`);
+          for (const sms of allMsgs) {
+            const lower = sms.toLowerCase();
+            const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
+            const hasMoney = MONEY_RE.test(sms);
+            const isSpam = SPAM_RE.test(sms);
+            const time = extractTime(sms);
+            const kept = hasKw && hasMoney && !isSpam;
+            debugLines.push(`[${kept ? "KEEP" : "SKIP"}] kw=${hasKw} money=${hasMoney} spam=${isSpam} time="${time}" body=${sms.substring(0, 120)}`);
+          }
+          const debugExisting = await read(DEBUG_FILE);
+          fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + debugLines.join("\n") + "\n");
+        }
+
+        // Keep only messages with a transaction keyword AND a money amount, skip spam
+        const bankMsgs = allMsgs.filter((sms) => {
           const lower = sms.toLowerCase();
           const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
           const hasMoney = MONEY_RE.test(sms);
           const isSpam = SPAM_RE.test(sms);
-          const time = extractTime(sms);
-          const kept = hasKw && hasMoney && !isSpam;
-          debugLines.push(`[${kept ? "KEEP" : "SKIP"}] kw=${hasKw} money=${hasMoney} spam=${isSpam} time="${time}" body=${sms.substring(0, 120)}`);
-        }
-        const debugExisting = await read(DEBUG_FILE);
-        fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + debugLines.join("\n") + "\n");
-      }
+          return hasKw && hasMoney && !isSpam;
+        });
 
-      // Keep only messages with a transaction keyword AND a money amount, skip spam
-      const bankMsgs = allMsgs.filter((sms) => {
-        const lower = sms.toLowerCase();
-        const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
-        const hasMoney = MONEY_RE.test(sms);
-        const isSpam = SPAM_RE.test(sms);
-        return hasKw && hasMoney && !isSpam;
-      });
+        // Cross-day dedup: skip messages already written in the previous day
+        const prevStr = (await read(PREV_BATCH)) || "";
+        const prevSet = new Set(
+          prevStr.split("\n===\n").filter((s) => s.length > 0),
+        );
 
-      // Cross-day dedup: skip messages already written in the previous day
-      const prevStr = (await read(PREV_BATCH)) || "";
-      const prevSet = new Set(
-        prevStr.split("\n===\n").filter((s) => s.length > 0),
-      );
-
-      // Dedup within this day and against previous day
-      const seen = new Set();
-      const uniqueBankMsgs = [];
-      const newEntries = [];
-      for (const sms of bankMsgs) {
-        if (!seen.has(sms) && !prevSet.has(sms)) {
-          seen.add(sms);
-          uniqueBankMsgs.push(sms);
-          const time = extractTime(sms);
-          newEntries.push({
-            date: dateStr,
-            time: time || "",
-            body: sms,
-            originalSms: sms,
-          });
-        }
-      }
-
-      // Save deduplicated batch for next day's cross-day dedup
-      fm.writeString(PREV_BATCH, uniqueBankMsgs.join("\n===\n"));
-
-      if (newEntries.length > 0) {
-        // Read existing JSON array (or start fresh)
-        let existing = [];
-        const raw = await read(SMS_FILE);
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            existing = Array.isArray(parsed.messages)
-              ? parsed.messages
-              : Array.isArray(parsed)
-                ? parsed
-                : [];
-          } catch (_) {
-            existing = [];
+        // Dedup within this day and against previous day
+        const seen = new Set();
+        const uniqueBankMsgs = [];
+        const newEntries = [];
+        for (const sms of bankMsgs) {
+          if (!seen.has(sms) && !prevSet.has(sms)) {
+            seen.add(sms);
+            uniqueBankMsgs.push(sms);
+            const time = extractTime(sms);
+            newEntries.push({
+              date: dateStr,
+              time: time || "",
+              body: sms,
+              originalSms: sms,
+            });
           }
         }
-        const merged = existing.concat(newEntries);
-        fm.writeString(
-          SMS_FILE,
-          JSON.stringify({ messages: merged }, null, 0),
-        );
+
+        // Save deduplicated batch for next day's cross-day dedup
+        fm.writeString(PREV_BATCH, uniqueBankMsgs.join("\n===\n"));
+
+        if (newEntries.length > 0) {
+          // Read existing JSON array (or start fresh)
+          let existing = [];
+          const jsonRaw = await read(SMS_FILE);
+          if (jsonRaw) {
+            try {
+              const parsed = JSON.parse(jsonRaw);
+              existing = Array.isArray(parsed.messages)
+                ? parsed.messages
+                : Array.isArray(parsed)
+                  ? parsed
+                  : [];
+            } catch (_) {
+              existing = [];
+            }
+          }
+          const merged = existing.concat(newEntries);
+          fm.writeString(
+            SMS_FILE,
+            JSON.stringify({ messages: merged }, null, 0),
+          );
+        }
       }
+
+      // Always advance tracker
+      fm.writeString(TRACKER, dateStr);
+
+      // Notify when done
+      if (trackerDate >= today) {
+        const n = new Notification();
+        n.title = "Bank SMS Export Done";
+        n.body = `Processed up to ${dateStr}. Check exportSms.json`;
+        await n.schedule();
+      }
+
+      Script.setShortcutOutput("OK");
     }
-
-    // Always advance tracker
-    fm.writeString(TRACKER, dateStr);
-
-    // Notify when done
-    if (trackerDate >= today) {
-      const n = new Notification();
-      n.title = "Bank SMS Export Done";
-      n.body = `Processed up to ${dateStr}. Check exportSms.json`;
-      await n.schedule();
-    }
-
-    Script.setShortcutOutput("OK");
+  } catch (err) {
+    Script.setShortcutOutput("ERROR: " + (err.message || String(err)));
+  } finally {
+    Script.complete();
   }
-} catch (err) {
-  Script.setShortcutOutput("ERROR: " + err.message);
 }
 
-Script.complete();
+main();
 
-})(); // end async IIFE
 } // end Scriptable-only block
 
 // ── Test exports (Node.js only) ──
