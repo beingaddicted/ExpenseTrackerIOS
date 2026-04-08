@@ -2485,6 +2485,7 @@ ${footer}`;
       if (!provider) continue;
 
       const model = entry.model || provider.defaultModel;
+      ErrorLogger.log("ai_call_attempt", { provider: provider.name, model, keyPrefix: entry.key.substring(0, 8) + "…" });
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), 60000);
       try {
@@ -2492,6 +2493,7 @@ ${footer}`;
         clearTimeout(timer);
         state.errorCount = 0;
         state.lastError = null;
+        ErrorLogger.log("ai_call_success", { provider: provider.name, model, resultLen: (result || "").length });
         return result;
       } catch (err) {
         clearTimeout(timer);
@@ -2539,6 +2541,7 @@ ${footer}`;
       showToast("No Unknown merchants to classify!", "info");
       return;
     }
+    ErrorLogger.log("ai_batch_start", { fn: "classify", total: unknowns.length, keys: cfg.apiKeys.map(k => k.provider + "/" + (k.model || "default")).join(", ") });
 
     _aiStopRequested = false;
     const progressDiv = document.getElementById("aiProgress");
@@ -2577,13 +2580,16 @@ ${footer}`;
       const prompt = buildAIPrompt({ mode: "batch", smsContent: smsList });
 
       try {
+        ErrorLogger.log("ai_batch_call", { fn: "classify", batch: b + 1, smsCount: batch.length, promptLen: prompt.length });
         const raw = await callAI(prompt);
         consecutiveErrors = 0;
+        ErrorLogger.log("ai_batch_response", { fn: "classify", batch: b + 1, rawLen: (raw || "").length, rawPreview: (raw || "").substring(0, 200) });
         const results = parseAIBatchResponse(raw);
         console.log(`[AI] Batch ${b + 1}: sent ${batch.length} SMS, got ${results.length} results`);
+        ErrorLogger.log("ai_batch_parsed", { fn: "classify", batch: b + 1, sent: batch.length, got: results.length });
         if (results.length === 0) {
           console.warn("[AI] Raw response (first 500 chars):", (raw || "").substring(0, 500));
-          ErrorLogger.log("ai_batch_zero_results", { batch: b + 1, rawPreview: (raw || "").substring(0, 300) });
+          ErrorLogger.log("ai_batch_zero_results", { fn: "classify", batch: b + 1, rawFull: (raw || "").substring(0, 1000) });
         }
         const matched = new Set();
         results.forEach((r) => {
@@ -2618,7 +2624,7 @@ ${footer}`;
       } catch (err) {
         errors++;
         consecutiveErrors++;
-        ErrorLogger.log("ai_classify_error", { message: err.message, batch: b });
+        ErrorLogger.log("ai_classify_error", { fn: "classify", message: err.message, stack: (err.stack || "").substring(0, 300), status: err.status, batch: b + 1, consecutiveErrors });
         if (consecutiveErrors >= 3) {
           progressText.textContent = `Stopped after ${consecutiveErrors} consecutive errors. ${updated} classified, ${errors} errors. Retry manually.`;
           showToast("AI stopped — too many consecutive errors. Fix API keys and retry.", "error");
@@ -2646,6 +2652,7 @@ ${footer}`;
       render();
     }
     showToast(`Classified ${updated}, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
+    ErrorLogger.log("ai_batch_done", { fn: "classify", updated, invalidCount, errors, total: unknowns.length });
   }
 
   async function runAIClassificationAll() {
@@ -2765,9 +2772,8 @@ ${footer}`;
     updateReclassifyBtn();
 
     showToast(`Reclassified ${updated}, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
-  }
-
-  async function runAIClassificationMonth() {
+    ErrorLogger.log("ai_batch_done", { fn: "reclassify", updated, invalidCount, errors });
+  } {
     const cfg = getAIConfig();
     if (!cfg.enabled || !cfg.apiKeys?.length) {
       showToast("Enable AI and add API keys first", "error");
@@ -2783,6 +2789,7 @@ ${footer}`;
     }
 
     if (!confirm(`AI will classify ${targets.length} transactions in ${monthName}.\nThis will detect merchants, categories, and mark non-transactions as invalid.\n\nContinue?`)) return;
+    ErrorLogger.log("ai_batch_start", { fn: "month", month: monthName, total: targets.length, keys: cfg.apiKeys.map(k => k.provider + "/" + (k.model || "default")).join(", ") });
 
     _aiStopRequested = false;
     const progressDiv = document.getElementById("aiProgress");
@@ -2821,13 +2828,16 @@ ${footer}`;
       const prompt = buildAIPrompt({ mode: "batch", smsContent: smsList });
 
       try {
+        ErrorLogger.log("ai_batch_call", { fn: "month", batch: b + 1, smsCount: batch.length, promptLen: prompt.length });
         const raw = await callAI(prompt);
         consecutiveErrors = 0;
+        ErrorLogger.log("ai_batch_response", { fn: "month", batch: b + 1, rawLen: (raw || "").length, rawPreview: (raw || "").substring(0, 200) });
         const results = parseAIBatchResponse(raw);
         console.log(`[AI Month] Batch ${b + 1}: sent ${batch.length} SMS, got ${results.length} results`);
+        ErrorLogger.log("ai_batch_parsed", { fn: "month", batch: b + 1, sent: batch.length, got: results.length });
         if (results.length === 0) {
           console.warn("[AI Month] Raw response (first 500 chars):", (raw || "").substring(0, 500));
-          ErrorLogger.log("ai_batch_zero_results", { fn: "month", batch: b + 1, rawPreview: (raw || "").substring(0, 300) });
+          ErrorLogger.log("ai_batch_zero_results", { fn: "month", batch: b + 1, rawFull: (raw || "").substring(0, 1000) });
         }
         results.forEach((r) => {
           const idx = (r.i || r.index || 0) - 1;
@@ -2858,7 +2868,7 @@ ${footer}`;
       } catch (err) {
         errors++;
         consecutiveErrors++;
-        ErrorLogger.log("ai_classify_month_error", { message: err.message, month: monthName, batch: b });
+        ErrorLogger.log("ai_classify_month_error", { message: err.message, stack: (err.stack || "").substring(0, 300), status: err.status, month: monthName, batch: b + 1, consecutiveErrors });
         if (consecutiveErrors >= 3) {
           progressText.textContent = `Stopped after ${consecutiveErrors} consecutive errors. ${updated} classified, ${errors} errors.`;
           showToast("AI stopped — too many consecutive errors. Fix API keys and retry.", "error");
@@ -2886,6 +2896,7 @@ ${footer}`;
     updateReclassifyBtn();
 
     showToast(`${monthName}: ${updated} classified, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
+    ErrorLogger.log("ai_batch_done", { fn: "month", month: monthName, updated, invalidCount, errors, total: targets.length });
   }
 
   return { init };
