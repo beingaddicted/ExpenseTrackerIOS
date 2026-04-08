@@ -26,7 +26,7 @@ const PREV_BATCH = fm.joinPath(dir, "exportSmsPrevBatch.txt");
 const DEBUG_FILE = fm.joinPath(dir, "exportSmsDebug.txt");
 
 // ── CONFIG ──────────────────────────────────────────
-const DEBUG = false; // flip to true to write exportSmsDebug.txt
+const DEBUG = true; // flip to true to write exportSmsDebug.txt
 const DEFAULT_START = "2020-01-01";
 
 const KEYWORDS = [
@@ -159,6 +159,19 @@ async function main() {
     // ── INPUT EXTRACTION ────────────────────────────────
     const raw = args.shortcutParameter;
 
+    // Debug: log entry point
+    if (DEBUG) {
+      const debugLines = [];
+      debugLines.push(`\n=== ENTRY ${new Date().toISOString()} ===`);
+      debugLines.push(`raw type: ${typeof raw}`);
+      debugLines.push(`raw isArray: ${Array.isArray(raw)}`);
+      debugLines.push(`raw value (first 200): ${String(raw).substring(0, 200)}`);
+      debugLines.push(`raw === null: ${raw === null}`);
+      debugLines.push(`raw === undefined: ${raw === undefined}`);
+      const debugExisting = await read(DEBUG_FILE);
+      fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + debugLines.join("\n") + "\n");
+    }
+
     let input = "";
     if (typeof raw === "string") {
       input = raw.trim();
@@ -200,6 +213,13 @@ async function main() {
       // The SAVE phase's cross-day dedup (PREV_BATCH) filters out any duplicates.
       // Always return at least 1 so re-running the shortcut same day still processes today.
       const safeDays = days > 0 ? days + 1 : 1;
+
+      if (DEBUG) {
+        const debugLines = [];
+        debugLines.push(`INIT: tracker val="${val}", lastCompleted=${lastCompleted.toISOString()}, today=${today.toISOString()}, days=${days}, safeDays=${safeDays}`);
+        const debugExisting = await read(DEBUG_FILE);
+        fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + debugLines.join("\n") + "\n");
+      }
 
       Script.setShortcutOutput(String(safeDays));
 
@@ -314,8 +334,20 @@ async function main() {
       Script.setShortcutOutput("OK");
     }
   } catch (err) {
+    if (DEBUG) {
+      try {
+        const debugExisting = fm.fileExists(DEBUG_FILE) ? fm.readString(DEBUG_FILE) : "";
+        fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + `ERROR: ${err.message}\n${err.stack || ""}\n`);
+      } catch (_) {}
+    }
     Script.setShortcutOutput("ERROR: " + (err.message || String(err)));
   } finally {
+    if (DEBUG) {
+      try {
+        const debugExisting = fm.fileExists(DEBUG_FILE) ? fm.readString(DEBUG_FILE) : "";
+        fm.writeString(DEBUG_FILE, (debugExisting ? debugExisting + "\n" : "") + `FINALLY: calling Script.complete() at ${new Date().toISOString()}\n`);
+      } catch (_) {}
+    }
     Script.complete();
   }
 }
