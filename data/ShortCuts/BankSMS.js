@@ -240,11 +240,13 @@ try {
   } else {
     // Read lastCompleted from the JSON file
     let trackerStr = null;
+    let savedRunStartCount = 0;
     const saveRaw = await read(SMS_FILE);
     if (saveRaw) {
       try {
         const saveData = JSON.parse(saveRaw);
         trackerStr = saveData.lastCompleted || null;
+        savedRunStartCount = saveData.runStartCount || 0;
       } catch (_) {}
     }
     if (!trackerStr) trackerStr = DEFAULT_START;
@@ -349,13 +351,13 @@ try {
         const merged = existing.concat(newEntries);
         fm.writeString(
           SMS_FILE,
-          JSON.stringify({ lastCompleted: dateStr, prevBatch: prevBatch, messages: merged }, null, 0),
+          JSON.stringify({ lastCompleted: dateStr, runStartCount: savedRunStartCount, prevBatch: prevBatch, messages: merged }, null, 0),
         );
       } else {
         // No new entries but still advance tracker
         fm.writeString(
           SMS_FILE,
-          JSON.stringify({ lastCompleted: dateStr, prevBatch: prevBatch, messages: existing }, null, 0),
+          JSON.stringify({ lastCompleted: dateStr, runStartCount: savedRunStartCount, prevBatch: prevBatch, messages: existing }, null, 0),
         );
       }
     } else {
@@ -373,24 +375,22 @@ try {
       }
       fm.writeString(
         SMS_FILE,
-        JSON.stringify({ lastCompleted: dateStr, prevBatch: prevBatch, messages: existing }, null, 0),
+        JSON.stringify({ lastCompleted: dateStr, runStartCount: savedRunStartCount, prevBatch: prevBatch, messages: existing }, null, 0),
       );
     }
 
     // Report total count when tracker reaches today (final iteration)
     let totalMsgs = 0;
-    let runStartCount = 0;
     try {
       const finalRaw = await read(SMS_FILE);
       if (finalRaw) {
         const finalData = JSON.parse(finalRaw);
         totalMsgs = Array.isArray(finalData.messages) ? finalData.messages.length : 0;
-        runStartCount = finalData.runStartCount || 0;
       }
     } catch (_) {}
 
     if (trackerDate >= today) {
-      const delta = totalMsgs - runStartCount;
+      const delta = totalMsgs - savedRunStartCount;
       const n = new Notification();
       n.title = "Bank SMS Export Done";
       n.body = delta + " new SMS extracted (" + totalMsgs + " total) up to " + dateStr;

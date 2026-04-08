@@ -2550,7 +2550,7 @@ ${footer}`;
     if (btn) btn.style.display = show ? "block" : "none";
   }
 
-  // Call AI for a batch of SMS, auto-retry with smaller batches on truncation
+  // Call AI for a batch of SMS, auto-retry with smaller batches on truncation or timeout
   async function callAIBatch(batch, fn) {
     const MIN_BATCH = 5;
     let currentBatch = batch;
@@ -2563,7 +2563,24 @@ ${footer}`;
       const prompt = buildAIPrompt({ mode: "batch", smsContent: smsList });
 
       ErrorLogger.log("ai_batch_call", { fn, attempt, smsCount: currentBatch.length, promptLen: prompt.length });
-      const raw = await callAI(prompt);
+
+      let raw;
+      try {
+        raw = await callAI(prompt);
+      } catch (err) {
+        // On timeout, reduce batch size and retry (same as truncation)
+        if (err.status === 408 && currentSize > MIN_BATCH) {
+          const newSize = Math.max(MIN_BATCH, Math.floor(currentSize / 2));
+          console.warn(`[AI] Timeout with batch ${currentSize}. Reducing to ${newSize} and retrying…`);
+          ErrorLogger.log("ai_batch_timeout_retry", { fn, attempt, batchSize: currentSize, newSize });
+          showToast(`AI timeout — retrying with batch size ${newSize}…`, "info");
+          currentBatch = batch.slice(0, newSize);
+          currentSize = newSize;
+          continue;
+        }
+        throw err; // non-timeout errors bubble up
+      }
+
       ErrorLogger.log("ai_batch_response", { fn, attempt, rawLen: (raw || "").length, rawPreview: (raw || "").substring(0, 200) });
 
       const results = parseAIBatchResponse(raw);
