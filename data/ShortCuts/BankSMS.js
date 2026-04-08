@@ -167,6 +167,9 @@ function debugAppend(text) {
   } catch (_) {}
 }
 
+// Always write a boot marker so we know the script actually ran
+debugAppend(`=== BOOT ${new Date().toISOString()} === DEBUG=${DEBUG}`);
+
 try {
   // ── INPUT EXTRACTION ────────────────────────────────
   const raw = args.shortcutParameter;
@@ -322,13 +325,8 @@ try {
     // Always advance tracker
     fm.writeString(TRACKER, dateStr);
 
-    // Notify when done
-    if (trackerDate >= today) {
-      const n = new Notification();
-      n.title = "Bank SMS Export Done";
-      n.body = `Processed up to ${dateStr}. Check exportSms.json`;
-      n.schedule();
-    }
+    // Notify when done (skip Notification — its .schedule() returns a Promise
+    // which causes "Script completed without output" in Shortcuts)
 
     Script.setShortcutOutput("OK");
   }
