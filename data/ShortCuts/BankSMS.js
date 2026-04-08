@@ -143,9 +143,7 @@ function reassembleMessages(text) {
 
 function read(path) {
   if (!fm.fileExists(path)) return null;
-  // Files we read are ones we wrote — they should be local already.
-  // If somehow not downloaded (new device + iCloud sync), skip gracefully.
-  if (!fm.isFileDownloaded(path)) return null;
+  // fm.readString handles iCloud download automatically (blocking)
   try {
     return fm.readString(path).trim();
   } catch (_) {
@@ -162,7 +160,11 @@ if (typeof module === "undefined") {
 
 function debugAppend(text) {
   try {
-    const prev = fm.fileExists(DEBUG_FILE) ? fm.readString(DEBUG_FILE) : "";
+    // Only read previous content if file is already local — avoid blocking iCloud download
+    let prev = "";
+    if (fm.fileExists(DEBUG_FILE) && fm.isFileDownloaded(DEBUG_FILE)) {
+      prev = fm.readString(DEBUG_FILE);
+    }
     fm.writeString(DEBUG_FILE, (prev ? prev + "\n" : "") + text + "\n");
   } catch (_) {}
 }
