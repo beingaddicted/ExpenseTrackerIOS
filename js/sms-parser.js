@@ -981,6 +981,12 @@ const SMSParser = (() => {
     return true;
   }
 
+  // ─── Resolve template engine (browser: global, Node: require) ───
+  function getTemplateEngine() {
+    if (typeof SMSTemplates !== "undefined") return SMSTemplates;
+    try { return require("./sms-templates"); } catch { return null; }
+  }
+
   // ─── Main Parse Function ───
   function parse(smsText, sender = "", timestamp = null) {
     if (!smsText || typeof smsText !== "string") return null;
@@ -988,6 +994,40 @@ const SMSParser = (() => {
     const text = smsText.trim();
     if (!isBankSMS(text)) return null;
 
+    // ─── Try structured templates first ───
+    const engine = getTemplateEngine();
+    if (engine) {
+      const tpl = engine.tryMatch(text, sender, timestamp);
+      if (tpl) {
+        // Fill in date from timestamp or template-parsed date
+        const date = timestamp || tpl.date || parseDate(text);
+        const merchant = tpl.merchant || "Unknown";
+        const category = detectCategory(text, merchant);
+        const id = generateId(tpl.amount, date, merchant, tpl.type, tpl.refNumber);
+
+        return {
+          id,
+          amount: tpl.amount,
+          type: tpl.type,
+          currency: tpl.currency || "INR",
+          date,
+          bank: tpl.bank || detectBank(text, sender),
+          account: tpl.account || parseAccount(text),
+          merchant,
+          category,
+          mode: tpl.mode || "Other",
+          refNumber: tpl.refNumber || null,
+          balance: tpl.balance || extractBalance(text),
+          rawSMS: text,
+          sender: sender || null,
+          parsedAt: new Date().toISOString(),
+          source: "sms",
+          _template: tpl._template,
+        };
+      }
+    }
+
+    // ─── Generic fallback parser ───
     const amount = parseAmount(text);
     if (!amount || amount <= 0) return null;
 

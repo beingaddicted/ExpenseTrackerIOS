@@ -789,21 +789,15 @@ body {
     transform: scale(0.9);
 }
 
-/* ─── Inline Category Select ─── */
-.txn-cat-select {
-    background: transparent;
-    border: none;
+/* ─── Inline Category Label ─── */
+.txn-cat-label {
     color: var(--text-muted);
     font-size: 12px;
     padding: 0;
-    cursor: pointer;
-    max-width: 120px;
-    -webkit-appearance: none;
-    appearance: none;
-}
-
-.txn-cat-select:focus {
-    outline: none;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* ─── Category Manager ─── */

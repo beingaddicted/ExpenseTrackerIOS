@@ -923,7 +923,6 @@ const App = (() => {
       groups[t.date].push(t);
     });
 
-    const visibleCats = getAllCategories();
     let html = "";
     for (const [date, txns] of Object.entries(groups)) {
       const d = new Date(date);
@@ -935,18 +934,12 @@ const App = (() => {
         const invalidCls = t.invalid ? " txn-invalid" : "";
         const toggleIcon = t.invalid ? "⊘" : "○";
         const toggleCls = t.invalid ? " toggled" : "";
-        const catOpts = visibleCats
-          .map(
-            (c) =>
-              `<option value="${sanitize(c)}"${c === t.category ? " selected" : ""}>${sanitize(c)}</option>`,
-          )
-          .join("");
         html += `<div class="txn-card${invalidCls}" data-id="${sanitize(t.id)}">
           <div class="txn-icon ${css}">${icon}</div>
           <div class="txn-info">
             <div class="txn-merchant">${sanitize(t.merchant || "Unknown")}</div>
             <div class="txn-meta">
-              <select class="txn-cat-select" data-id="${sanitize(t.id)}">${catOpts}</select>
+              <span class="txn-cat-label" data-id="${sanitize(t.id)}">${icon} ${sanitize(t.category || "Other")}</span>
               <span class="txn-meta-dot"></span>
               <span>${sanitize(t.bank || "")}</span>
             </div>
@@ -985,19 +978,7 @@ const App = (() => {
       });
     });
 
-    // Inline category change
-    container.querySelectorAll(".txn-cat-select").forEach((sel) => {
-      sel.addEventListener("click", (e) => e.stopPropagation());
-      sel.addEventListener("change", (e) => {
-        e.stopPropagation();
-        const txn = transactions.find((t) => t.id === sel.dataset.id);
-        if (txn) {
-          txn.category = sel.value;
-          saveData();
-          render();
-        }
-      });
-    });
+
   }
 
   function formatDateLabel(d) {
@@ -1974,18 +1955,71 @@ const App = (() => {
   }
 
   function parseAIBatchResponse(raw) {
+    if (!raw || typeof raw !== "string") {
+      console.warn("[AI] parseAIBatchResponse: empty or non-string input", typeof raw);
+      return [];
+    }
+
+    // Strip markdown code fences: ```json ... ``` or ``` ... ```
+    let cleaned = raw.trim();
+    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "");
+    cleaned = cleaned.trim();
+
+    // Try direct parse
     let parsed;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(cleaned);
     } catch {
-      const m = raw.match(/\[[\s\S]*\]/);
-      parsed = m ? JSON.parse(m[0]) : [];
+      // Try regex extraction of JSON array
+      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+      if (arrMatch) {
+        try { parsed = JSON.parse(arrMatch[0]); } catch { /* fall through */ }
+      }
+      // Try regex extraction of JSON object wrapping an array
+      if (!parsed) {
+        const objMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (objMatch) {
+          try { parsed = JSON.parse(objMatch[0]); } catch { /* fall through */ }
+        }
+      }
     }
-    if (Array.isArray(parsed)) return parsed;
+
+    if (!parsed) {
+      console.error("[AI] parseAIBatchResponse: could not parse response", cleaned.substring(0, 500));
+      ErrorLogger.log("ai_parse_fail", { raw: cleaned.substring(0, 500) });
+      return [];
+    }
+
+    // Direct array
+    if (Array.isArray(parsed)) {
+      console.log(`[AI] parseAIBatchResponse: got array with ${parsed.length} items`);
+      return parsed;
+    }
+
+    // Object wrapping an array — check common keys
     if (parsed && typeof parsed === "object") {
+      // Check known keys first, then any array value
+      for (const key of ["results", "data", "transactions", "classifications", "items", "sms", "response"]) {
+        if (Array.isArray(parsed[key])) {
+          console.log(`[AI] parseAIBatchResponse: unwrapped from key '${key}', ${parsed[key].length} items`);
+          return parsed[key];
+        }
+      }
+      // Fallback: first array value found
       const arrVal = Object.values(parsed).find(v => Array.isArray(v));
-      if (arrVal) return arrVal;
+      if (arrVal) {
+        console.log(`[AI] parseAIBatchResponse: unwrapped from unknown key, ${arrVal.length} items`);
+        return arrVal;
+      }
+      // Single object that looks like a result? Wrap it.
+      if (parsed.merchant || parsed.category || parsed.invalid !== undefined) {
+        console.log("[AI] parseAIBatchResponse: single object result, wrapping in array");
+        return [parsed];
+      }
     }
+
+    console.error("[AI] parseAIBatchResponse: unexpected structure", JSON.stringify(parsed).substring(0, 500));
+    ErrorLogger.log("ai_parse_unexpected", { structure: JSON.stringify(parsed).substring(0, 300) });
     return [];
   }
 
@@ -1997,8 +2031,12 @@ const App = (() => {
       ? "For each SMS below, perform these steps:"
       : "For the SMS below, perform these steps:";
     const returnFormat = isBatch
-      ? 'Return a JSON array: [{"i":1,"merchant":"Name","category":"Category","invalid":false,"mode":"UPI"}, ...]'
-      : 'Return JSON: {"merchant":"Name","category":"Category","invalid":false,"mode":"UPI"}';
+      ? `RESPONSE FORMAT — CRITICAL:
+You MUST return ONLY a raw JSON array. No wrapping object, no markdown, no explanation.
+Exact format: [{"i":1,"merchant":"Name","category":"Category","invalid":false,"mode":"UPI"}, ...]
+Do NOT wrap in {"results":[...]} or any other object. Return the bare array ONLY.
+You MUST return exactly one entry per SMS, in order, matching the SMS number.`
+      : 'Return ONLY raw JSON (no markdown, no explanation): {"merchant":"Name","category":"Category","invalid":false,"mode":"UPI"}';
     const indexRule = isBatch
       ? '\n- "i": SMS number (1-based)'
       : "";
@@ -2349,16 +2387,23 @@ ${footer}`;
         if (!provider) { failedNames.push(entry.provider || "Unknown"); continue; }
         try {
           const model = entry.model || provider.defaultModel;
-          await provider.call(entry.key, model, 'Respond with this JSON: {"status":"ok"}');
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          try {
+            await testAIKey(provider, entry.key, model, controller.signal);
+          } finally {
+            clearTimeout(timeoutId);
+          }
           passed++;
           const state = getKeyState(entry.key);
           state.errorCount = 0;
           state.lastError = null;
         } catch (err) {
-          failedNames.push(`${provider.name} (${err.message.substring(0, 60)})`);
+          const msg = err.name === "AbortError" ? "Timeout (15s)" : err.message.substring(0, 60);
+          failedNames.push(`${provider.name} (${msg})`);
           const state = getKeyState(entry.key);
-          state.lastError = err.message;
-          ErrorLogger.log("ai_test_key_error", { provider: provider.name, model: model, status: err.status || 0, message: err.message });
+          state.lastError = msg;
+          ErrorLogger.log("ai_test_key_error", { provider: provider.name, model: entry.model, status: err.status || 0, message: msg });
         }
       }
       btn.disabled = false;
@@ -2397,6 +2442,30 @@ ${footer}`;
   }
 
   let _aiStopRequested = false;
+
+  // Lightweight test: just verify the key can make a simple API call successfully
+  async function testAIKey(provider, key, model, signal) {
+    if (provider.name === "Gemini") {
+      // Use a minimal generateContent call — skip responseMimeType to avoid slow JSON-mode overhead
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: "Say OK" }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 10 },
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
+      }
+      return;
+    }
+    // For other providers, use their call function directly (already fast)
+    await provider.call(key, model, "Say OK");
+  }
 
   async function callAI(prompt) {
     const cfg = getAIConfig();
@@ -2494,6 +2563,11 @@ ${footer}`;
         const raw = await callAI(prompt);
         consecutiveErrors = 0;
         const results = parseAIBatchResponse(raw);
+        console.log(`[AI] Batch ${b + 1}: sent ${batch.length} SMS, got ${results.length} results`);
+        if (results.length === 0) {
+          console.warn("[AI] Raw response (first 500 chars):", (raw || "").substring(0, 500));
+          ErrorLogger.log("ai_batch_zero_results", { batch: b + 1, rawPreview: (raw || "").substring(0, 300) });
+        }
         const matched = new Set();
         results.forEach((r) => {
           const idx = (r.i || r.index || 0) - 1;
@@ -2612,6 +2686,11 @@ ${footer}`;
         const raw = await callAI(prompt);
         consecutiveErrors = 0;
         const results = parseAIBatchResponse(raw);
+        console.log(`[AI Reclassify] Batch ${b + 1}: sent ${batch.length} SMS, got ${results.length} results`);
+        if (results.length === 0) {
+          console.warn("[AI Reclassify] Raw response (first 500 chars):", (raw || "").substring(0, 500));
+          ErrorLogger.log("ai_batch_zero_results", { fn: "reclassifyAll", batch: b + 1, rawPreview: (raw || "").substring(0, 300) });
+        }
         results.forEach((r) => {
           const idx = (r.i || r.index || 0) - 1;
           if (idx >= 0 && idx < batch.length) {
@@ -2728,6 +2807,11 @@ ${footer}`;
         const raw = await callAI(prompt);
         consecutiveErrors = 0;
         const results = parseAIBatchResponse(raw);
+        console.log(`[AI Month] Batch ${b + 1}: sent ${batch.length} SMS, got ${results.length} results`);
+        if (results.length === 0) {
+          console.warn("[AI Month] Raw response (first 500 chars):", (raw || "").substring(0, 500));
+          ErrorLogger.log("ai_batch_zero_results", { fn: "month", batch: b + 1, rawPreview: (raw || "").substring(0, 300) });
+        }
         results.forEach((r) => {
           const idx = (r.i || r.index || 0) - 1;
           if (idx >= 0 && idx < batch.length) {

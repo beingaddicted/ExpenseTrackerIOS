@@ -8,6 +8,7 @@ const ASSETS = [
   "./install-shortcut.html",
   "./css/style.css",
   "./js/app.js",
+  "./js/sms-templates.js",
   "./js/sms-parser.js",
   "./js/charts.js",
   "./js/error-logger.js",
