@@ -2773,7 +2773,9 @@ ${footer}`;
 
     showToast(`Reclassified ${updated}, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
     ErrorLogger.log("ai_batch_done", { fn: "reclassify", updated, invalidCount, errors });
-  } {
+  }
+
+  async function runAIClassificationMonth() {
     const cfg = getAIConfig();
     if (!cfg.enabled || !cfg.apiKeys?.length) {
       showToast("Enable AI and add API keys first", "error");
