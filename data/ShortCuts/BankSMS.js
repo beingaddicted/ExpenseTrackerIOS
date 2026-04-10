@@ -23,6 +23,8 @@ const dir = fm.joinPath(root, "expense tracker");
 if (!fm.fileExists(dir)) fm.createDirectory(dir);
 const SMS_FILE = fm.joinPath(dir, "SmsExtracts.json");
 const DEBUG_FILE = fm.joinPath(dir, "SmsExtractsDebug.txt");
+// Message count at start of this Shortcut run (INIT). Small file avoids relying on JSON.parse for baseline when computing "new this run".
+const RUN_START_COUNT_FILE = fm.joinPath(dir, "SmsExtracts.runStartCount.txt");
 
 // ── CONFIG ──────────────────────────────────────────
 const DEBUG = true; // flip to true to write SmsExtractsDebug.txt
@@ -210,6 +212,10 @@ try {
       }
     } catch (_) {}
 
+    try {
+      fm.writeString(RUN_START_COUNT_FILE, String(startCount));
+    } catch (_) {}
+
     Script.setShortcutOutput(String(safeDays));
   } else {
     let trackerStr = null;
@@ -219,7 +225,13 @@ try {
       try {
         const saveData = JSON.parse(saveRaw);
         trackerStr = saveData.lastCompleted || null;
-        savedRunStartCount = saveData.runStartCount || 0;
+        if (
+          saveData.runStartCount !== undefined &&
+          saveData.runStartCount !== null
+        ) {
+          const n = Number(saveData.runStartCount);
+          if (Number.isFinite(n) && n >= 0) savedRunStartCount = n;
+        }
       } catch (_) {}
     }
     if (!trackerStr) trackerStr = DEFAULT_START;
@@ -352,12 +364,27 @@ try {
     } catch (_) {}
 
     if (trackerDate >= today) {
-      const delta = totalMsgs - savedRunStartCount;
+      let baseline = savedRunStartCount;
+      try {
+        const blRaw = await read(RUN_START_COUNT_FILE);
+        if (blRaw != null && String(blRaw).trim() !== "") {
+          const b = parseInt(String(blRaw).trim(), 10);
+          if (Number.isFinite(b) && b >= 0) baseline = b;
+        }
+      } catch (_) {}
+      const delta = Math.max(0, totalMsgs - baseline);
       const n = new Notification();
       n.title = "Bank SMS Export Done";
-      n.body = delta + " new SMS extracted (" + totalMsgs + " total) up to " + dateStr;
+      n.body =
+        delta +
+        " new in this run (" +
+        totalMsgs +
+        " total in file) up to " +
+        dateStr;
       n.schedule();
-      Script.setShortcutOutput("Done! " + delta + " new SMS extracted up to " + dateStr);
+      Script.setShortcutOutput(
+        "Done! " + delta + " new in this run (" + totalMsgs + " total) up to " + dateStr,
+      );
     } else {
       Script.setShortcutOutput("OK");
     }

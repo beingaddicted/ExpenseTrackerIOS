@@ -1,4 +1,4 @@
-const CACHE_NAME = "expense-tracker-v9";
+const CACHE_NAME = "expense-tracker-v10";
 const VERSION_URL = "./version.json";
 
 // Build asset list relative to service worker scope
