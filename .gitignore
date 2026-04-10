@@ -1,2 +1,7 @@
 node_modules/
 package-lock.json
+tests/.generated/
+
+# One-off analysis / exports — keep expenses.json if you use it locally
+.Output/*
+!.Output/expenses.json

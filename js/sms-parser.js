@@ -57,6 +57,19 @@ const SMSParser = (() => {
     /Paid\s+Rs\.?\s*[\d,]+\.?\d*\s+to\s+(.+?)\s+from\s+/i,
     // HDFC "Sent Rs.X / To MERCHANT" multi-line format
     /\nTo\s+([^\n]{2,50})\s*\nOn\s/i,
+    // HDFC one-line: Sent Rs.X From HDFC Bank A/C *nnnn To MERCHANT On dd/mm/yy
+    /Sent\s+(?:Rs\.?|INR)\s*[\d,]+\.?\d*\s+[Ff]rom\s+HDFC\s+Bank\s+A\/[Cc]\s*[*x]?\d+\s+To\s+(.+?)\s+On\s+\d{2}\/\d{2}\/\d{2,4}/i,
+    // IMPS / NEFT: "Info-..." or "Info - ..." (space-hyphen common on Axis, Canara, etc.)
+    /Info\s*-\s*IMPS\/[^\/\n]+\/[^\/\n]+\/([A-Za-z0-9&][A-Za-z0-9&'.-]{0,40})/i,
+    /Info\s*-\s*NEFT\/[^\/\n]+\/([A-Za-z0-9&][A-Za-z0-9&'.-]{0,40})/i,
+    /Info-?\s*IMPS\/[^\/\n]+\/[^\/\n]+\/([^\/\n]+)/i,
+    /Info-?\s*NEFT\/[^\/\n]+\/([A-Za-z][A-Za-z0-9\s&'.-]{1,48})/i,
+    // Jio fixed-line / fiber bill pay
+    /Payment of Rs\.?\s*[\d,]+\.?\d*\s+for your (JioHome(?:\s+connection)?)/i,
+    // Pluxee Sodexo meal wallet
+    /(?:Rs\.?|INR)\s*[\d,]+\.?\d*\s+spent\s+from\s+(Pluxee)/i,
+    // Alternate UPI info token (e.g. Info: UPI-MERCHANT- ref) — skip HOLD placeholders
+    /Info:\s*UPI-(?!HOLD)([^-\n]{2,40})-/i,
     // UPI Info field: "Info: UPI/P2M/ref/NAME/BANK" or P2A/P2B — extract NAME (4th segment)
     /Info:\s*UPI\/P2[AMBP]\/\d+\/([^\/]+)/i,
     // NACH Info field: "Info: NACH-DR- ENTITY"
@@ -77,6 +90,7 @@ const SMSParser = (() => {
   const REF_PATTERNS = [
     /(?:ref\.?\s*(?:no\.?\s*)?|reference\s*(?:no\.?\s*)?|txn\s*(?:no\.?\s*)?|transaction\s*(?:no\.?\s*)?)\s*:?\s*([A-Za-z0-9]+)/i,
     /(?:UPI\s*ref\s*(?:no\.?\s*)?)\s*:?\s*(\d+)/i,
+    /\b(?:UPI|IMPS|NEFT)\s*Ref\.?\s*(?:No\.?\s*)?(\d{10,20})\b/i,
     /(?:IMPS|NEFT|RTGS)\s*(?:ref\.?\s*(?:no\.?\s*)?)\s*:?\s*([A-Za-z0-9]+)/i,
     /(?:auth\s*code|approval\s*code)\s*:?\s*([A-Za-z0-9]+)/i,
   ];
@@ -125,6 +139,35 @@ const SMSParser = (() => {
     },
     { bank: "DBS Bank", patterns: [/\bDBS\b/i, /DBS\s*Bank/i] },
   ];
+
+  // Indian SMS sender IDs (short codes) → bank name when body is generic
+  const SENDER_BANK_MAP = {
+    HDFCBK: "HDFC Bank",
+    HDFCBNK: "HDFC Bank",
+    ICICIB: "ICICI Bank",
+    ICICIO: "ICICI Bank",
+    AXISBK: "Axis Bank",
+    AXISMS: "Axis Bank",
+    SBIINB: "SBI",
+    SBMSBI: "SBI",
+    KOTAKB: "Kotak Mahindra",
+    KKBKBL: "Kotak Mahindra",
+    FEDBNK: "Federal Bank",
+    IDFCFB: "IDFC First",
+    IDFCFBK: "IDFC First",
+    BOBSMS: "Bank of Baroda",
+    BARODA: "Bank of Baroda",
+    PNBSMS: "PNB",
+    YESBK: "Yes Bank",
+    INDBNK: "IndusInd Bank",
+    DBSBNK: "DBS Bank",
+    RBLBNK: "RBL Bank",
+    AUBANK: "AU Small Finance",
+    BANDHN: "Bandhan Bank",
+    BANDHAN: "Bandhan Bank",
+    CANBNK: "Canara Bank",
+    CNRBCH: "Canara Bank",
+  };
 
   // ─── Transaction Type Classification ───
   const TYPE_PATTERNS = {
@@ -742,20 +785,30 @@ const SMSParser = (() => {
         let dateStr = match[1];
         let parsed;
 
+        // yyyy-mm-dd: use local calendar (avoid UTC shift from Date.parse)
+        const isoYmd = dateStr.match(/^(\d{4})[-\/](\d{2})[-\/](\d{2})$/);
+        if (isoYmd) {
+          parsed = new Date(
+            parseInt(isoYmd[1], 10),
+            parseInt(isoYmd[2], 10) - 1,
+            parseInt(isoYmd[3], 10),
+          );
+        } else {
         // Always try manual dd-mm-yyyy / dd-mm-yy parsing first (Indian format)
         const ddmmParts = dateStr.match(
           /^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/,
         );
         if (ddmmParts) {
-          let year = parseInt(ddmmParts[3]);
+          let year = parseInt(ddmmParts[3], 10);
           if (year < 100) year += 2000;
           parsed = new Date(
             year,
-            parseInt(ddmmParts[2]) - 1,
-            parseInt(ddmmParts[1]),
+            parseInt(ddmmParts[2], 10) - 1,
+            parseInt(ddmmParts[1], 10),
           );
         } else {
           parsed = new Date(dateStr);
+        }
         }
 
         // Handle ddMonyyyy format (01Jan2025, 05-Apr-26, 01 Jan 2025)
@@ -826,7 +879,32 @@ const SMSParser = (() => {
         if (pattern.test(combined)) return bank;
       }
     }
+    const sid = (sender || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    if (sid && SENDER_BANK_MAP[sid]) return SENDER_BANK_MAP[sid];
     return "Unknown Bank";
+  }
+
+  /** Normalize shortcut / batch timestamp to YYYY-MM-DD (local calendar for ISO datetimes). */
+  function coerceTxnDate(timestamp) {
+    if (timestamp == null || timestamp === "") return null;
+    if (typeof timestamp === "string") {
+      const t = timestamp.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+      const d = new Date(t);
+      if (!isNaN(d.getTime())) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+    }
+    if (timestamp instanceof Date && !isNaN(timestamp.getTime())) {
+      const yyyy = timestamp.getFullYear();
+      const mm = String(timestamp.getMonth() + 1).padStart(2, "0");
+      const dd = String(timestamp.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    return null;
   }
 
   // ─── Detect Transaction Type ───
@@ -957,7 +1035,7 @@ const SMSParser = (() => {
   const NON_TRANSACTION_RE =
     /\b(?:OTP|PIN|password|IPIN|MPIN|CVV|one.?time|verification|verify|blocked|unblocked|locked|unlocked|activated|deactivated|registered|linked|unlinked|app download|set up|setup|login|log.?in|sign.?in|device|browser|new device|maintenance|replacement|request.{0,10}card|card.{0,10}dispatch|dispatch|dispatch|shipped|delivered|generated|reset|changed|updated|enabled|disabled|limit.{0,10}(?:set|changed|updated))\b/i;
   const NON_TRANSACTION_STRONG_RE =
-    /\bOTP\s+(?:is|:|for)\b|\bPIN\s+(?:on|for|could)\b|\bblocked\b.*\bcard\b|\bcard\b.*\bblocked\b|\bset\s+(?:the\s+)?UPI\s+PIN\b|\bverify\s+your\s+mobile\b|\bIPIN\s*\(|\bregistered\s+your\s+new\s+device\b|\bpassbook\s+balance\b|\bstatement\s+for\b.*\bCard\b.*\b(?:generated|due)\b|\bStatement\s+is\s+sent\b|\bcreated\s+your\s+one\s+time\s+payment\s+mandate\b|\bpre.?approved\b|\bcredit\s+facility\b|\bloan\s+on\s+credit\s+card\b/i;
+    /\bOTP\s+(?:is|:|for)\b|\bPIN\s+(?:on|for|could)\b|\bblocked\b.*\bcard\b|\bcard\b.*\bblocked\b|\bset\s+(?:the\s+)?UPI\s+PIN\b|\bverify\s+your\s+mobile\b|\bIPIN\s*\(|\bregistered\s+your\s+new\s+device\b|\bpassbook\s+balance\b|\bstatement\s+for\b.*\bCard\b.*\b(?:generated|due)\b|\bStatement\s+is\s+sent\b|\bcreated\s+your\s+one\s+time\s+payment\s+mandate\b|\bpre.?approved\b|\bcredit\s+facility\b|\bloan\s+on\s+credit\s+card\b|\bZype\b.*(?:\blakh\b|acl\.cc)|\bGrab\s+\d+X\s+Reward\s+Points\b|\bexpires today!?\b[\s\S]{0,200}\bpaytm\.me\b|\bcashback credits in your [\s\S]{0,80}wallet[\s\S]{0,40}\bexpir|\bKnow more\b[\s\S]{0,60}\binbl\.in\b|\bhdfcbk\.io\/a\/\S+|\bPepperfry\b[\s\S]{0,100}\bwallet\b[\s\S]{0,40}\bexpir/i;
 
   // ─── Is Bank Transaction SMS? ───
   function isBankSMS(text) {
@@ -1000,8 +1078,12 @@ const SMSParser = (() => {
       const tpl = engine.tryMatch(text, sender, timestamp);
       if (tpl) {
         // Fill in date from timestamp or template-parsed date
-        const date = timestamp || tpl.date || parseDate(text);
-        const merchant = tpl.merchant || "Unknown";
+        const date = coerceTxnDate(timestamp) || tpl.date || parseDate(text);
+        let merchant = tpl.merchant || "Unknown";
+        if (!merchant || merchant === "Unknown") {
+          const fromBody = extractMerchant(text);
+          if (fromBody) merchant = fromBody;
+        }
         const category = detectCategory(text, merchant);
         const id = generateId(tpl.amount, date, merchant, tpl.type, tpl.refNumber);
 
@@ -1037,7 +1119,7 @@ const SMSParser = (() => {
     if (type === "balance") return null;
 
     const merchant = extractMerchant(text);
-    const date = timestamp || parseDate(text);
+    const date = coerceTxnDate(timestamp) || parseDate(text);
     const bank = detectBank(text, sender);
     const account = parseAccount(text);
     const mode = detectMode(text);

@@ -15,15 +15,19 @@ const Charts = require("../js/charts");
 // ═══════════════════════════════════════════════════════════
 
 describe("Data file integrity", () => {
-  describe("expenses.json", () => {
+  const EXPENSES_JSON = path.join(
+    __dirname,
+    "..",
+    "data",
+    "ShortCuts",
+    "expenses.json",
+  );
+  const expensesJsonExists = fs.existsSync(EXPENSES_JSON);
+
+  (expensesJsonExists ? describe : describe.skip)("expenses.json", () => {
     let data;
     beforeAll(() => {
-      data = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "..", "data", "ShortCuts", "expenses.json"),
-          "utf-8",
-        ),
-      );
+      data = JSON.parse(fs.readFileSync(EXPENSES_JSON, "utf-8"));
     });
 
     test("has transactions array", () => {
@@ -323,8 +327,13 @@ describe("index.html structure", () => {
 
   test("includes all JS files", () => {
     expect(html).toContain("js/sms-parser.js");
+    expect(html).toContain("js/import-delta.js");
     expect(html).toContain("js/charts.js");
     expect(html).toContain("js/app.js");
+    const idxImportDelta = html.indexOf("js/import-delta.js");
+    const idxApp = html.indexOf("js/app.js");
+    expect(idxImportDelta).toBeGreaterThan(-1);
+    expect(idxApp).toBeGreaterThan(idxImportDelta);
   });
 
   test("includes CSS file", () => {

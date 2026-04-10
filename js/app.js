@@ -20,6 +20,7 @@ const App = (() => {
   const LS_KEY = "expense_tracker_transactions"; // for migration
   const DELTA_KEY = "expense_tracker_delta_tracker"; // tracks last import position
   const AI_KEY = "expense_tracker_ai_config"; // { enabled, apiKeys: [{key, provider}] }
+  const FILTER_PREF_KEY = "expense_tracker_filter_tab";
 
   // ─── AI Provider Definitions ───
   const AI_PROVIDERS = {
@@ -361,6 +362,7 @@ const App = (() => {
     await openDB();
     await loadData();
     setupEventListeners();
+    restoreFilterPreference();
     populateCategorySelect();
     render();
     loadVersion();
@@ -541,12 +543,25 @@ const App = (() => {
 
         let added = 0,
           skipped = 0,
-          failed = 0;
+          failed = 0,
+          skippedFromDelta = 0;
 
+        const fileKey = file.name || "unknown";
 
         if (data && Array.isArray(data.messages)) {
           // Format: { messages: [ { body, originalSms, date, time, sender }, ... ] }
-          data.messages.forEach((item) => {
+          const msgs = data.messages;
+          const jsonKey = ImportDelta.jsonMessagesKey(fileKey);
+          const headFp = ImportDelta.smsMessagesHeadFingerprint(msgs, quickHash);
+          const tracker = getDeltaTracker();
+          const startIdx = ImportDelta.resolveDeltaStart(
+            tracker[jsonKey],
+            msgs.length,
+            headFp,
+          );
+          skippedFromDelta = startIdx;
+          const slice = msgs.slice(startIdx);
+          slice.forEach((item) => {
             const smsText = item.body || item.message || item.text || "";
             const sender = item.sender || item.from || "";
             const dateVal = item.date || item.timestamp || null;
@@ -566,9 +581,22 @@ const App = (() => {
               failed++;
             }
           });
+          tracker[jsonKey] = { count: msgs.length, headFp };
+          saveDeltaTracker(tracker);
         } else if (data && Array.isArray(data.transactions)) {
           // Format: { transactions: [ { id, amount, ... }, ... ] }
-          data.transactions.forEach((txn) => {
+          const txns = data.transactions;
+          const jsonKey = ImportDelta.jsonTxnsKey(fileKey);
+          const headFp = ImportDelta.txnExportHeadFingerprint(txns, quickHash);
+          const tracker = getDeltaTracker();
+          const startIdx = ImportDelta.resolveDeltaStart(
+            tracker[jsonKey],
+            txns.length,
+            headFp,
+          );
+          skippedFromDelta = startIdx;
+          const slice = txns.slice(startIdx);
+          slice.forEach((txn) => {
             if (txn.id && txn.amount) {
               if (!SMSParser.isDuplicate(txn, transactions)) {
                 transactions.unshift(txn);
@@ -578,30 +606,114 @@ const App = (() => {
               }
             }
           });
+          tracker[jsonKey] = { count: txns.length, headFp };
+          saveDeltaTracker(tracker);
         } else if (data && Array.isArray(data)) {
-          // Format: [ { message: "...", ... }, ... ] or [ { id, amount, ... }, ... ]
-          data.forEach((item) => {
-            if (item.message || item.text || item.body) {
-              const smsText = item.message || item.text || item.body || "";
-              const sender = item.sender || item.from || "";
-              const txn = SMSParser.parse(smsText, sender);
-              if (txn && !SMSParser.isDuplicate(txn, transactions)) {
-                transactions.unshift(txn);
-                added++;
-              } else if (txn) {
-                skipped++;
-              } else {
-                failed++;
+          // Format: [ { message: "...", ... }, ... ] and/or [ { id, amount, ... }, ... ]
+          const arr = data;
+          const hasSms = arr.some(
+            (item) => item && (item.message || item.text || item.body),
+          );
+          const hasTxn = arr.some((item) => item && item.id && item.amount);
+          const mixedSmsAndTxn = hasSms && hasTxn;
+
+          if (hasSms && !mixedSmsAndTxn) {
+            const jsonKey = ImportDelta.jsonMessagesKey(`${fileKey}#array`);
+            const headFp = ImportDelta.smsMessagesHeadFingerprint(arr, quickHash);
+            const tracker = getDeltaTracker();
+            const startIdx = ImportDelta.resolveDeltaStart(
+              tracker[jsonKey],
+              arr.length,
+              headFp,
+            );
+            skippedFromDelta = startIdx;
+            const slice = arr.slice(startIdx);
+            slice.forEach((item) => {
+              if (item.message || item.text || item.body) {
+                const smsText = item.message || item.text || item.body || "";
+                const sender = item.sender || item.from || "";
+                const dateVal = item.date || item.timestamp || null;
+                const timeVal = item.time || "";
+                const ts =
+                  dateVal && timeVal ? `${dateVal} ${timeVal}` : dateVal;
+                const txn = SMSParser.parse(smsText, sender, ts || null);
+                if (txn && !SMSParser.isDuplicate(txn, transactions)) {
+                  txn.originalSms = item.originalSms || smsText;
+                  transactions.unshift(txn);
+                  added++;
+                } else if (txn) {
+                  skipped++;
+                } else {
+                  failed++;
+                }
               }
-            } else if (item.id && item.amount) {
-              if (!SMSParser.isDuplicate(item, transactions)) {
-                transactions.unshift(item);
-                added++;
-              } else {
-                skipped++;
+            });
+            tracker[jsonKey] = { count: arr.length, headFp };
+            saveDeltaTracker(tracker);
+          } else if (hasTxn && !hasSms) {
+            const jsonKey = ImportDelta.jsonTxnsKey(`${fileKey}#array`);
+            const headFp = ImportDelta.txnExportHeadFingerprint(arr, quickHash);
+            const tracker = getDeltaTracker();
+            const startIdx = ImportDelta.resolveDeltaStart(
+              tracker[jsonKey],
+              arr.length,
+              headFp,
+            );
+            skippedFromDelta = startIdx;
+            const slice = arr.slice(startIdx);
+            slice.forEach((item) => {
+              if (item.id && item.amount) {
+                if (!SMSParser.isDuplicate(item, transactions)) {
+                  transactions.unshift(item);
+                  added++;
+                } else {
+                  skipped++;
+                }
               }
-            }
-          });
+            });
+            tracker[jsonKey] = { count: arr.length, headFp };
+            saveDeltaTracker(tracker);
+          } else {
+            const jsonKey = ImportDelta.jsonMixedArrayKey(`${fileKey}#array`);
+            const headFp = ImportDelta.mixedImportHeadFingerprint(arr, quickHash);
+            const tracker = getDeltaTracker();
+            const startIdx = ImportDelta.resolveDeltaStart(
+              tracker[jsonKey],
+              arr.length,
+              headFp,
+            );
+            skippedFromDelta = startIdx;
+            const slice = arr.slice(startIdx);
+            slice.forEach((item) => {
+              if (item.message || item.text || item.body) {
+                const smsText = item.message || item.text || item.body || "";
+                const sender = item.sender || item.from || "";
+                const dateVal = item.date || item.timestamp || null;
+                const timeVal = item.time || "";
+                const ts =
+                  dateVal && timeVal ? `${dateVal} ${timeVal}` : dateVal;
+                const txn = SMSParser.parse(smsText, sender, ts || null);
+                if (txn && !SMSParser.isDuplicate(txn, transactions)) {
+                  txn.originalSms = item.originalSms || smsText;
+                  transactions.unshift(txn);
+                  added++;
+                } else if (txn) {
+                  skipped++;
+                } else {
+                  failed++;
+                }
+              } else if (item.id && item.amount) {
+                if (!SMSParser.isDuplicate(item, transactions)) {
+                  transactions.unshift(item);
+                  added++;
+                } else {
+                  skipped++;
+                }
+              }
+            });
+            tracker[jsonKey] = { count: arr.length, headFp };
+            saveDeltaTracker(tracker);
+          }
         } else if (!data && looksLikeCSV(text)) {
           // CSV re-import (exported by this app)
           parseExportedCSV(text).forEach((txn) => {
@@ -618,7 +730,6 @@ const App = (() => {
 
           // Delta import: skip already-processed lines for known files
           const tracker = getDeltaTracker();
-          const fileKey = file.name || "unknown";
           const fileHash = quickHash(text);
           const prev = tracker[fileKey];
           let startIdx = 0;
@@ -626,6 +737,7 @@ const App = (() => {
           if (prev && prev.hash === fileHash && prev.lineCount <= allLines.length) {
             startIdx = prev.lineCount;
           }
+          skippedFromDelta = startIdx;
 
           const lines = allLines.slice(startIdx);
           lines.forEach((line) => {
@@ -649,8 +761,12 @@ const App = (() => {
         if (added > 0) saveData();
         render();
 
+        const deltaHint =
+          skippedFromDelta > 0
+            ? ` (${skippedFromDelta} skipped — already in this file)`
+            : "";
         showToast(
-          `${added} added, ${skipped} duplicates, ${failed} failed`,
+          `${added} added, ${skipped} duplicates, ${failed} failed${deltaHint}`,
           added > 0 ? "success" : "info",
         );
 
@@ -1136,11 +1252,27 @@ const App = (() => {
       };
     }
 
-    document.getElementById("detailSMS").textContent =
-      txn.rawSMS || "No raw SMS available";
-    document.getElementById("detailSMS").style.display = txn.rawSMS
-      ? "block"
-      : "none";
+    const smsWrap = document.getElementById("detailSMSWrap");
+    const detailSmsEl = document.getElementById("detailSMS");
+    const btnCopyDetailSMS = document.getElementById("btnCopyDetailSMS");
+    if (txn.rawSMS) {
+      smsWrap.style.display = "block";
+      detailSmsEl.textContent = txn.rawSMS;
+      if (btnCopyDetailSMS) {
+        btnCopyDetailSMS.onclick = async () => {
+          const raw = txn.rawSMS || "";
+          try {
+            await navigator.clipboard.writeText(raw);
+            showToast("SMS copied", "success");
+          } catch {
+            showToast("Could not copy — select text manually", "error");
+          }
+        };
+      }
+    } else {
+      smsWrap.style.display = "none";
+      detailSmsEl.textContent = "";
+    }
 
     // Toggle non-transaction
     const btnInvalid = document.getElementById("btnToggleInvalid");
@@ -1597,6 +1729,26 @@ const App = (() => {
     });
   }
 
+  function restoreFilterPreference() {
+    try {
+      const saved = localStorage.getItem(FILTER_PREF_KEY);
+      if (!saved) return;
+      const allowed = new Set([
+        "all",
+        "debit",
+        "total-expense",
+        "credit",
+      ]);
+      if (!allowed.has(saved)) return;
+      activeFilter = saved;
+      document.querySelectorAll(".filter-chip").forEach((c) => {
+        c.classList.toggle("active", c.dataset.filter === saved);
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
   // ─── Event Listeners ───
   function setupEventListeners() {
     // Month navigation (arrows)
@@ -1694,6 +1846,11 @@ const App = (() => {
         .forEach((c) => c.classList.remove("active"));
       chip.classList.add("active");
       activeFilter = chip.dataset.filter;
+      try {
+        localStorage.setItem(FILTER_PREF_KEY, activeFilter);
+      } catch {
+        /* ignore */
+      }
       render();
     });
 
@@ -1757,6 +1914,15 @@ const App = (() => {
       document.getElementById("btnConfirmParse").style.display = "none";
       document.getElementById("dupWarning").classList.remove("show");
     });
+
+    const smsInput = document.getElementById("smsInput");
+    if (smsInput) {
+      smsInput.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
+        e.preventDefault();
+        parseSMS();
+      });
+    }
 
     // ── FILE IMPORT (the main way to get Shortcut data in) ──
     const fileInput = document.getElementById("fileInput");
@@ -1837,6 +2003,7 @@ const App = (() => {
           transactions = [];
           if (db) await idbClear().catch(() => {});
           localStorage.removeItem(LS_KEY);
+          localStorage.removeItem(DELTA_KEY);
           render();
           updateReclassifyBtn();
           showToast("All data cleared", "info");

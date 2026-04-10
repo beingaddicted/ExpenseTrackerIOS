@@ -2,7 +2,7 @@
 
 ## How It Works
 
-1. A single **Bulk Export** Shortcut + **BankSMS.js** (Scriptable) exports all bank SMS to `exportSms.txt`
+1. A single **Bulk Export** Shortcut + **BankSMS.js** (one Scriptable script) exports all bank SMS to `exportSms.txt`
 2. Set up a **nightly automation** to re-run the same shortcut every day — it picks up only new messages
 3. Open the Expense Tracker PWA → tap 📂 → pick `exportSms.txt`
 4. The app uses **delta import** — only new lines are parsed, old entries are skipped automatically

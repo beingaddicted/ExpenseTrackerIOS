@@ -1,4 +1,6 @@
-// BankSMS.js — Scriptable (PROD BUILD)
+// BankSMS.js — Scriptable (PROD BUILD) — single script on device
+//
+// Jest extracts the marked block into tests/.generated/ (see scripts/extract-bank-sms-lib-for-jest.js).
 //
 // Called by a 9-action Shortcut (runs manually or via nightly automation):
 //   1. Run Script (no parameter)        → INIT: returns day count (+1 overlap)
@@ -7,15 +9,13 @@
 //      4. Adjust Date (start + index)
 //      5. Find Messages (for that date)
 //      6. Repeat with Each message:
-//         7. Text (SMS body from Message object)
+//      7. Text (SMS body from Message object)
 //      8. Combine Text (===SMS=== delimiter)
 //      9. Run Script (Combined Text as parameter) → SAVE: filter + append
-//   (loop ends)
 //
 // INIT adds +1 day overlap so nightly automation never misses entries.
 // SAVE deduplicates against the previous day's batch (stored in JSON).
 // Output: iCloud Drive → Scriptable → expense tracker → SmsExtracts.json
-//   JSON shape: { lastCompleted: "YYYY-MM-DD", prevBatch: { "YYYY-MM-DD": [...], ... }, messages: [...] }
 
 const fm = FileManager.iCloud();
 const root = fm.documentsDirectory();
@@ -28,6 +28,7 @@ const DEBUG_FILE = fm.joinPath(dir, "SmsExtractsDebug.txt");
 const DEBUG = true; // flip to true to write SmsExtractsDebug.txt
 const DEFAULT_START = "2020-01-01";
 
+// BEGIN_BANK_SMS_LIB_FOR_JEST
 const KEYWORDS = [
   "credited",
   "debited",
@@ -53,53 +54,37 @@ const KEYWORDS = [
 
 const MONEY_RE = /(?:rs\.?\s*|inr\s*|rupees\s*)\d|(?:\d+\.\d{2})/i;
 
-// Spam / promo filter — skip messages matching these even if they have keywords + money
-const SPAM_RE = /\b(?:congratulations|win\s|won\s|lottery|jackpot|prize|claim\s|free\s|offer\s|scheme|guaranteed|nominee|payout|pre.?approved|personal\s*loan|top.?up|balance\s*transfer|limited\s+period|exclusive\s+deal|apply\s+now|click\s+here|bit\.ly|tinyurl|act\s+now|hurry|last\s+day|passbook\s+balance|statement\s+for.*card.*(?:generated|due)|statement\s+is\s+sent|one\s+time\s+payment\s+mandate|credit\s+facility|loan\s+on\s+credit\s+card)\b/i;
+const SPAM_RE =
+  /\b(?:congratulations|win\s|won\s|lottery|jackpot|prize|claim\s|free\s|offer\s|scheme|guaranteed|nominee|payout|pre.?approved|personal\s*loan|top.?up|balance\s*transfer|limited\s+period|exclusive\s+deal|apply\s+now|click\s+here|bit\.ly|tinyurl|act\s+now|hurry|last\s+day|passbook\s+balance|statement\s+for.*card.*(?:generated|due)|statement\s+is\s+sent|one\s+time\s+payment\s+mandate|credit\s+facility|loan\s+on\s+credit\s+card)\b/i;
 
-// Note: iOS Shortcuts does not expose SMS sender — filtering is keyword + money only.
-
-// Matches bare date strings leaked by Shortcuts (e.g. "27 Mar 2026 at 9:35 PM")
 const DATE_ONLY_RE =
   /^\d{1,2}\s+\w{3}\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*(?:AM|PM)$/i;
 
-// Extract time from SMS body — tries common bank timestamp patterns
-// Returns "HH:MM" or "" if not found
 function extractTime(msg) {
   let m;
-  // "DD-MM-YYYY HH:MM:SS" (4-digit year, e.g. Meal Card: "at 11-10-2020 22:53:10")
   m = msg.match(/\d{2}-\d{2}-\d{4}\s+(\d{1,2}:\d{2}):\d{2}/);
   if (m) return m[1];
-  // "DD-MM-YY HH:MM:SS" (2-digit year, e.g. Axis: "27-11-20 09:54:25")
   m = msg.match(/\d{2}-\d{2}-\d{2}\s+(\d{1,2}:\d{2}):\d{2}/);
   if (m) return m[1];
-  // "DD/MM/YYYY HH:MM:SS" or "DD/MM/YY HH:MM:SS" (slash-separated)
   m = msg.match(/\d{2}\/\d{2}\/\d{2,4}\s+(\d{1,2}:\d{2})(?::\d{2})?/);
   if (m) return m[1];
-  // "on DD-MM-YYYY HH:MM:SS" or "on DD/MM/YYYY HH:MM"
   m = msg.match(/on\s+\d{2}[\/-]\d{2}[\/-]\d{2,4}\s+(\d{1,2}:\d{2})/i);
   if (m) return m[1];
-  // "on DD-Mon-YYYY HH:MM" (e.g. "on 05-Apr-26 14:30")
   m = msg.match(/on\s+\d{1,2}-\w{3}-\d{2,4}\s+(\d{1,2}:\d{2})/i);
   if (m) return m[1];
-  // "DD Mon YYYY HH:MM" (e.g. "05 Apr 2026 14:30")
   m = msg.match(/\d{1,2}\s+\w{3}\s+\d{4}\s+(\d{1,2}:\d{2})/);
   if (m) return m[1];
-  // "at HH:MM:SS IST" or "at HH:MM:SS hrs"
   m = msg.match(/at\s+(\d{1,2}:\d{2}):\d{2}\s*(?:IST|ist|hrs|Hrs)?/i);
   if (m) return m[1];
-  // "at HH:MM AM/PM IST"
   m = msg.match(/at\s+(\d{1,2}:\d{2}\s*(?:AM|PM))\s*(?:IST)?/i);
   if (m) return m[1].trim();
-  // Standalone "HH:MM:SS IST" or "HH:MM:SS hrs" anywhere in text
   m = msg.match(/\b(\d{1,2}:\d{2}):\d{2}\s*(?:IST|ist|hrs|Hrs)\b/);
   if (m) return m[1];
   return "";
 }
 
-// ── SPLIT MESSAGES ──────────────────────────────────
 const SMS_DELIMITER = "===SMS===";
 
-// Split combined Shortcut output into individual SMS strings
 function splitMessages(text) {
   if (text.includes(SMS_DELIMITER)) {
     return text
@@ -107,7 +92,6 @@ function splitMessages(text) {
       .map((s) => s.replace(/\n/g, " ").trim())
       .filter((s) => s.length > 0);
   }
-  // Fallback: old heuristic
   return reassembleMessages(text);
 }
 
@@ -138,16 +122,16 @@ function reassembleMessages(text) {
 
   return messages;
 }
-// ────────────────────────────────────────────────────
+
+function fmt(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+// END_BANK_SMS_LIB_FOR_JEST
 
 async function read(path) {
   if (!fm.fileExists(path)) return null;
   if (!fm.isFileDownloaded(path)) await fm.downloadFileFromiCloud(path);
   return fm.readString(path).trim();
-}
-
-function fmt(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function debugAppend(text) {
@@ -186,7 +170,6 @@ if (!isInit && DATE_ONLY_RE.test(input)) {
 try {
   // ── INIT ────────────────────────────────────────────
   if (isInit) {
-    // Read lastCompleted from the JSON file (or default)
     let val = null;
     let startCount = 0;
     const initRaw = await read(SMS_FILE);
@@ -204,7 +187,6 @@ try {
     } else {
       lastCompleted = new Date(DEFAULT_START + "T00:00:00");
       lastCompleted.setDate(lastCompleted.getDate() - 1);
-      // Bootstrap the JSON file with lastCompleted and runStartCount
       fm.writeString(SMS_FILE, JSON.stringify({ lastCompleted: fmt(lastCompleted), runStartCount: 0, messages: [] }, null, 0));
     }
 
@@ -213,18 +195,12 @@ try {
     lastCompleted.setHours(0, 0, 0, 0);
 
     const days = Math.max(0, Math.round((today - lastCompleted) / 86400000));
-
-    // Add 1 extra day of overlap so nightly automation never misses entries.
-    // The SAVE phase deduplicates against the previous day's batch.
-    // Always return at least 2 so re-running covers both yesterday and today,
-    // regardless of Shortcut Repeat Index base (0 or 1).
     const safeDays = Math.max(days + 1, 2);
 
     if (DEBUG) {
       debugAppend(`INIT: tracker val="${val}", lastCompleted=${lastCompleted.toISOString()}, today=${today.toISOString()}, days=${days}, safeDays=${safeDays}, startCount=${startCount}`);
     }
 
-    // Save runStartCount so the final SAVE can compute delta
     try {
       const curRaw = await read(SMS_FILE);
       if (curRaw) {
@@ -235,10 +211,7 @@ try {
     } catch (_) {}
 
     Script.setShortcutOutput(String(safeDays));
-
-    // ── SAVE ──────────────────────────────────────────
   } else {
-    // Read lastCompleted from the JSON file
     let trackerStr = null;
     let savedRunStartCount = 0;
     const saveRaw = await read(SMS_FILE);
@@ -253,7 +226,6 @@ try {
     const trackerDate = new Date(trackerStr + "T00:00:00");
     trackerDate.setDate(trackerDate.getDate() + 1);
 
-    // Clamp to today — never advance tracker past the current date
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (trackerDate > today) {
@@ -265,7 +237,6 @@ try {
     if (input.length > 0) {
       const allMsgs = splitMessages(input);
 
-      // ── Debug log (only when DEBUG === true) ──
       if (DEBUG) {
         const debugLines = [];
         debugLines.push(`\n=== ${dateStr} ===`);
@@ -283,7 +254,6 @@ try {
         debugAppend(debugLines.join("\n"));
       }
 
-      // Keep only messages with a transaction keyword AND a money amount, skip spam
       const bankMsgs = allMsgs.filter((sms) => {
         const lower = sms.toLowerCase();
         const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
@@ -292,8 +262,6 @@ try {
         return hasKw && hasMoney && !isSpam;
       });
 
-      // Sliding-window dedup: keep last 3 days of messages in prevBatch
-      // prevBatch is date-keyed: { "2020-01-01": ["sms1",...], "2020-01-02": [...] }
       let existing = [];
       let prevBatch = {};
       if (saveRaw) {
@@ -304,7 +272,6 @@ try {
             : Array.isArray(curData)
               ? curData
               : [];
-          // Support old flat array format (migrate to object)
           if (Array.isArray(curData.prevBatch)) {
             prevBatch = {};
           } else if (curData.prevBatch && typeof curData.prevBatch === "object") {
@@ -315,7 +282,6 @@ try {
         }
       }
 
-      // Build dedup set from all dates in prevBatch
       const prevSet = new Set();
       for (const msgs of Object.values(prevBatch)) {
         if (Array.isArray(msgs)) msgs.forEach((s) => prevSet.add(s));
@@ -338,10 +304,9 @@ try {
         }
       }
 
-      // Update prevBatch: add/replace current date, prune dates older than 3-day window
       prevBatch[dateStr] = (prevBatch[dateStr] || []).concat(uniqueBankMsgs);
       const cutoff = new Date(dateStr + "T00:00:00");
-      cutoff.setDate(cutoff.getDate() - 2); // keep dateStr, dateStr-1, dateStr-2
+      cutoff.setDate(cutoff.getDate() - 2);
       const cutoffStr = fmt(cutoff);
       for (const key of Object.keys(prevBatch)) {
         if (key < cutoffStr) delete prevBatch[key];
@@ -354,14 +319,12 @@ try {
           JSON.stringify({ lastCompleted: dateStr, runStartCount: savedRunStartCount, prevBatch: prevBatch, messages: merged }, null, 0),
         );
       } else {
-        // No new entries but still advance tracker
         fm.writeString(
           SMS_FILE,
           JSON.stringify({ lastCompleted: dateStr, runStartCount: savedRunStartCount, prevBatch: prevBatch, messages: existing }, null, 0),
         );
       }
     } else {
-      // Empty input day — still advance tracker, keep prevBatch intact
       let existing = [];
       let prevBatch = {};
       if (saveRaw) {
@@ -379,7 +342,6 @@ try {
       );
     }
 
-    // Report total count when tracker reaches today (final iteration)
     let totalMsgs = 0;
     try {
       const finalRaw = await read(SMS_FILE);
