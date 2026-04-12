@@ -1910,10 +1910,23 @@ const App = (() => {
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible" && syncPending) {
         syncPending = false;
-        // Small delay to let iOS settle
-        setTimeout(() => importFromClipboard(), 600);
+        setTimeout(() => showSyncImportPrompt(), 600);
       }
     });
+
+    function showSyncImportPrompt() {
+      const toast = document.getElementById("toast");
+      document.getElementById("toastIcon").textContent = "📋";
+      document.getElementById("toastMsg").innerHTML =
+        'Sync done — <strong style="text-decoration:underline;cursor:pointer" id="btnSyncPaste">Tap to Import</strong>';
+      toast.className = "toast info show";
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => toast.classList.remove("show"), 8000);
+      setTimeout(() => {
+        const btn = document.getElementById("btnSyncPaste");
+        if (btn) btn.addEventListener("click", () => importFromClipboard());
+      }, 0);
+    }
 
     async function importFromClipboard() {
       try {
