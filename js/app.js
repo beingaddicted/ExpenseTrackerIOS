@@ -9,7 +9,7 @@ const App = (() => {
   let transactions = [];
   let currentMonth = new Date().getMonth();
   let currentYear = new Date().getFullYear();
-  let activeFilter = "all";
+  let activeFilter = "debit";
   let searchQuery = "";
   let parsedTxn = null;
   let db = null;
@@ -867,18 +867,17 @@ const App = (() => {
       if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear)
         return false;
 
-      // Invalid transactions only appear in Income tab (for review)
-      if (t.invalid && activeFilter !== "credit") return false;
+      // Invalid transactions only appear in Income and All tabs (for review)
+      if (t.invalid && activeFilter !== "credit" && activeFilter !== "all") return false;
 
       if (activeFilter === "debit") {
         if (t.type !== "debit") return false;
         if (EXPENSE_EXCLUDED_CATEGORIES.includes(t.category)) return false;
-      } else if (activeFilter === "total-expense") {
-        if (t.type !== "debit") return false;
       } else if (activeFilter === "credit") {
         if (t.type !== "credit" && !t.invalid) return false;
         if (!t.invalid && isNonGenuineCredit(t)) return false;
       }
+      // "all" tab: show everything (debits + credits + invalid)
 
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
@@ -936,14 +935,14 @@ const App = (() => {
     const totalInc = genuineCredits.reduce((s, t) => s + t.amount, 0);
 
     document.getElementById("totalExpense").textContent =
-      Charts.formatCurrency(activeFilter === "total-expense" ? totalExp : regularExp);
+      Charts.formatCurrency(activeFilter === "all" ? totalExp : regularExp);
     document.getElementById("totalIncome").textContent =
       Charts.formatCurrency(totalInc);
     document.getElementById("netBalance").textContent = Charts.formatCurrency(
       totalInc - totalExp,
     );
     document.getElementById("expenseCount").textContent =
-      activeFilter === "total-expense"
+      activeFilter === "all"
         ? `${allDebits.length} txns`
         : `${regularDebits.length} txns \u00b7 Total: ${Charts.formatCurrency(totalExp)}`;
     document.getElementById("incomeCount").textContent =
@@ -1734,10 +1733,9 @@ const App = (() => {
       const saved = localStorage.getItem(FILTER_PREF_KEY);
       if (!saved) return;
       const allowed = new Set([
-        "all",
         "debit",
-        "total-expense",
         "credit",
+        "all",
       ]);
       if (!allowed.has(saved)) return;
       activeFilter = saved;
@@ -1898,6 +1896,75 @@ const App = (() => {
     document
       .getElementById("btnParseSMS")
       .addEventListener("click", () => openModal("modalParse"));
+
+    // Sync Messages — trigger iOS Shortcut, auto-import on return
+    let syncPending = false;
+    document
+      .getElementById("btnSyncSMS")
+      .addEventListener("click", () => {
+        syncPending = true;
+        showToast("Running Shortcut…", "info");
+        window.location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent("Extract Sms Using Script");
+      });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && syncPending) {
+        syncPending = false;
+        // Small delay to let iOS settle
+        setTimeout(() => importFromClipboard(), 600);
+      }
+    });
+
+    async function importFromClipboard() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text) { showToast("Clipboard empty — open file manually", "info"); return; }
+        let data;
+        try { data = JSON.parse(text); } catch (_) { showToast("Clipboard has no sync data", "info"); return; }
+        if (!data || !data._sync || !Array.isArray(data.messages)) {
+          showToast("Clipboard has no sync data", "info");
+          return;
+        }
+        const msgs = data.messages;
+        if (msgs.length === 0) { showToast("No new messages from sync", "info"); return; }
+        let added = 0, skipped = 0, failed = 0;
+        msgs.forEach((item) => {
+          const smsText = item.body || item.message || item.text || "";
+          const sender = item.sender || item.from || "";
+          const dateVal = item.date || item.timestamp || null;
+          const timeVal = item.time || "";
+          const ts = dateVal && timeVal ? `${dateVal} ${timeVal}` : dateVal;
+          const original = item.originalSms || smsText;
+          const txn = SMSParser.parse(smsText, sender, ts);
+          if (txn) {
+            txn.originalSms = original;
+            if (!SMSParser.isDuplicate(txn, transactions)) {
+              transactions.unshift(txn);
+              added++;
+            } else { skipped++; }
+          } else { failed++; }
+        });
+        if (added > 0) saveData();
+        render();
+        showToast(`Sync: ${added} added, ${skipped} duplicates, ${failed} failed`, added > 0 ? "success" : "info");
+        if (added > 0) {
+          const aiCfg = getAIConfig();
+          if (aiCfg.enabled && aiCfg.apiKeys?.length > 0 && aiCfg.autoClassify !== false) {
+            const unknowns = transactions.filter(
+              (t) => t.merchant === "Unknown" && !t.aiClassified && !t.aiFailed && (t.rawSMS || t.originalSms),
+            );
+            if (unknowns.length > 0) {
+              showToast(`AI classifying ${unknowns.length} transactions…`, "info");
+              runAIClassification();
+            }
+          }
+        }
+      } catch (err) {
+        // Clipboard permission denied or not available
+        showToast("Could not read clipboard — use file import instead", "info");
+      }
+    }
+
     document
       .getElementById("navPaste")
       .addEventListener("click", () => openModal("modalParse"));
