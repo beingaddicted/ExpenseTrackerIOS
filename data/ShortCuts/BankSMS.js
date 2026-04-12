@@ -363,7 +363,7 @@ try {
       }
     } catch (_) {}
 
-    if (trackerDate >= today) {
+    if (trackerDate >= today && dateStr !== trackerStr) {
       let baseline = savedRunStartCount;
       try {
         const blRaw = await read(RUN_START_COUNT_FILE);
@@ -373,21 +373,6 @@ try {
         }
       } catch (_) {}
       const delta = Math.max(0, totalMsgs - baseline);
-
-      // Copy new messages to clipboard for PWA auto-import (cap at 500; clear if over)
-      try {
-        if (delta > 0 && delta <= 500) {
-          const finalRaw2 = await read(SMS_FILE);
-          if (finalRaw2) {
-            const finalData2 = JSON.parse(finalRaw2);
-            const allMsgs2 = Array.isArray(finalData2.messages) ? finalData2.messages : [];
-            const newMsgs = allMsgs2.slice(Math.max(0, allMsgs2.length - delta));
-            Pasteboard.copy(JSON.stringify({ _sync: true, messages: newMsgs }));
-          }
-        } else if (delta > 500) {
-          Pasteboard.copy("");
-        }
-      } catch (_) {}
 
       const n = new Notification();
       n.title = "Bank SMS Export Done";

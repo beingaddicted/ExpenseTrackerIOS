@@ -1910,73 +1910,9 @@ const App = (() => {
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible" && syncPending) {
         syncPending = false;
-        setTimeout(() => showSyncImportPrompt(), 600);
+        setTimeout(() => triggerFileImport(), 600);
       }
     });
-
-    function showSyncImportPrompt() {
-      const toast = document.getElementById("toast");
-      document.getElementById("toastIcon").textContent = "📋";
-      document.getElementById("toastMsg").innerHTML =
-        'Sync done — <strong style="text-decoration:underline;cursor:pointer" id="btnSyncPaste">Tap to Import</strong>';
-      toast.className = "toast info show";
-      clearTimeout(_toastTimer);
-      _toastTimer = setTimeout(() => toast.classList.remove("show"), 8000);
-      setTimeout(() => {
-        const btn = document.getElementById("btnSyncPaste");
-        if (btn) btn.addEventListener("click", () => importFromClipboard());
-      }, 0);
-    }
-
-    async function importFromClipboard() {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (!text) { showToast("Clipboard empty — open file manually", "info"); return; }
-        let data;
-        try { data = JSON.parse(text); } catch (_) { showToast("Clipboard has no sync data", "info"); return; }
-        if (!data || !data._sync || !Array.isArray(data.messages)) {
-          showToast("Clipboard has no sync data", "info");
-          return;
-        }
-        const msgs = data.messages;
-        if (msgs.length === 0) { showToast("No new messages from sync", "info"); return; }
-        let added = 0, skipped = 0, failed = 0;
-        msgs.forEach((item) => {
-          const smsText = item.body || item.message || item.text || "";
-          const sender = item.sender || item.from || "";
-          const dateVal = item.date || item.timestamp || null;
-          const timeVal = item.time || "";
-          const ts = dateVal && timeVal ? `${dateVal} ${timeVal}` : dateVal;
-          const original = item.originalSms || smsText;
-          const txn = SMSParser.parse(smsText, sender, ts);
-          if (txn) {
-            txn.originalSms = original;
-            if (!SMSParser.isDuplicate(txn, transactions)) {
-              transactions.unshift(txn);
-              added++;
-            } else { skipped++; }
-          } else { failed++; }
-        });
-        if (added > 0) saveData();
-        render();
-        showToast(`Sync: ${added} added, ${skipped} duplicates, ${failed} failed`, added > 0 ? "success" : "info");
-        if (added > 0) {
-          const aiCfg = getAIConfig();
-          if (aiCfg.enabled && aiCfg.apiKeys?.length > 0 && aiCfg.autoClassify !== false) {
-            const unknowns = transactions.filter(
-              (t) => t.merchant === "Unknown" && !t.aiClassified && !t.aiFailed && (t.rawSMS || t.originalSms),
-            );
-            if (unknowns.length > 0) {
-              showToast(`AI classifying ${unknowns.length} transactions…`, "info");
-              runAIClassification();
-            }
-          }
-        }
-      } catch (err) {
-        // Clipboard permission denied or not available
-        showToast("Could not read clipboard — use file import instead", "info");
-      }
-    }
 
     document
       .getElementById("navPaste")
