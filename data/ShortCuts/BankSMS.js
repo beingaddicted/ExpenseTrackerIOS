@@ -27,7 +27,7 @@ const DEBUG_FILE = fm.joinPath(dir, "SmsExtractsDebug.txt");
 const RUN_START_COUNT_FILE = fm.joinPath(dir, "SmsExtracts.runStartCount.txt");
 
 // ── CONFIG ──────────────────────────────────────────
-const DEBUG = true; // flip to true to write SmsExtractsDebug.txt
+const DEBUG = false; // flip to true to write SmsExtractsDebug.txt
 const DEFAULT_START = "2020-01-01";
 
 // BEGIN_BANK_SMS_LIB_FOR_JEST
