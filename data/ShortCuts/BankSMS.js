@@ -25,6 +25,7 @@ const SMS_FILE = fm.joinPath(dir, "SmsExtracts.json");
 const DEBUG_FILE = fm.joinPath(dir, "SmsExtractsDebug.txt");
 // Message count at start of this Shortcut run (INIT). Small file avoids relying on JSON.parse for baseline when computing "new this run".
 const RUN_START_COUNT_FILE = fm.joinPath(dir, "SmsExtracts.runStartCount.txt");
+const NOTIFIED_FILE = fm.joinPath(dir, "SmsExtracts.notified.txt");
 
 // ── CONFIG ──────────────────────────────────────────
 const DEBUG = false; // flip to true to write SmsExtractsDebug.txt
@@ -216,6 +217,10 @@ try {
       fm.writeString(RUN_START_COUNT_FILE, String(startCount));
     } catch (_) {}
 
+    try {
+      fm.writeString(NOTIFIED_FILE, "0");
+    } catch (_) {}
+
     Script.setShortcutOutput(String(safeDays));
   } else {
     let trackerStr = null;
@@ -364,6 +369,12 @@ try {
     } catch (_) {}
 
     if (trackerDate >= today && dateStr !== trackerStr) {
+      let alreadyNotified = false;
+      try {
+        const nf = fm.fileExists(NOTIFIED_FILE) && fm.isFileDownloaded(NOTIFIED_FILE) ? fm.readString(NOTIFIED_FILE).trim() : "0";
+        alreadyNotified = nf === "1";
+      } catch (_) {}
+
       let baseline = savedRunStartCount;
       try {
         const blRaw = await read(RUN_START_COUNT_FILE);
@@ -374,15 +385,18 @@ try {
       } catch (_) {}
       const delta = Math.max(0, totalMsgs - baseline);
 
-      const n = new Notification();
-      n.title = "Bank SMS Export Done";
-      n.body =
-        delta +
-        " new in this run (" +
-        totalMsgs +
-        " total in file) up to " +
-        dateStr;
-      n.schedule();
+      if (!alreadyNotified) {
+        const n = new Notification();
+        n.title = "Bank SMS Export Done";
+        n.body =
+          delta +
+          " new in this run (" +
+          totalMsgs +
+          " total in file) up to " +
+          dateStr;
+        n.schedule();
+        try { fm.writeString(NOTIFIED_FILE, "1"); } catch (_) {}
+      }
       Script.setShortcutOutput(
         "Done! " + delta + " new in this run (" + totalMsgs + " total) up to " + dateStr,
       );
