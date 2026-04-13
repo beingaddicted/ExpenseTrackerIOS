@@ -1387,6 +1387,7 @@ const App = (() => {
           prevented = true;
           return;
         }
+        if (!swiping) wrapper.classList.add("swiping");
         swiping = true;
         currentX = Math.min(0, dx);
         card.style.transform = `translateX(${currentX}px)`;
@@ -1413,6 +1414,7 @@ const App = (() => {
         } else {
           card.style.transform = "translateX(0)";
         }
+        wrapper.classList.remove("swiping");
         swiping = false;
       });
     });

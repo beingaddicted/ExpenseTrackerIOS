@@ -803,6 +803,12 @@ body {
     font-weight: 600;
     color: #fff;
     pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.txn-swipe-container.swiping .swipe-action {
+    opacity: 1;
 }
 
 .swipe-action-invalid {
