@@ -10,6 +10,7 @@ const App = (() => {
   let currentMonth = new Date().getMonth();
   let currentYear = new Date().getFullYear();
   let activeFilter = "debit";
+  let sortMode = "date"; // "date" | "amount-desc" | "amount-asc"
   let searchQuery = "";
   let parsedTxn = null;
   let db = null;
@@ -1304,20 +1305,31 @@ const App = (() => {
     }
 
     const groups = {};
-    filtered.sort(
-      (a, b) =>
-        new Date(b.date) - new Date(a.date) ||
-        new Date(b.parsedAt) - new Date(a.parsedAt),
-    );
-    filtered.forEach((t) => {
-      if (!groups[t.date]) groups[t.date] = [];
-      groups[t.date].push(t);
-    });
+    if (sortMode === "date") {
+      filtered.sort(
+        (a, b) =>
+          new Date(b.date) - new Date(a.date) ||
+          new Date(b.parsedAt) - new Date(a.parsedAt),
+      );
+      filtered.forEach((t) => {
+        if (!groups[t.date]) groups[t.date] = [];
+        groups[t.date].push(t);
+      });
+    } else {
+      const dir = sortMode === "amount-desc" ? -1 : 1;
+      filtered.sort((a, b) => dir * (a.amount - b.amount));
+      // Single group when sorted by amount
+      groups["_amount"] = filtered;
+    }
 
     let html = "";
-    for (const [date, txns] of Object.entries(groups)) {
-      const d = new Date(date);
-      html += `<div class="date-group"><div class="date-label">${formatDateLabel(d)}</div>`;
+    for (const [key, txns] of Object.entries(groups)) {
+      if (key === "_amount") {
+        html += `<div class="date-group"><div class="date-label">Sorted by Amount${sortMode === "amount-desc" ? " ↓" : " ↑"}</div>`;
+      } else {
+        const d = new Date(key);
+        html += `<div class="date-group"><div class="date-label">${formatDateLabel(d)}</div>`;
+      }
       txns.forEach((t) => {
         const icon = CATEGORY_ICONS[t.category] || "📌";
         const css = CATEGORY_CSS[t.category] || "cat-other";
@@ -2179,6 +2191,23 @@ const App = (() => {
       } catch {
         /* ignore */
       }
+      render();
+    });
+
+    // Sort toggle
+    document.getElementById("btnSort").addEventListener("click", () => {
+      const btn = document.getElementById("btnSort");
+      if (sortMode === "date") {
+        sortMode = "amount-desc";
+        btn.textContent = "↕ Amount ↓";
+      } else if (sortMode === "amount-desc") {
+        sortMode = "amount-asc";
+        btn.textContent = "↕ Amount ↑";
+      } else {
+        sortMode = "date";
+        btn.textContent = "↕ Date";
+      }
+      btn.classList.toggle("active", sortMode !== "date");
       render();
     });
 

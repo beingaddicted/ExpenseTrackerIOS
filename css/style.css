@@ -623,6 +623,30 @@ body {
 
 .filter-chip:active { transform: scale(0.95); }
 
+/* ─── Sort Button ─── */
+.sort-btn {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 7px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border-light);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s;
+    white-space: nowrap;
+}
+
+.sort-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.sort-btn:active { transform: scale(0.95); }
+
 /* ─── Transactions List ─── */
 .transactions-section {
     padding: 0 20px;
