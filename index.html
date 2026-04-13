@@ -732,7 +732,8 @@
           <input type="text" class="form-input" id="ruleEditName" placeholder="e.g. Swiggy Orders" />
 
           <label class="form-label" style="margin-top: 12px">Keywords <span style="font-size: 11px; color: var(--text-muted)">(comma-separated, all must match)</span></label>
-          <input type="text" class="form-input" id="ruleEditKeywords" placeholder="e.g. swiggy, debited" />
+          <textarea class="form-input" id="ruleEditKeywords" placeholder="e.g. swiggy, debited" rows="3" style="resize: vertical; font-family: inherit"></textarea>
+          <div id="ruleKeywordSuggestions" class="keyword-suggestions"></div>
 
           <label class="form-label" style="margin-top: 12px">Amount Range <span style="font-size: 11px; color: var(--text-muted)">(optional)</span></label>
           <div style="display: flex; gap: 8px">

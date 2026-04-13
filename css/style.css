@@ -1684,6 +1684,20 @@ body {
   padding: 1px 6px; border-radius: 4px; font-size: 11px;
 }
 
+/* Keyword suggestions */
+.keyword-suggestions {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+}
+.keyword-chip {
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border, rgba(255,255,255,0.12));
+  color: var(--text-muted, #888); border-radius: 14px; padding: 4px 10px;
+  font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+.keyword-chip:active, .keyword-chip.selected {
+  background: var(--accent-primary, #7c3aed); color: #fff;
+  border-color: var(--accent-primary, #7c3aed);
+}
+
 /* Type toggle (shared by detail modal & rule editor) */
 .type-toggle { display: flex; gap: 6px; }
 .type-btn {
