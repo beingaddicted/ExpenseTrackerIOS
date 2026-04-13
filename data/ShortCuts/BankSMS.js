@@ -25,7 +25,7 @@ const SMS_FILE = fm.joinPath(dir, "SmsExtracts.json");
 const DEBUG_FILE = fm.joinPath(dir, "SmsExtractsDebug.txt");
 
 // ── CONFIG ──────────────────────────────────────────
-const DEBUG = true; // flip to true to write SmsExtractsDebug.txt
+const DEBUG = false; // flip to true to write SmsExtractsDebug.txt
 const DEFAULT_START = "2020-01-01";
 
 // BEGIN_BANK_SMS_LIB_FOR_JEST
@@ -90,7 +90,7 @@ const SENDER_DELIMITER = "|||";
 // Sender format from carriers: XX-BANKCD where XX is prefix, BANKCD is the code
 // We match the code part (case-insensitive, can appear as substring)
 const BANK_SENDER_CODES = [
-  "HDFCBK","HDFCBN","ICICIB","ICICIO","AXISBK","AXISMS","SBIINB","SBMSBI",
+  "HDFCBK","HDFCBN","ICICIB","ICICIO","ICICIT","AXISBK","AXISMS","SBIINB","SBMSBI",
   "SBIPSG","KOTAKB","KKBKBL","IDFCFB","IDFCFBK","FEDBNK","BOBSMS","BARODA",
   "PNBSMS","YESBK","INDBNK","DBSBNK","RBLBNK","AUBANK","BANDHN","BANDHAN",
   "CANBNK","CNRBCH","UNIONB","BOIIND","IOBIND","CITIBK","HSBCBK","SCBANK",
@@ -99,7 +99,7 @@ const BANK_SENDER_CODES = [
   "PAYTMB","PAYTM","PHONPE","GOOGLP","RAZRPY","BFRUPE","JUPTER",
   "MOBIKW","PLUXEE","AIRTEL","JIOMNY","SLICE","CRDSCR","FIBNK",
   // Credit card / NBFC
-  "AMEXIN","HSBCCC","CITCCR","BAJFIN","LTFIN","TATACP","CHOLAM",
+  "AMEXIN","MYAMEX","AMEX","HSBCCC","CITCCR","BAJFIN","LTFIN","TATACP","CHOLAM",
 ];
 
 function isBankSender(sender) {
