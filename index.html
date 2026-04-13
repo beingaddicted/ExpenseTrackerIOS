@@ -283,6 +283,17 @@
           </div>
         </div>
         <div class="settings-group">
+          <div class="settings-group-title">Classification Rules</div>
+          <div class="settings-item" id="settingRules">
+            <div class="settings-icon">📐</div>
+            <div class="settings-info">
+              <div class="settings-label">Auto-Classification Rules</div>
+              <div class="settings-desc" id="rulesStatusDesc">0 rules configured</div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div class="settings-group">
           <div class="settings-group-title">AI Classification</div>
           <div class="settings-item" id="settingAI">
             <div class="settings-icon">🤖</div>
@@ -511,6 +522,14 @@
       <div class="modal">
         <div class="modal-handle"></div>
         <button class="detail-close-btn" id="btnCloseDetailX" aria-label="Close">×</button>
+        <button
+          type="button"
+          class="btn-secondary"
+          id="btnCreateRule"
+          style="margin-bottom: 12px; color: var(--accent-light); border-color: var(--accent-light); font-size: 13px; padding: 8px 12px;"
+        >
+          📐 Create Rule
+        </button>
         <div class="detail-header">
           <div class="detail-amount" id="detailAmount"></div>
           <div class="detail-merchant" id="detailMerchant"></div>
@@ -558,6 +577,13 @@
             </button>
           </div>
           <div class="detail-sms" id="detailSMS"></div>
+        </div>
+        <div class="detail-cat-edit" id="detailTypeEdit">
+          <label class="form-label" style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Transaction Type</label>
+          <div class="type-toggle">
+            <button type="button" class="type-btn" id="detailTypeDebit" data-type="debit">Expense</button>
+            <button type="button" class="type-btn" id="detailTypeCredit" data-type="credit">Income</button>
+          </div>
         </div>
         <button
           type="button"
@@ -665,6 +691,75 @@
         >
           Close
         </button>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: Classification Rules ═══ -->
+    <div class="modal-overlay" id="modalRules">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-header">
+          <h2>📐 Classification Rules</h2>
+          <button class="modal-close" id="btnCloseRules">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 0 16px 16px">
+          <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 12px">
+            Rules auto-classify imported transactions by matching keywords in the SMS text.
+          </p>
+          <div id="rulesList" class="rules-list"></div>
+          <button type="button" class="btn-primary" id="btnAddRule" style="width: 100%; margin-top: 12px">
+            ＋ Add New Rule
+          </button>
+          <button type="button" class="btn-secondary" id="btnRunAllRules" style="width: 100%; margin-top: 8px; color: var(--accent-primary); border-color: var(--accent-primary)">
+            ▶ Run Rules on All Transactions
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: Rule Editor ═══ -->
+    <div class="modal-overlay" id="modalRuleEdit">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-header">
+          <h2 id="ruleEditorTitle">New Rule</h2>
+          <button class="modal-close" id="btnCloseRuleEdit">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 0 16px 16px">
+          <input type="hidden" id="ruleEditId" />
+
+          <label class="form-label">Rule Name</label>
+          <input type="text" class="form-input" id="ruleEditName" placeholder="e.g. Swiggy Orders" />
+
+          <label class="form-label" style="margin-top: 12px">Keywords <span style="font-size: 11px; color: var(--text-muted)">(comma-separated, all must match)</span></label>
+          <input type="text" class="form-input" id="ruleEditKeywords" placeholder="e.g. swiggy, debited" />
+
+          <label class="form-label" style="margin-top: 12px">Amount Range <span style="font-size: 11px; color: var(--text-muted)">(optional)</span></label>
+          <div style="display: flex; gap: 8px">
+            <input type="number" class="form-input" id="ruleEditMinAmt" placeholder="Min" style="flex: 1" />
+            <input type="number" class="form-input" id="ruleEditMaxAmt" placeholder="Max" style="flex: 1" />
+          </div>
+
+          <label class="form-label" style="margin-top: 12px">Category</label>
+          <select class="form-select" id="ruleEditCategory"></select>
+
+          <label class="form-label" style="margin-top: 12px">Transaction Type</label>
+          <div class="type-toggle">
+            <button type="button" class="type-btn" id="ruleEditTypeDebit" data-type="debit">Expense</button>
+            <button type="button" class="type-btn" id="ruleEditTypeCredit" data-type="credit">Income</button>
+          </div>
+
+          <label class="form-label" style="margin-top: 12px">Mark as</label>
+          <div class="type-toggle">
+            <button type="button" class="type-btn active" id="ruleEditValid" data-valid="true">Valid</button>
+            <button type="button" class="type-btn" id="ruleEditInvalid" data-valid="false">Invalid</button>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 16px">
+            <button type="button" class="btn-secondary" id="btnCancelRuleEdit" style="flex: 1">Cancel</button>
+            <button type="button" class="btn-primary" id="btnSaveRule" style="flex: 1">Save Rule</button>
+          </div>
+        </div>
       </div>
     </div>
 

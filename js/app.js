@@ -21,6 +21,7 @@ const App = (() => {
   const DELTA_KEY = "expense_tracker_delta_tracker"; // tracks last import position
   const AI_KEY = "expense_tracker_ai_config"; // { enabled, apiKeys: [{key, provider}] }
   const FILTER_PREF_KEY = "expense_tracker_filter_tab";
+  const RULES_KEY = "expense_tracker_rules";
 
   // ─── AI Provider Definitions ───
   const AI_PROVIDERS = {
@@ -503,6 +504,226 @@ const App = (() => {
     });
   }
 
+  // ─── Rules Engine ───
+  function getRules() {
+    try { return JSON.parse(localStorage.getItem(RULES_KEY) || "[]"); } catch { return []; }
+  }
+  function saveRules(rules) { localStorage.setItem(RULES_KEY, JSON.stringify(rules)); }
+  function addRule(rule) { const rules = getRules(); rules.push(rule); saveRules(rules); }
+  function deleteRule(id) { saveRules(getRules().filter(r => r.id !== id)); }
+  function updateRule(id, updates) {
+    const rules = getRules();
+    const r = rules.find(r => r.id === id);
+    if (r) Object.assign(r, updates);
+    saveRules(rules);
+  }
+
+  function matchRule(rule, txn) {
+    const sms = (txn.rawSMS || txn.originalSms || txn.merchant || "").toLowerCase();
+    if (!sms) return false;
+    if (!rule.keywords || !rule.keywords.length) return false;
+    if (!rule.keywords.every(kw => sms.includes(kw.toLowerCase()))) return false;
+    if (rule.amountMin != null && txn.amount < rule.amountMin) return false;
+    if (rule.amountMax != null && txn.amount > rule.amountMax) return false;
+    return true;
+  }
+
+  function applyRules(txn) {
+    const rules = getRules();
+    for (const rule of rules) {
+      if (matchRule(rule, txn)) {
+        if (rule.setCategory) txn.category = rule.setCategory;
+        if (rule.setType) txn.type = rule.setType;
+        if (rule.setInvalid === true) txn.invalid = true;
+        else if (rule.setInvalid === false) txn.invalid = false;
+        txn._ruleApplied = rule.id;
+        break;
+      }
+    }
+    return txn;
+  }
+
+  function applyRulesToAll() {
+    const rules = getRules();
+    if (!rules.length) return 0;
+    let count = 0;
+    transactions.forEach(txn => {
+      for (const rule of rules) {
+        if (matchRule(rule, txn)) {
+          let changed = false;
+          if (rule.setCategory && txn.category !== rule.setCategory) { txn.category = rule.setCategory; changed = true; }
+          if (rule.setType && txn.type !== rule.setType) { txn.type = rule.setType; changed = true; }
+          if (rule.setInvalid === true && !txn.invalid) { txn.invalid = true; changed = true; }
+          if (rule.setInvalid === false && txn.invalid) { txn.invalid = false; changed = true; }
+          if (changed) { txn._ruleApplied = rule.id; count++; }
+          break;
+        }
+      }
+    });
+    if (count > 0) saveData();
+    return count;
+  }
+
+  function createRuleFromTransaction(txn) {
+    const keywords = [];
+    if (txn.merchant && txn.merchant !== "Unknown") {
+      keywords.push(txn.merchant.toLowerCase());
+    }
+    return {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: txn.merchant || "New Rule",
+      keywords: keywords,
+      amountMin: null,
+      amountMax: null,
+      setCategory: txn.category || null,
+      setType: txn.type || null,
+      setInvalid: txn.invalid || false,
+    };
+  }
+
+  // ─── Rules UI ───
+  function renderRulesList() {
+    const container = document.getElementById("rulesList");
+    const rules = getRules();
+    const desc = document.getElementById("rulesStatusDesc");
+    if (desc) desc.textContent = rules.length + " rule" + (rules.length !== 1 ? "s" : "") + " configured";
+    if (!container) return;
+    if (!rules.length) {
+      container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:24px 0;font-size:13px">No rules yet. Tap "+ Add New Rule" or create from a transaction.</div>';
+      return;
+    }
+    container.innerHTML = rules.map(r => {
+      const kw = (r.keywords || []).join(", ");
+      const amt = (r.amountMin != null || r.amountMax != null)
+        ? ` · ₹${r.amountMin || 0}–${r.amountMax || "∞"}`
+        : "";
+      return `<div class="rule-card" data-rule-id="${r.id}">
+        <div class="rule-card-header">
+          <span class="rule-card-name">${sanitize(r.name)}</span>
+          <div class="rule-card-actions">
+            <button class="rule-edit-btn" data-rule-id="${r.id}" title="Edit">✏️</button>
+            <button class="rule-delete-btn" data-rule-id="${r.id}" title="Delete">🗑️</button>
+          </div>
+        </div>
+        <div class="rule-card-detail">
+          <span class="rule-keywords">${sanitize(kw)}</span>${amt}
+          → <strong>${sanitize(r.setCategory || "—")}</strong>
+          · ${r.setType === "credit" ? "Income" : "Expense"}
+          ${r.setInvalid ? " · Invalid" : ""}
+        </div>
+      </div>`;
+    }).join("");
+
+    container.querySelectorAll(".rule-edit-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rule = getRules().find(r => r.id === btn.dataset.ruleId);
+        if (rule) openRuleEditor(rule);
+      });
+    });
+    container.querySelectorAll(".rule-delete-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (confirm("Delete this rule?")) {
+          deleteRule(btn.dataset.ruleId);
+          renderRulesList();
+          showToast("Rule deleted", "info");
+        }
+      });
+    });
+  }
+
+  function openRuleEditor(rule) {
+    document.getElementById("ruleEditorTitle").textContent = rule ? "Edit Rule" : "New Rule";
+    document.getElementById("ruleEditId").value = rule ? rule.id : "";
+    document.getElementById("ruleEditName").value = rule ? rule.name : "";
+    document.getElementById("ruleEditKeywords").value = rule ? (rule.keywords || []).join(", ") : "";
+    document.getElementById("ruleEditMinAmt").value = rule && rule.amountMin != null ? rule.amountMin : "";
+    document.getElementById("ruleEditMaxAmt").value = rule && rule.amountMax != null ? rule.amountMax : "";
+
+    // Populate category select
+    const catSel = document.getElementById("ruleEditCategory");
+    const allCats = getAllCategories();
+    catSel.innerHTML = allCats.map(c =>
+      `<option value="${c}"${rule && rule.setCategory === c ? " selected" : ""}>${c}</option>`
+    ).join("");
+
+    // Type toggle
+    const debitBtn = document.getElementById("ruleEditTypeDebit");
+    const creditBtn = document.getElementById("ruleEditTypeCredit");
+    const ruleType = rule ? rule.setType || "debit" : "debit";
+    debitBtn.classList.toggle("active", ruleType === "debit");
+    creditBtn.classList.toggle("active", ruleType === "credit");
+    debitBtn.onclick = () => { debitBtn.classList.add("active"); creditBtn.classList.remove("active"); };
+    creditBtn.onclick = () => { creditBtn.classList.add("active"); debitBtn.classList.remove("active"); };
+
+    // Valid toggle
+    const validBtn = document.getElementById("ruleEditValid");
+    const invalidBtn = document.getElementById("ruleEditInvalid");
+    const isInvalid = rule ? rule.setInvalid === true : false;
+    validBtn.classList.toggle("active", !isInvalid);
+    invalidBtn.classList.toggle("active", isInvalid);
+    validBtn.onclick = () => { validBtn.classList.add("active"); invalidBtn.classList.remove("active"); };
+    invalidBtn.onclick = () => { invalidBtn.classList.add("active"); validBtn.classList.remove("active"); };
+
+    openModal("modalRuleEdit");
+  }
+
+  function saveRuleFromEditor() {
+    const id = document.getElementById("ruleEditId").value;
+    const name = document.getElementById("ruleEditName").value.trim();
+    const keywordsStr = document.getElementById("ruleEditKeywords").value.trim();
+    const keywords = keywordsStr ? keywordsStr.split(",").map(k => k.trim()).filter(Boolean) : [];
+    const minAmt = document.getElementById("ruleEditMinAmt").value;
+    const maxAmt = document.getElementById("ruleEditMaxAmt").value;
+    const category = document.getElementById("ruleEditCategory").value;
+    const typeIsDebit = document.getElementById("ruleEditTypeDebit").classList.contains("active");
+    const isInvalid = document.getElementById("ruleEditInvalid").classList.contains("active");
+
+    if (!name) { showToast("Rule name is required", "error"); return; }
+    if (!keywords.length) { showToast("At least one keyword is required", "error"); return; }
+
+    const ruleData = {
+      name,
+      keywords,
+      amountMin: minAmt !== "" ? parseFloat(minAmt) : null,
+      amountMax: maxAmt !== "" ? parseFloat(maxAmt) : null,
+      setCategory: category,
+      setType: typeIsDebit ? "debit" : "credit",
+      setInvalid: isInvalid,
+    };
+
+    if (id) {
+      updateRule(id, ruleData);
+      showToast("Rule updated", "success");
+    } else {
+      ruleData.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      addRule(ruleData);
+      showToast("Rule created", "success");
+    }
+
+    closeModal("modalRuleEdit");
+    renderRulesList();
+  }
+
+  function setupRulesListeners() {
+    document.getElementById("settingRules").addEventListener("click", () => {
+      renderRulesList();
+      openModal("modalRules");
+    });
+    document.getElementById("btnCloseRules").addEventListener("click", () => closeModal("modalRules"));
+    document.getElementById("btnAddRule").addEventListener("click", () => openRuleEditor(null));
+    document.getElementById("btnRunAllRules").addEventListener("click", () => {
+      if (!confirm("This will modify existing transactions based on your rules.\n\nPlease export your data first so you can revert if needed.\n\nContinue?")) return;
+      const count = applyRulesToAll();
+      render();
+      showToast(count > 0 ? count + " transaction(s) updated" : "No transactions matched", count > 0 ? "success" : "info");
+    });
+    document.getElementById("btnCloseRuleEdit").addEventListener("click", () => closeModal("modalRuleEdit"));
+    document.getElementById("btnCancelRuleEdit").addEventListener("click", () => closeModal("modalRuleEdit"));
+    document.getElementById("btnSaveRule").addEventListener("click", () => saveRuleFromEditor());
+  }
+
   // ─── Delta Import Tracking ───
   // Stores { lineCount, hash } per filename so re-imports only parse new lines
   function getDeltaTracker() {
@@ -571,6 +792,7 @@ const App = (() => {
             const txn = SMSParser.parse(smsText, sender, ts);
             if (txn) {
               txn.originalSms = original;
+              applyRules(txn);
               if (!SMSParser.isDuplicate(txn, transactions)) {
                 transactions.unshift(txn);
                 added++;
@@ -598,6 +820,7 @@ const App = (() => {
           const slice = txns.slice(startIdx);
           slice.forEach((txn) => {
             if (txn.id && txn.amount) {
+              applyRules(txn);
               if (!SMSParser.isDuplicate(txn, transactions)) {
                 transactions.unshift(txn);
                 added++;
@@ -637,6 +860,7 @@ const App = (() => {
                 const ts =
                   dateVal && timeVal ? `${dateVal} ${timeVal}` : dateVal;
                 const txn = SMSParser.parse(smsText, sender, ts || null);
+                if (txn) applyRules(txn);
                 if (txn && !SMSParser.isDuplicate(txn, transactions)) {
                   txn.originalSms = item.originalSms || smsText;
                   transactions.unshift(txn);
@@ -693,6 +917,7 @@ const App = (() => {
                 const ts =
                   dateVal && timeVal ? `${dateVal} ${timeVal}` : dateVal;
                 const txn = SMSParser.parse(smsText, sender, ts || null);
+                if (txn) applyRules(txn);
                 if (txn && !SMSParser.isDuplicate(txn, transactions)) {
                   txn.originalSms = item.originalSms || smsText;
                   transactions.unshift(txn);
@@ -703,6 +928,7 @@ const App = (() => {
                   failed++;
                 }
               } else if (item.id && item.amount) {
+                applyRules(item);
                 if (!SMSParser.isDuplicate(item, transactions)) {
                   transactions.unshift(item);
                   added++;
@@ -717,6 +943,7 @@ const App = (() => {
         } else if (!data && looksLikeCSV(text)) {
           // CSV re-import (exported by this app)
           parseExportedCSV(text).forEach((txn) => {
+            applyRules(txn);
             if (!SMSParser.isDuplicate(txn, transactions)) {
               transactions.unshift(txn);
               added++;
@@ -743,6 +970,7 @@ const App = (() => {
           lines.forEach((line) => {
             const { sender, smsText, date } = extractSenderFromLine(line.trim());
             const txn = SMSParser.parse(smsText, sender, date || null);
+            if (txn) applyRules(txn);
             if (txn && !SMSParser.isDuplicate(txn, transactions)) {
               transactions.unshift(txn);
               added++;
@@ -1313,6 +1541,42 @@ const App = (() => {
       }
     };
 
+    // Create Rule from this transaction
+    const btnCreateRule = document.getElementById("btnCreateRule");
+    if (btnCreateRule) {
+      btnCreateRule.onclick = () => {
+        const rule = createRuleFromTransaction(txn);
+        closeModal("modalDetail");
+        openRuleEditor(rule);
+      };
+    }
+
+    // Type toggle (Expense/Income)
+    const detailTypeDebit = document.getElementById("detailTypeDebit");
+    const detailTypeCredit = document.getElementById("detailTypeCredit");
+    if (detailTypeDebit && detailTypeCredit) {
+      detailTypeDebit.classList.toggle("active", txn.type === "debit");
+      detailTypeCredit.classList.toggle("active", txn.type === "credit");
+      detailTypeDebit.onclick = () => {
+        txn.type = "debit";
+        detailTypeDebit.classList.add("active");
+        detailTypeCredit.classList.remove("active");
+        document.getElementById("detailAmount").textContent = "-" + Charts.formatCurrency(txn.amount, txn.currency);
+        document.getElementById("detailAmount").className = "detail-amount debit";
+        saveData();
+        render();
+      };
+      detailTypeCredit.onclick = () => {
+        txn.type = "credit";
+        detailTypeCredit.classList.add("active");
+        detailTypeDebit.classList.remove("active");
+        document.getElementById("detailAmount").textContent = "+" + Charts.formatCurrency(txn.amount, txn.currency);
+        document.getElementById("detailAmount").className = "detail-amount credit";
+        saveData();
+        render();
+      };
+    }
+
     openModal("modalDetail");
   }
 
@@ -1594,6 +1858,7 @@ const App = (() => {
     let added = 0,
       skipped = 0;
     results.forEach((txn) => {
+      applyRules(txn);
       if (!SMSParser.isDuplicate(txn, transactions)) {
         transactions.unshift(txn);
         added++;
@@ -2097,6 +2362,9 @@ const App = (() => {
 
     // AI Classification
     setupAIListeners();
+
+    // Classification Rules
+    setupRulesListeners();
 
     // Category management
     const settingCat = document.getElementById("settingCategories");
