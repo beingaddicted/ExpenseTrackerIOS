@@ -27,7 +27,7 @@ const DEBUG_FILE = fm.joinPath(dir, "SmsExtractsDebug.txt");
 const RUN_START_COUNT_FILE = fm.joinPath(dir, "SmsExtracts.runStartCount.txt");
 
 // ── CONFIG ──────────────────────────────────────────
-const DEBUG = false; // flip to true to write SmsExtractsDebug.txt
+const DEBUG = true; // flip to true to write SmsExtractsDebug.txt
 const DEFAULT_START = "2020-01-01";
 
 // BEGIN_BANK_SMS_LIB_FOR_JEST
@@ -304,17 +304,26 @@ try {
       }
 
       const bankMsgs = [];
+      let skippedNonBank = 0;
+      let skippedNoKw = 0;
+      let skippedNoMoney = 0;
+      let skippedSpam = 0;
       for (const raw of allMsgs) {
         const { sender, body: sms } = parseSenderBody(raw);
         // If sender is provided, filter by bank sender code
-        if (sender && !isBankSender(sender)) continue;
+        if (sender && !isBankSender(sender)) { skippedNonBank++; continue; }
         const lower = sms.toLowerCase();
         const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
         const hasMoney = MONEY_RE.test(sms);
         const isSpam = SPAM_RE.test(sms);
-        if (hasKw && hasMoney && !isSpam) {
-          bankMsgs.push({ sender, body: sms });
-        }
+        if (!hasKw) { skippedNoKw++; continue; }
+        if (!hasMoney) { skippedNoMoney++; continue; }
+        if (isSpam) { skippedSpam++; continue; }
+        bankMsgs.push({ sender, body: sms });
+      }
+
+      if (DEBUG) {
+        debugAppend(`FILTER SUMMARY: total=${allMsgs.length} kept=${bankMsgs.length} nonBank=${skippedNonBank} noKeyword=${skippedNoKw} noMoney=${skippedNoMoney} spam=${skippedSpam}`);
       }
 
       let existing = [];
@@ -358,6 +367,10 @@ try {
             originalSms: sms,
           });
         }
+      }
+
+      if (DEBUG) {
+        debugAppend(`DEDUP: bankMsgs=${bankMsgs.length} unique=${uniqueBankMsgs.length} newEntries=${newEntries.length} existingBefore=${existing.length}`);
       }
 
       prevBatch[dateStr] = (prevBatch[dateStr] || []).concat(uniqueBankMsgs);
