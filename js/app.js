@@ -1323,9 +1323,11 @@ const App = (() => {
         const css = CATEGORY_CSS[t.category] || "cat-other";
         const sign = t.type === "debit" ? "-" : "+";
         const invalidCls = t.invalid ? " txn-invalid" : "";
-        const toggleIcon = t.invalid ? "⊘" : "○";
-        const toggleCls = t.invalid ? " toggled" : "";
-        html += `<div class="txn-card${invalidCls}" data-id="${sanitize(t.id)}">
+        const swipeLabel = t.invalid ? "Mark Valid" : "Mark Invalid";
+        const swipeActionCls = t.invalid ? "swipe-action-valid" : "swipe-action-invalid";
+        html += `<div class="txn-swipe-container" data-id="${sanitize(t.id)}">
+          <div class="swipe-action ${swipeActionCls}">${swipeLabel}</div>
+          <div class="txn-card${invalidCls}" data-id="${sanitize(t.id)}">
           <div class="txn-icon ${css}">${icon}</div>
           <div class="txn-info">
             <div class="txn-merchant">${sanitize(t.merchant || "Unknown")}</div>
@@ -1336,12 +1338,12 @@ const App = (() => {
             </div>
           </div>
           <div class="txn-amount-wrap">
-            <button class="txn-toggle${toggleCls}" data-id="${sanitize(t.id)}" title="${t.invalid ? "Mark as transaction" : "Mark as non-transaction"}">${toggleIcon}</button>
             <div>
               <div class="txn-amount ${t.type}">${sign}${Charts.formatCurrency(t.amount, t.currency)}</div>
               <div class="txn-mode">${sanitize(t.mode || "")}</div>
             </div>
           </div>
+        </div>
         </div>`;
       });
       html += "</div>";
@@ -1349,27 +1351,71 @@ const App = (() => {
     container.innerHTML = html;
 
     container.querySelectorAll(".txn-card").forEach((card) => {
-      card.addEventListener("click", () => showDetail(card.dataset.id));
-    });
-
-    // Non-transaction toggle
-    container.querySelectorAll(".txn-toggle").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const txn = transactions.find((t) => t.id === btn.dataset.id);
-        if (txn) {
-          txn.invalid = !txn.invalid;
-          saveData();
-          render();
-          showToast(
-            txn.invalid ? "Marked as non-transaction" : "Marked as transaction",
-            "info",
-          );
-        }
+      card.addEventListener("click", (e) => {
+        if (card.dataset.swiped) { delete card.dataset.swiped; return; }
+        showDetail(card.dataset.id);
       });
     });
 
+    // Swipe-to-toggle-invalid
+    initSwipeToInvalid(container);
 
+
+  }
+
+  function initSwipeToInvalid(container) {
+    const THRESHOLD = 80;
+    container.querySelectorAll(".txn-swipe-container").forEach((wrapper) => {
+      const card = wrapper.querySelector(".txn-card");
+      let startX = 0, startY = 0, currentX = 0, swiping = false, prevented = false;
+
+      wrapper.addEventListener("touchstart", (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        currentX = 0;
+        swiping = false;
+        prevented = false;
+        card.style.transition = "none";
+      }, { passive: true });
+
+      wrapper.addEventListener("touchmove", (e) => {
+        if (prevented) return;
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+
+        if (!swiping && Math.abs(dy) > Math.abs(dx)) {
+          prevented = true;
+          return;
+        }
+        swiping = true;
+        currentX = Math.min(0, dx);
+        card.style.transform = `translateX(${currentX}px)`;
+      });
+
+      wrapper.addEventListener("touchend", () => {
+        card.style.transition = "transform 0.25s ease";
+        if (swiping) card.dataset.swiped = "1";
+        if (currentX < -THRESHOLD) {
+          card.style.transform = `translateX(-100%)`;
+          const id = wrapper.dataset.id;
+          const txn = transactions.find((t) => t.id === id);
+          if (txn) {
+            setTimeout(() => {
+              txn.invalid = !txn.invalid;
+              saveData();
+              render();
+              showToast(
+                txn.invalid ? "Marked as non-transaction" : "Marked as transaction",
+                "info",
+              );
+            }, 200);
+          }
+        } else {
+          card.style.transform = "translateX(0)";
+        }
+        swiping = false;
+      });
+    });
   }
 
   function formatDateLabel(d) {
@@ -1539,28 +1585,6 @@ const App = (() => {
       smsWrap.style.display = "none";
       detailSmsEl.textContent = "";
     }
-
-    // Toggle non-transaction
-    const btnInvalid = document.getElementById("btnToggleInvalid");
-    btnInvalid.textContent = txn.invalid
-      ? "Mark as Transaction"
-      : "Mark as Non-Transaction";
-    btnInvalid.style.color = txn.invalid
-      ? "var(--green, #22c55e)"
-      : "var(--yellow, #eab308)";
-    btnInvalid.style.borderColor = txn.invalid
-      ? "var(--green, #22c55e)"
-      : "var(--yellow, #eab308)";
-    btnInvalid.onclick = () => {
-      txn.invalid = !txn.invalid;
-      saveData();
-      closeModal("modalDetail");
-      render();
-      showToast(
-        txn.invalid ? "Marked as non-transaction" : "Marked as transaction",
-        "info",
-      );
-    };
 
     // Reclassify single transaction with AI
     const btnReclassify = document.getElementById("btnReclassifyAI");

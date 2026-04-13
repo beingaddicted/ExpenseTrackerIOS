@@ -781,33 +781,43 @@ body {
 .cat-tax { background: #fef2f2; color: #b91c1c; }
 .cat-other { background: #f1f5f9; color: #64748b; }
 
-/* ─── Non-Transaction Toggle ─── */
-.txn-toggle {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    border: 1.5px solid var(--border-light);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 13px;
-    cursor: pointer;
+/* ─── Swipe-to-Invalid ─── */
+.txn-swipe-container {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+}
+
+.swipe-action {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
     display: flex;
     align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: all 0.2s;
-    padding: 0;
-    margin-right: 8px;
+    justify-content: flex-end;
+    padding-right: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    pointer-events: none;
 }
 
-.txn-toggle.toggled {
-    border-color: var(--red);
-    color: var(--red);
-    background: var(--red-bg);
+.swipe-action-invalid {
+    background: var(--red, #ef4444);
 }
 
-.txn-toggle:active {
-    transform: scale(0.9);
+.swipe-action-valid {
+    background: var(--green, #22c55e);
+}
+
+.txn-swipe-container .txn-card {
+    margin-bottom: 0;
+    position: relative;
+    z-index: 1;
+    will-change: transform;
 }
 
 /* ─── Inline Category Label ─── */
@@ -1447,15 +1457,15 @@ body {
     to { transform: translateX(0); opacity: 1; }
 }
 
-.txn-card {
+.txn-swipe-container {
     animation: slideIn 0.3s ease backwards;
 }
 
-.txn-card:nth-child(1) { animation-delay: 0s; }
-.txn-card:nth-child(2) { animation-delay: 0.05s; }
-.txn-card:nth-child(3) { animation-delay: 0.1s; }
-.txn-card:nth-child(4) { animation-delay: 0.15s; }
-.txn-card:nth-child(5) { animation-delay: 0.2s; }
+.txn-swipe-container:nth-child(1) { animation-delay: 0s; }
+.txn-swipe-container:nth-child(2) { animation-delay: 0.05s; }
+.txn-swipe-container:nth-child(3) { animation-delay: 0.1s; }
+.txn-swipe-container:nth-child(4) { animation-delay: 0.15s; }
+.txn-swipe-container:nth-child(5) { animation-delay: 0.2s; }
 
 /* ─── Empty State ─── */
 .empty-state {
