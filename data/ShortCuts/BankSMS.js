@@ -86,6 +86,29 @@ function extractTime(msg) {
 }
 
 const SMS_DELIMITER = "===SMS===";
+const SENDER_DELIMITER = "|||";
+
+// Bank sender codes (alphanumeric short IDs used by Indian banks/financial services)
+// Sender format from carriers: XX-BANKCD where XX is prefix, BANKCD is the code
+// We match the code part (case-insensitive, can appear as substring)
+const BANK_SENDER_CODES = [
+  "HDFCBK","HDFCBN","ICICIB","ICICIO","AXISBK","AXISMS","SBIINB","SBMSBI",
+  "SBIPSG","KOTAKB","KKBKBL","IDFCFB","IDFCFBK","FEDBNK","BOBSMS","BARODA",
+  "PNBSMS","YESBK","INDBNK","DBSBNK","RBLBNK","AUBANK","BANDHN","BANDHAN",
+  "CANBNK","CNRBCH","UNIONB","BOIIND","IOBIND","CITIBK","HSBCBK","SCBANK",
+  "JANABNK","CENTBK","MAHBNK","INDOCP","UJJIVN","EQUITS","ABORIG",
+  // Payment/wallet/fintech senders
+  "PAYTMB","PAYTM","PHONPE","GOOGLP","RAZRPY","BFRUPE","JUPTER",
+  "MOBIKW","PLUXEE","AIRTEL","JIOMNY","SLICE","CRDSCR","FIBNK",
+  // Credit card / NBFC
+  "AMEXIN","HSBCCC","CITCCR","BAJFIN","LTFIN","TATACP","CHOLAM",
+];
+
+function isBankSender(sender) {
+  if (!sender) return false;
+  const upper = sender.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return BANK_SENDER_CODES.some((code) => upper.includes(code));
+}
 
 function splitMessages(text) {
   if (text.includes(SMS_DELIMITER)) {
@@ -95,6 +118,18 @@ function splitMessages(text) {
       .filter((s) => s.length > 0);
   }
   return reassembleMessages(text);
+}
+
+// Parse sender|||body format, returns { sender, body }
+function parseSenderBody(msg) {
+  const idx = msg.indexOf(SENDER_DELIMITER);
+  if (idx >= 0) {
+    return {
+      sender: msg.substring(0, idx).trim(),
+      body: msg.substring(idx + SENDER_DELIMITER.length).trim(),
+    };
+  }
+  return { sender: "", body: msg };
 }
 
 function reassembleMessages(text) {
@@ -254,25 +289,33 @@ try {
         debugLines.push(`\n=== ${dateStr} ===`);
         debugLines.push(`Raw input length: ${input.length}`);
         debugLines.push(`Messages split: ${allMsgs.length}`);
-        for (const sms of allMsgs) {
+        for (const raw of allMsgs) {
+          const { sender, body: sms } = parseSenderBody(raw);
           const lower = sms.toLowerCase();
           const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
           const hasMoney = MONEY_RE.test(sms);
           const isSpam = SPAM_RE.test(sms);
+          const isBank = sender ? isBankSender(sender) : true;
           const time = extractTime(sms);
-          const kept = hasKw && hasMoney && !isSpam;
-          debugLines.push(`[${kept ? "KEEP" : "SKIP"}] kw=${hasKw} money=${hasMoney} spam=${isSpam} time="${time}" body=${sms.substring(0, 120)}`);
+          const kept = isBank && hasKw && hasMoney && !isSpam;
+          debugLines.push(`[${kept ? "KEEP" : "SKIP"}] sender="${sender}" bank=${isBank} kw=${hasKw} money=${hasMoney} spam=${isSpam} time="${time}" body=${sms.substring(0, 120)}`);
         }
         debugAppend(debugLines.join("\n"));
       }
 
-      const bankMsgs = allMsgs.filter((sms) => {
+      const bankMsgs = [];
+      for (const raw of allMsgs) {
+        const { sender, body: sms } = parseSenderBody(raw);
+        // If sender is provided, filter by bank sender code
+        if (sender && !isBankSender(sender)) continue;
         const lower = sms.toLowerCase();
         const hasKw = KEYWORDS.some((kw) => lower.includes(kw));
         const hasMoney = MONEY_RE.test(sms);
         const isSpam = SPAM_RE.test(sms);
-        return hasKw && hasMoney && !isSpam;
-      });
+        if (hasKw && hasMoney && !isSpam) {
+          bankMsgs.push({ sender, body: sms });
+        }
+      }
 
       let existing = [];
       let prevBatch = {};
@@ -302,7 +345,7 @@ try {
       const seen = new Set();
       const uniqueBankMsgs = [];
       const newEntries = [];
-      for (const sms of bankMsgs) {
+      for (const { sender, body: sms } of bankMsgs) {
         if (!seen.has(sms) && !prevSet.has(sms)) {
           seen.add(sms);
           uniqueBankMsgs.push(sms);
@@ -310,6 +353,7 @@ try {
           newEntries.push({
             date: dateStr,
             time: time || "",
+            sender: sender || "",
             body: sms,
             originalSms: sms,
           });
