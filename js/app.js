@@ -566,11 +566,22 @@ const App = (() => {
 
   function createRuleFromTransaction(txn) {
     const keywords = [];
+    const sms = (txn.rawSMS || txn.originalSms || "").toLowerCase();
     if (txn.merchant && txn.merchant !== "Unknown") {
       keywords.push(txn.merchant.toLowerCase());
     }
+    // Extract useful tokens from SMS (bank name, UPI ids, account fragments)
+    if (sms) {
+      const tokens = sms.match(/[a-z0-9@.]{3,}/gi) || [];
+      const stopWords = new Set(["the","and","for","from","your","with","has","been","was","are","you","this","that","not","but","have","had","will","can","may","account","transaction","dear","customer","inr","ref","info","alert","no.","avl","bal","a/c"]);
+      tokens.forEach(t => {
+        const lower = t.toLowerCase();
+        if (!stopWords.has(lower) && !keywords.includes(lower) && lower.length >= 3 && !/^\d+$/.test(lower)) {
+          keywords.push(lower);
+        }
+      });
+    }
     return {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name: txn.merchant || "New Rule",
       keywords: keywords,
       amountMin: null,
@@ -578,6 +589,7 @@ const App = (() => {
       setCategory: txn.category || null,
       setType: txn.type || null,
       setInvalid: txn.invalid || false,
+      _rawSMS: sms,
     };
   }
 
@@ -634,8 +646,9 @@ const App = (() => {
   }
 
   function openRuleEditor(rule) {
-    document.getElementById("ruleEditorTitle").textContent = rule ? "Edit Rule" : "New Rule";
-    document.getElementById("ruleEditId").value = rule ? rule.id : "";
+    const isNew = !rule || !rule.id;
+    document.getElementById("ruleEditorTitle").textContent = isNew ? "New Rule" : "Edit Rule";
+    document.getElementById("ruleEditId").value = rule && rule.id ? rule.id : "";
     document.getElementById("ruleEditName").value = rule ? rule.name : "";
     document.getElementById("ruleEditKeywords").value = rule ? (rule.keywords || []).join(", ") : "";
     document.getElementById("ruleEditMinAmt").value = rule && rule.amountMin != null ? rule.amountMin : "";
@@ -2365,6 +2378,12 @@ const App = (() => {
 
     // Classification Rules
     setupRulesListeners();
+    // Update rules count in settings on init
+    const rulesDesc = document.getElementById("rulesStatusDesc");
+    if (rulesDesc) {
+      const rc = getRules().length;
+      rulesDesc.textContent = rc + " rule" + (rc !== 1 ? "s" : "") + " configured";
+    }
 
     // Category management
     const settingCat = document.getElementById("settingCategories");
