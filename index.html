@@ -698,21 +698,25 @@
     <div class="modal-overlay" id="modalRules">
       <div class="modal">
         <div class="modal-handle"></div>
-        <div class="modal-header">
-          <h2>📐 Classification Rules</h2>
-          <button class="modal-close" id="btnCloseRules">✕</button>
+        <div class="rules-modal-sticky">
+          <div class="modal-header">
+            <h2>📐 Classification Rules</h2>
+            <button class="modal-close" id="btnCloseRules">✕</button>
+          </div>
+          <div style="padding: 0 16px 12px; display: flex; gap: 8px">
+            <button type="button" class="btn-primary" id="btnAddRule" style="flex: 1; font-size: 13px">
+              ＋ Add Rule
+            </button>
+            <button type="button" class="btn-secondary" id="btnRunAllRules" style="flex: 1; font-size: 13px; color: var(--accent-primary); border-color: var(--accent-primary)">
+              ▶ Run All
+            </button>
+          </div>
         </div>
-        <div class="modal-body" style="padding: 0 16px 16px">
+        <div class="modal-body" style="padding: 0 16px 16px; overflow-y: auto">
           <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 12px">
             Rules auto-classify imported transactions by matching keywords in the SMS text.
           </p>
           <div id="rulesList" class="rules-list"></div>
-          <button type="button" class="btn-primary" id="btnAddRule" style="width: 100%; margin-top: 12px">
-            ＋ Add New Rule
-          </button>
-          <button type="button" class="btn-secondary" id="btnRunAllRules" style="width: 100%; margin-top: 8px; color: var(--accent-primary); border-color: var(--accent-primary)">
-            ▶ Run Rules on All Transactions
-          </button>
         </div>
       </div>
     </div>
