@@ -73,7 +73,7 @@ body {
     top: 0;
     z-index: 100;
     padding: calc(16px + var(--safe-top)) 20px 12px;
-    background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-primary) 85%, transparent 100%);
+    background: var(--bg-primary);
     backdrop-filter: blur(24px) saturate(1.4);
     -webkit-backdrop-filter: blur(24px) saturate(1.4);
 }
