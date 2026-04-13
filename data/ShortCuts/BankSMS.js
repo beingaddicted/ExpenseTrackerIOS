@@ -23,8 +23,6 @@ const dir = fm.joinPath(root, "expense tracker");
 if (!fm.fileExists(dir)) fm.createDirectory(dir);
 const SMS_FILE = fm.joinPath(dir, "SmsExtracts.json");
 const DEBUG_FILE = fm.joinPath(dir, "SmsExtractsDebug.txt");
-// Message count at start of this Shortcut run (INIT). Small file avoids relying on JSON.parse for baseline when computing "new this run".
-const RUN_START_COUNT_FILE = fm.joinPath(dir, "SmsExtracts.runStartCount.txt");
 
 // ── CONFIG ──────────────────────────────────────────
 const DEBUG = true; // flip to true to write SmsExtractsDebug.txt
@@ -247,10 +245,6 @@ try {
       }
     } catch (_) {}
 
-    try {
-      fm.writeString(RUN_START_COUNT_FILE, String(startCount));
-    } catch (_) {}
-
     Script.setShortcutOutput(String(safeDays));
   } else {
     let trackerStr = null;
@@ -421,14 +415,7 @@ try {
     } catch (_) {}
 
     if (trackerDate >= today) {
-      let baseline = savedRunStartCount;
-      try {
-        const blRaw = await read(RUN_START_COUNT_FILE);
-        if (blRaw != null && String(blRaw).trim() !== "") {
-          const b = parseInt(String(blRaw).trim(), 10);
-          if (Number.isFinite(b) && b >= 0) baseline = b;
-        }
-      } catch (_) {}
+      const baseline = savedRunStartCount;
       const delta = Math.max(0, totalMsgs - baseline);
 
       const n = new Notification();
