@@ -565,27 +565,22 @@ const App = (() => {
   }
 
   function createRuleFromTransaction(txn) {
-    const keywords = [];
     const sms = (txn.rawSMS || txn.originalSms || "").toLowerCase();
-    if (txn.merchant && txn.merchant !== "Unknown") {
+    const keywords = [];
+    // Only use merchant if it literally appears in the SMS
+    if (txn.merchant && txn.merchant !== "Unknown" && sms.includes(txn.merchant.toLowerCase())) {
       keywords.push(txn.merchant.toLowerCase());
     }
-    // Extract useful tokens from SMS (bank name, UPI ids, account fragments)
-    if (sms) {
-      const tokens = sms.match(/[a-z0-9@.]{3,}/gi) || [];
-      const stopWords = new Set(["the","and","for","from","your","with","has","been","was","are","you","this","that","not","but","have","had","will","can","may","account","transaction","dear","customer","inr","ref","info","alert","no.","avl","bal","a/c"]);
-      tokens.forEach(t => {
-        const lower = t.toLowerCase();
-        if (!stopWords.has(lower) && !keywords.includes(lower) && lower.length >= 3 && !/^\d+$/.test(lower)) {
-          keywords.push(lower);
-        }
-      });
+    // Add bank name if present in SMS and we don't have a keyword yet
+    if (keywords.length < 2 && txn.bank && txn.bank !== "Unknown" && sms.includes(txn.bank.toLowerCase())) {
+      const bk = txn.bank.toLowerCase();
+      if (!keywords.includes(bk)) keywords.push(bk);
     }
     return {
       name: txn.merchant || "New Rule",
       keywords: keywords,
-      amountMin: null,
-      amountMax: null,
+      amountMin: txn.amount ? Math.floor(txn.amount) : null,
+      amountMax: txn.amount ? Math.ceil(txn.amount) : null,
       setCategory: txn.category || null,
       setType: txn.type || null,
       setInvalid: txn.invalid || false,
