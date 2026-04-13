@@ -17,6 +17,14 @@
 		C10000000000000000000008 /* ImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* ImportCoordinator.swift */; };
 		C10000000000000000000009 /* ImportBankSMSIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* ImportBankSMSIntent.swift */; };
 		C10000000000000000000010 /* ExpenseShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* ExpenseShortcuts.swift */; };
+		C10000000000000000000011 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* Theme.swift */; };
+		C10000000000000000000012 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* AppViewModel.swift */; };
+		C10000000000000000000013 /* TransactionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000013 /* TransactionRow.swift */; };
+		C10000000000000000000014 /* TransactionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000014 /* TransactionDetailView.swift */; };
+		C10000000000000000000015 /* SummaryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* SummaryCard.swift */; };
+		C10000000000000000000016 /* ImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* ImportView.swift */; };
+		C10000000000000000000017 /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* ExportView.swift */; };
+		C10000000000000000000018 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +39,14 @@
 		B10000000000000000000008 /* ImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportCoordinator.swift; sourceTree = "<group>"; };
 		B10000000000000000000009 /* ImportBankSMSIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportBankSMSIntent.swift; sourceTree = "<group>"; };
 		B10000000000000000000010 /* ExpenseShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseShortcuts.swift; sourceTree = "<group>"; };
+		B10000000000000000000011 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		B10000000000000000000012 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
+		B10000000000000000000013 /* TransactionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionRow.swift; sourceTree = "<group>"; };
+		B10000000000000000000014 /* TransactionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDetailView.swift; sourceTree = "<group>"; };
+		B10000000000000000000015 /* SummaryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryCard.swift; sourceTree = "<group>"; };
+		B10000000000000000000016 /* ImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportView.swift; sourceTree = "<group>"; };
+		B10000000000000000000017 /* ExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportView.swift; sourceTree = "<group>"; };
+		B10000000000000000000018 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +87,14 @@
 				B10000000000000000000006 /* SMSBankParser.swift */,
 				B10000000000000000000007 /* SMSMiniTemplates.swift */,
 				B10000000000000000000008 /* ImportCoordinator.swift */,
+				B10000000000000000000011 /* Theme.swift */,
+				B10000000000000000000012 /* AppViewModel.swift */,
+				B10000000000000000000013 /* TransactionRow.swift */,
+				B10000000000000000000014 /* TransactionDetailView.swift */,
+				B10000000000000000000015 /* SummaryCard.swift */,
+				B10000000000000000000016 /* ImportView.swift */,
+				B10000000000000000000017 /* ExportView.swift */,
+				B10000000000000000000018 /* SettingsView.swift */,
 				1A0000000000000000000004 /* Intents */,
 			);
 			path = ExpenseTracker;
@@ -163,6 +187,14 @@
 				C10000000000000000000008 /* ImportCoordinator.swift in Sources */,
 				C10000000000000000000009 /* ImportBankSMSIntent.swift in Sources */,
 				C10000000000000000000010 /* ExpenseShortcuts.swift in Sources */,
+				C10000000000000000000011 /* Theme.swift in Sources */,
+				C10000000000000000000012 /* AppViewModel.swift in Sources */,
+				C10000000000000000000013 /* TransactionRow.swift in Sources */,
+				C10000000000000000000014 /* TransactionDetailView.swift in Sources */,
+				C10000000000000000000015 /* SummaryCard.swift in Sources */,
+				C10000000000000000000016 /* ImportView.swift in Sources */,
+				C10000000000000000000017 /* ExportView.swift in Sources */,
+				C10000000000000000000018 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
