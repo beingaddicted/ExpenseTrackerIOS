@@ -544,6 +544,11 @@ enum SMSBankParser {
         return "Other"
     }
 
+    /// Re-categorise a transaction from its raw SMS + merchant.
+    static func categorize(_ text: String, merchant: String?) -> String {
+        detectCategory(text, merchant: merchant)
+    }
+
     private static func detectCategory(_ text: String, merchant: String?) -> String {
         let combined = text + " " + (merchant ?? "")
         let ns = combined as NSString

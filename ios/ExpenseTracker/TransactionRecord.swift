@@ -19,6 +19,7 @@ final class TransactionRecord {
     var sender: String?
     var parsedAt: Date
     var source: String
+    var isValid: Bool = true
 
     init(
         id: String,
@@ -36,7 +37,8 @@ final class TransactionRecord {
         rawSMS: String,
         sender: String?,
         parsedAt: Date,
-        source: String
+        source: String,
+        isValid: Bool = true
     ) {
         self.id = id
         self.amount = amount
@@ -54,5 +56,6 @@ final class TransactionRecord {
         self.sender = sender
         self.parsedAt = parsedAt
         self.source = source
+        self.isValid = isValid
     }
 }

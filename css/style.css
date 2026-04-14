@@ -811,6 +811,7 @@ body {
     overflow: hidden;
     border-radius: var(--radius-sm);
     margin-bottom: 8px;
+    touch-action: pan-y;
 }
 
 .swipe-action {

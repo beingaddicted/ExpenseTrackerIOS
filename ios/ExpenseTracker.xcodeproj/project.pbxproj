@@ -25,6 +25,7 @@
 		C10000000000000000000016 /* ImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* ImportView.swift */; };
 		C10000000000000000000017 /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* ExportView.swift */; };
 		C10000000000000000000018 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* SettingsView.swift */; };
+		C10000000000000000000019 /* AddTransactionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* AddTransactionView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +48,7 @@
 		B10000000000000000000016 /* ImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportView.swift; sourceTree = "<group>"; };
 		B10000000000000000000017 /* ExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportView.swift; sourceTree = "<group>"; };
 		B10000000000000000000018 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		B10000000000000000000019 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -95,6 +97,7 @@
 				B10000000000000000000016 /* ImportView.swift */,
 				B10000000000000000000017 /* ExportView.swift */,
 				B10000000000000000000018 /* SettingsView.swift */,
+				B10000000000000000000019 /* AddTransactionView.swift */,
 				1A0000000000000000000004 /* Intents */,
 			);
 			path = ExpenseTracker;
@@ -195,6 +198,7 @@
 				C10000000000000000000016 /* ImportView.swift in Sources */,
 				C10000000000000000000017 /* ExportView.swift in Sources */,
 				C10000000000000000000018 /* SettingsView.swift in Sources */,
+				C10000000000000000000019 /* AddTransactionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

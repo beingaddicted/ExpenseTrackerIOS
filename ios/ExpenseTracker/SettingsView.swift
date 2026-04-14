@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Query private var allRows: [TransactionRecord]
     @State private var showDeleteAllAlert = false
     @State private var showExport = false
+    @State private var rulesResult: String? = nil
     @AppStorage("appTheme") private var appTheme = "dark"
 
     var body: some View {
@@ -18,6 +19,16 @@ struct SettingsView: View {
                         Spacer()
                         Text("\(allRows.count)")
                             .foregroundStyle(Theme.textMuted)
+                    }
+
+                    Button {
+                        let vm = AppViewModel()
+                        let count = vm.runRules(allRows, context: modelContext)
+                        rulesResult = count > 0
+                            ? "Updated \(count) transaction\(count == 1 ? "" : "s")"
+                            : "All transactions already categorised correctly"
+                    } label: {
+                        Label("Run Rules", systemImage: "wand.and.stars")
                     }
 
                     Button {
@@ -84,6 +95,14 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showExport) {
                 ExportView()
+            }
+            .alert("Rules Result", isPresented: Binding(
+                get: { rulesResult != nil },
+                set: { if !$0 { rulesResult = nil } }
+            )) {
+                Button("OK") { rulesResult = nil }
+            } message: {
+                Text(rulesResult ?? "")
             }
         }
     }

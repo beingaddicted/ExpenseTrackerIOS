@@ -3,50 +3,115 @@ import SwiftData
 
 struct ContentView: View {
     @Query(sort: \TransactionRecord.date, order: .reverse) private var allRows: [TransactionRecord]
+    @Environment(\.modelContext) private var modelContext
     @State private var vm = AppViewModel()
     @State private var showImport = false
     @State private var showExport = false
     @State private var showSettings = false
+    @State private var showAddTransaction = false
 
     private var filtered: [TransactionRecord] {
         vm.filterTransactions(allRows)
     }
 
+    /// Month-only filtered data for summary (no type/category/search/invalid filters).
+    private var monthRows: [TransactionRecord] {
+        allRows.filter { row in
+            let parts = vm.parseDate(row.date)
+            guard let m = parts.month, let y = parts.year else { return true }
+            return m == vm.currentMonth && y == vm.currentYear
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                Theme.bgPrimary.ignoresSafeArea()
-
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        // Month navigator
-                        monthNav
-
-                        // Summary cards
-                        summarySection
-
-                        // Category chips
-                        categoryChips
-
-                        // Search bar (when active)
-                        if vm.showSearch {
-                            searchBar
-                        }
-
-                        // Transaction list
-                        transactionList
+            VStack(spacing: 0) {
+                // Fixed header
+                VStack(spacing: 0) {
+                    monthNav
+                    summarySection
+                    categoryChips
+                    if vm.showSearch {
+                        searchBar
                     }
                 }
+                .background(Theme.bgPrimary)
+
+                // Transaction list (List for swipe support)
+                if filtered.isEmpty {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        Image(systemName: "tray")
+                            .font(.system(size: 40))
+                            .foregroundStyle(Theme.textMuted)
+                        Text("No transactions")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.textMuted)
+                        if allRows.isEmpty {
+                            Button("Import SMS") { showImport = true }
+                                .font(.subheadline)
+                                .foregroundStyle(Theme.accentLight)
+                        }
+                    }
+                    Spacer()
+                } else {
+                    List {
+                        ForEach(filtered) { txn in
+                            NavigationLink(destination: TransactionDetailView(txn: txn)) {
+                                TransactionRow(txn: txn)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button {
+                                    txn.isValid.toggle()
+                                    try? modelContext.save()
+                                } label: {
+                                    Label(txn.isValid ? "Invalid" : "Valid",
+                                          systemImage: txn.isValid ? "xmark.circle" : "checkmark.circle")
+                                }
+                                .tint(txn.isValid ? .orange : Theme.green)
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                Button {
+                                    txn.isValid.toggle()
+                                    try? modelContext.save()
+                                } label: {
+                                    Label(txn.isValid ? "Invalid" : "Valid",
+                                          systemImage: txn.isValid ? "xmark.circle" : "checkmark.circle")
+                                }
+                                .tint(txn.isValid ? .orange : Theme.green)
+                            }
+                            .listRowBackground(txn.isValid ? Theme.bgPrimary : Theme.red.opacity(0.06))
+                        }
+
+                        // Count footer
+                        Text("\(filtered.count) transaction\(filtered.count == 1 ? "" : "s")")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textMuted)
+                            .frame(maxWidth: .infinity)
+                            .listRowBackground(Theme.bgPrimary)
+                            .listRowSeparator(.hidden)
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.bgPrimary)
+                }
             }
+            .background(Theme.bgPrimary)
             .navigationTitle("Expense Tracker")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.bgSecondary, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { vm.showSearch.toggle() } label: {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(vm.showSearch ? Theme.accentLight : Theme.textSecondary)
+                    HStack(spacing: 12) {
+                        Button { vm.showSearch.toggle() } label: {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(vm.showSearch ? Theme.accentLight : Theme.textSecondary)
+                        }
+                        Button { showAddTransaction = true } label: {
+                            Image(systemName: "plus.circle")
+                                .foregroundStyle(Theme.accentLight)
+                        }
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -70,6 +135,9 @@ struct ContentView: View {
             .sheet(isPresented: $showImport) { ImportView() }
             .sheet(isPresented: $showExport) { ExportView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(isPresented: $showAddTransaction) {
+                AddTransactionView(defaultDate: vm.defaultDateForNewTransaction)
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -104,14 +172,14 @@ struct ContentView: View {
         HStack(spacing: 10) {
             SummaryCard(
                 title: "Expense",
-                amount: vm.totalExpense(filtered),
+                amount: vm.totalExpense(monthRows),
                 currency: "INR",
                 color: Theme.red,
                 icon: "arrow.up.right"
             )
             SummaryCard(
                 title: "Income",
-                amount: vm.totalIncome(filtered),
+                amount: vm.totalIncome(monthRows),
                 currency: "INR",
                 color: Theme.green,
                 icon: "arrow.down.left"
@@ -123,26 +191,40 @@ struct ContentView: View {
 
     // MARK: - Category Chips
     private var categoryChips: some View {
-        let breakdown = vm.categoryBreakdown(filtered)
+        let breakdown = vm.categoryBreakdown(allRows.filter { row in
+            let parts = vm.parseDate(row.date)
+            guard let m = parts.month, let y = parts.year else { return true }
+            return m == vm.currentMonth && y == vm.currentYear
+        })
+        let invalidCount = monthRows.filter { !$0.isValid }.count
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                // All chip
-                chipButton("All", isSelected: vm.selectedCategory == nil) {
+                // All chip — resets everything
+                chipButton("All", isSelected: vm.selectedCategory == nil && vm.selectedType == nil && !vm.showInvalidOnly) {
                     vm.selectedCategory = nil
+                    vm.selectedType = nil
+                    vm.showInvalidOnly = false
                 }
 
-                // Type chips
-                chipButton("Expense", isSelected: vm.selectedType == "debit", color: Theme.red) {
+                // Expense chip
+                chipButton("Expense", isSelected: vm.selectedType == "debit" && !vm.showInvalidOnly, color: Theme.red) {
+                    vm.showInvalidOnly = false
                     vm.selectedType = vm.selectedType == "debit" ? nil : "debit"
                 }
-                chipButton("Income", isSelected: vm.selectedType == "credit", color: Theme.green) {
-                    vm.selectedType = vm.selectedType == "credit" ? nil : "credit"
+
+                // Invalid chip (replaces Income)
+                chipButton("Invalid\(invalidCount > 0 ? " (\(invalidCount))" : "")",
+                          isSelected: vm.showInvalidOnly, color: .orange) {
+                    vm.selectedType = nil
+                    vm.selectedCategory = nil
+                    vm.showInvalidOnly.toggle()
                 }
 
                 // Category chips
                 ForEach(breakdown, id: \.category) { item in
                     chipButton(item.category, isSelected: vm.selectedCategory == item.category,
                               color: Theme.colorForCategory(item.category)) {
+                        vm.showInvalidOnly = false
                         vm.selectedCategory = vm.selectedCategory == item.category ? nil : item.category
                     }
                 }
@@ -186,48 +268,6 @@ struct ContentView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
-    }
-
-    // MARK: - Transaction List
-    private var transactionList: some View {
-        Group {
-            if filtered.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "tray")
-                        .font(.system(size: 40))
-                        .foregroundStyle(Theme.textMuted)
-                    Text("No transactions")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.textMuted)
-                    if allRows.isEmpty {
-                        Button("Import SMS") { showImport = true }
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.accentLight)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 60)
-            } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(filtered) { txn in
-                        NavigationLink(destination: TransactionDetailView(txn: txn)) {
-                            TransactionRow(txn: txn)
-                        }
-                        .padding(.horizontal, 16)
-                        Divider()
-                            .background(Theme.border)
-                            .padding(.horizontal, 16)
-                    }
-                }
-                .padding(.vertical, 4)
-
-                // Count label
-                Text("\(filtered.count) transaction\(filtered.count == 1 ? "" : "s")")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textMuted)
-                    .padding(.vertical, 12)
-            }
-        }
     }
 }
 

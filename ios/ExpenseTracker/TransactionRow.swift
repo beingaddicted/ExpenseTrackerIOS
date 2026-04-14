@@ -42,10 +42,21 @@ struct TransactionRow: View {
 
             Spacer()
 
-            Text("\(txn.type == "debit" ? "-" : "+")\(formatCurrency(txn.amount))")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(txn.type == "debit" ? Theme.red : Theme.green)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(txn.type == "debit" ? "-" : "+")\(formatCurrency(txn.amount))")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(txn.type == "debit" ? Theme.red : Theme.green)
+                if !txn.isValid {
+                    Text("INVALID")
+                        .font(.system(size: 8, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.2))
+                        .foregroundStyle(.orange)
+                        .clipShape(Capsule())
+                }
+            }
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 4)

@@ -580,8 +580,8 @@ const App = (() => {
     return {
       name: txn.merchant || "New Rule",
       keywords: keywords,
-      amountMin: txn.amount ? Math.floor(txn.amount) : null,
-      amountMax: txn.amount ? Math.ceil(txn.amount) : null,
+      amountMin: null,
+      amountMax: null,
       setCategory: txn.category || null,
       setType: txn.type || null,
       setInvalid: txn.invalid || false,
@@ -1135,17 +1135,19 @@ const App = (() => {
       if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear)
         return false;
 
-      // Invalid transactions only appear in Income and All tabs (for review)
-      if (t.invalid && activeFilter !== "credit" && activeFilter !== "all") return false;
-
+      // Filter by tab
       if (activeFilter === "debit") {
+        // Expenses tab: valid debits excluding EMI/Investment etc.
+        if (t.invalid) return false;
         if (t.type !== "debit") return false;
         if (EXPENSE_EXCLUDED_CATEGORIES.includes(t.category)) return false;
       } else if (activeFilter === "credit") {
-        if (t.type !== "credit" && !t.invalid) return false;
-        if (!t.invalid && isNonGenuineCredit(t)) return false;
+        // Income tab: only genuine income, no invalid
+        if (t.invalid) return false;
+        if (t.type !== "credit") return false;
+        if (isNonGenuineCredit(t)) return false;
       }
-      // "all" tab: show everything (debits + credits + invalid)
+      // "all" tab: show everything (debits + credits + invalid + excluded)
 
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
@@ -1202,19 +1204,42 @@ const App = (() => {
     const genuineCredits = allCredits.filter((t) => !isNonGenuineCredit(t));
     const totalInc = genuineCredits.reduce((s, t) => s + t.amount, 0);
 
+    // Tab-aware summary
+    let displayExpense, displayIncome, expenseLabel, incomeLabel;
+    if (activeFilter === "debit") {
+      displayExpense = regularExp;
+      displayIncome = totalInc;
+      expenseLabel = `${regularDebits.length} txns \u00b7 Total: ${Charts.formatCurrency(totalExp)}`;
+      incomeLabel = `${genuineCredits.length} transaction${genuineCredits.length !== 1 ? "s" : ""}`;
+    } else if (activeFilter === "credit") {
+      displayExpense = regularExp;
+      displayIncome = totalInc;
+      expenseLabel = `${regularDebits.length} txns`;
+      incomeLabel = `${genuineCredits.length} transaction${genuineCredits.length !== 1 ? "s" : ""}`;
+    } else {
+      // "all" tab — show total debits and total credits for the month
+      displayExpense = totalExp;
+      displayIncome = totalInc;
+      const invalidCount = filtered.filter((t) => t.invalid).length;
+      expenseLabel = `${allDebits.length} debit txns`;
+      incomeLabel = `${genuineCredits.length} credit txns` + (invalidCount > 0 ? ` \u00b7 ${invalidCount} invalid` : "");
+    }
+
     document.getElementById("totalExpense").textContent =
-      Charts.formatCurrency(activeFilter === "all" ? totalExp : regularExp);
+      Charts.formatCurrency(displayExpense);
     document.getElementById("totalIncome").textContent =
-      Charts.formatCurrency(totalInc);
+      Charts.formatCurrency(displayIncome);
     document.getElementById("netBalance").textContent = Charts.formatCurrency(
       totalInc - totalExp,
     );
-    document.getElementById("expenseCount").textContent =
-      activeFilter === "all"
-        ? `${allDebits.length} txns`
-        : `${regularDebits.length} txns \u00b7 Total: ${Charts.formatCurrency(totalExp)}`;
-    document.getElementById("incomeCount").textContent =
-      `${genuineCredits.length} transaction${genuineCredits.length !== 1 ? "s" : ""}`;
+    document.getElementById("expenseCount").textContent = expenseLabel;
+    document.getElementById("incomeCount").textContent = incomeLabel;
+
+    // Reset card labels
+    document.getElementById("expenseLabel").textContent = "Spent";
+    document.getElementById("expenseIcon").textContent = "📉";
+    document.getElementById("incomeLabel").textContent = "Income";
+    document.getElementById("incomeIcon").textContent = "📈";
   }
 
   // ─── Quick Stats Pills ───
@@ -1376,10 +1401,10 @@ const App = (() => {
   }
 
   function initSwipeToInvalid(container) {
-    const THRESHOLD = 80;
+    const THRESHOLD = 60;
     container.querySelectorAll(".txn-swipe-container").forEach((wrapper) => {
       const card = wrapper.querySelector(".txn-card");
-      let startX = 0, startY = 0, currentX = 0, swiping = false, prevented = false;
+      let startX = 0, startY = 0, currentX = 0, swiping = false, prevented = false, decided = false;
 
       wrapper.addEventListener("touchstart", (e) => {
         startX = e.touches[0].clientX;
@@ -1387,6 +1412,7 @@ const App = (() => {
         currentX = 0;
         swiping = false;
         prevented = false;
+        decided = false;
         card.style.transition = "none";
       }, { passive: true });
 
@@ -1395,15 +1421,23 @@ const App = (() => {
         const dx = e.touches[0].clientX - startX;
         const dy = e.touches[0].clientY - startY;
 
-        if (!swiping && Math.abs(dy) > Math.abs(dx)) {
-          prevented = true;
-          return;
+        // Decide direction once after 10px of movement
+        if (!decided && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+          decided = true;
+          if (Math.abs(dy) > Math.abs(dx)) {
+            prevented = true;
+            return;
+          }
         }
+        if (!decided) return;
+
+        // Prevent vertical scroll once we're swiping horizontally
+        e.preventDefault();
         if (!swiping) wrapper.classList.add("swiping");
         swiping = true;
         currentX = Math.min(0, dx);
         card.style.transform = `translateX(${currentX}px)`;
-      });
+      }, { passive: false });
 
       wrapper.addEventListener("touchend", () => {
         card.style.transition = "transform 0.25s ease";
@@ -2229,9 +2263,16 @@ const App = (() => {
 
     // Add button
     document.getElementById("btnAdd").addEventListener("click", () => {
-      document.getElementById("addDate").value = new Date()
-        .toISOString()
-        .split("T")[0];
+      // Default to current filter month (1st day, or today if current month)
+      const now = new Date();
+      let defaultDate;
+      if (currentMonth === now.getMonth() && currentYear === now.getFullYear()) {
+        defaultDate = now.toISOString().split("T")[0];
+      } else {
+        const m = String(currentMonth + 1).padStart(2, "0");
+        defaultDate = `${currentYear}-${m}-01`;
+      }
+      document.getElementById("addDate").value = defaultDate;
       openModal("modalAdd");
     });
     document

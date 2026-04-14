@@ -8,6 +8,7 @@ final class AppViewModel {
     var searchText = ""
     var selectedCategory: String? = nil
     var selectedType: String? = nil  // nil = all, "debit", "credit"
+    var showInvalidOnly = false
     var showSearch = false
     var toastMessage: String? = nil
 
@@ -46,6 +47,7 @@ final class AppViewModel {
     func filterTransactions(_ all: [TransactionRecord]) -> [TransactionRecord] {
         all.filter { row in
             guard matchesMonth(row) else { return false }
+            if showInvalidOnly && row.isValid { return false }
             if let cat = selectedCategory, row.category != cat { return false }
             if let type = selectedType, row.type != type { return false }
             if !searchText.isEmpty {
@@ -106,5 +108,62 @@ final class AppViewModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
             if self?.toastMessage == message { self?.toastMessage = nil }
         }
+    }
+
+    /// Default date string for manual transaction entry, based on current filter month.
+    var defaultDateForNewTransaction: String {
+        let cal = Calendar.current
+        let now = Date()
+        let nowMonth = cal.component(.month, from: now)
+        let nowYear = cal.component(.year, from: now)
+        if currentMonth == nowMonth && currentYear == nowYear {
+            let d = cal.component(.day, from: now)
+            return String(format: "%04d-%02d-%02d", currentYear, currentMonth, d)
+        }
+        return String(format: "%04d-%02d-01", currentYear, currentMonth)
+    }
+
+    /// Re-categorise transactions using merchant majority rules + SMS parser.
+    @discardableResult
+    func runRules(_ transactions: [TransactionRecord], context: ModelContext) -> Int {
+        // 1. Build merchant → most-common-non-Other category map
+        var merchantCounts: [String: [String: Int]] = [:]
+        for txn in transactions {
+            let key = txn.merchant.lowercased().trimmingCharacters(in: .whitespaces)
+            guard !key.isEmpty else { continue }
+            merchantCounts[key, default: [:]][txn.category, default: 0] += 1
+        }
+        var merchantBest: [String: String] = [:]
+        for (merch, counts) in merchantCounts {
+            let nonOther = counts.filter { $0.key != "Other" }
+            if let best = nonOther.max(by: { $0.value < $1.value }) {
+                merchantBest[merch] = best.key
+            }
+        }
+
+        // 2. Walk all transactions and apply rules
+        var updated = 0
+        for txn in transactions {
+            let key = txn.merchant.lowercased().trimmingCharacters(in: .whitespaces)
+            var newCat = txn.category
+
+            // Rule A: propagate merchant majority category
+            if let best = merchantBest[key], txn.category != best {
+                newCat = best
+            }
+
+            // Rule B: if still "Other", try SMS re-parse
+            if newCat == "Other", !txn.rawSMS.isEmpty {
+                let parsed = SMSBankParser.categorize(txn.rawSMS, merchant: txn.merchant)
+                if parsed != "Other" { newCat = parsed }
+            }
+
+            if newCat != txn.category {
+                txn.category = newCat
+                updated += 1
+            }
+        }
+        if updated > 0 { try? context.save() }
+        return updated
     }
 }
