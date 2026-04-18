@@ -120,6 +120,22 @@ struct ContentView: View {
                             .foregroundStyle(Theme.accentLight)
                     }
                     Menu {
+                        Menu {
+                            ForEach(SortMode.allCases, id: \.self) { mode in
+                                Button {
+                                    vm.sortMode = mode
+                                } label: {
+                                    HStack {
+                                        Text(mode.rawValue)
+                                        if vm.sortMode == mode {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label("Sort: \(vm.sortMode.rawValue)", systemImage: "arrow.up.arrow.down")
+                        }
                         Button { showExport = true } label: {
                             Label("Export", systemImage: "square.and.arrow.up")
                         }
@@ -212,7 +228,13 @@ struct ContentView: View {
                     vm.selectedType = vm.selectedType == "debit" ? nil : "debit"
                 }
 
-                // Invalid chip (replaces Income)
+                // Income chip
+                chipButton("Income", isSelected: vm.selectedType == "credit" && !vm.showInvalidOnly, color: Theme.green) {
+                    vm.showInvalidOnly = false
+                    vm.selectedType = vm.selectedType == "credit" ? nil : "credit"
+                }
+
+                // Invalid chip
                 chipButton("Invalid\(invalidCount > 0 ? " (\(invalidCount))" : "")",
                           isSelected: vm.showInvalidOnly, color: .orange) {
                     vm.selectedType = nil

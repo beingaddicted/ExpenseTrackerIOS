@@ -1,6 +1,12 @@
 import SwiftUI
 import SwiftData
 
+enum SortMode: String, CaseIterable {
+    case date = "Date"
+    case amountDesc = "Amount ↓"
+    case amountAsc = "Amount ↑"
+}
+
 @Observable
 final class AppViewModel {
     var currentMonth: Int
@@ -11,6 +17,16 @@ final class AppViewModel {
     var showInvalidOnly = false
     var showSearch = false
     var toastMessage: String? = nil
+    var sortMode: SortMode = .date
+
+    // Categories excluded from the Expense view (transfers/investments, not real spending)
+    static let expenseExcludedCategories: Set<String> = [
+        "EMI & Loans", "Investment", "Credit Card Payment", "Savings",
+    ]
+    // Credits that are not genuine income
+    static let nonGenuineCreditCategories: Set<String> = [
+        "Refund", "Cashback & Rewards",
+    ]
 
     init() {
         let now = Calendar.current.dateComponents([.month, .year], from: Date())
@@ -45,11 +61,17 @@ final class AppViewModel {
     }
 
     func filterTransactions(_ all: [TransactionRecord]) -> [TransactionRecord] {
-        all.filter { row in
+        var result = all.filter { row in
             guard matchesMonth(row) else { return false }
             if showInvalidOnly && row.isValid { return false }
             if let cat = selectedCategory, row.category != cat { return false }
-            if let type = selectedType, row.type != type { return false }
+            if let type = selectedType {
+                if row.type != type { return false }
+                // Expense filter: exclude non-spending debits (matches PWA behaviour)
+                if type == "debit" && Self.expenseExcludedCategories.contains(row.category) { return false }
+                // Income filter: exclude non-genuine credits (refunds, cashback)
+                if type == "credit" && Self.nonGenuineCreditCategories.contains(row.category) { return false }
+            }
             if !searchText.isEmpty {
                 let q = searchText.lowercased()
                 let haystack = "\(row.merchant) \(row.category) \(row.bank) \(row.rawSMS) \(row.refNumber ?? "")".lowercased()
@@ -57,6 +79,12 @@ final class AppViewModel {
             }
             return true
         }
+        switch sortMode {
+        case .date: break // already sorted by date from @Query
+        case .amountDesc: result.sort { $0.amount > $1.amount }
+        case .amountAsc: result.sort { $0.amount < $1.amount }
+        }
+        return result
     }
 
     private func matchesMonth(_ row: TransactionRecord) -> Bool {
@@ -88,11 +116,13 @@ final class AppViewModel {
 
     // Stats for current filtered view
     func totalExpense(_ rows: [TransactionRecord]) -> Double {
-        rows.filter { $0.type == "debit" }.reduce(0) { $0 + $1.amount }
+        rows.filter { $0.type == "debit" && $0.isValid && !Self.expenseExcludedCategories.contains($0.category) }
+            .reduce(0) { $0 + $1.amount }
     }
 
     func totalIncome(_ rows: [TransactionRecord]) -> Double {
-        rows.filter { $0.type == "credit" }.reduce(0) { $0 + $1.amount }
+        rows.filter { $0.type == "credit" && $0.isValid && !Self.nonGenuineCreditCategories.contains($0.category) }
+            .reduce(0) { $0 + $1.amount }
     }
 
     func categoryBreakdown(_ rows: [TransactionRecord]) -> [(category: String, amount: Double)] {
