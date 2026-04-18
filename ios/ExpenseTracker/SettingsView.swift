@@ -9,10 +9,30 @@ struct SettingsView: View {
     @State private var showExport = false
     @State private var rulesResult: String? = nil
     @AppStorage("appTheme") private var appTheme = "dark"
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+
+    private let shortcutURL = "https://www.icloud.com/shortcuts/ed1fab0bcf0746239c1b17389b9b3f0a"
 
     var body: some View {
         NavigationStack {
             List {
+                Section("Import") {
+                    Button {
+                        installShortcut()
+                    } label: {
+                        Label("Install Bank SMS Shortcut", systemImage: "plus.circle")
+                    }
+                    .foregroundStyle(Theme.accentLight)
+
+                    Button {
+                        hasCompletedOnboarding = false
+                        dismiss()
+                    } label: {
+                        Label("Replay Setup Guide", systemImage: "arrow.counterclockwise")
+                    }
+                    .foregroundStyle(Theme.accentLight)
+                }
+
                 Section("Data") {
                     HStack {
                         Label("Total Transactions", systemImage: "doc.text")
@@ -118,5 +138,12 @@ struct SettingsView: View {
             modelContext.delete(row)
         }
         try? modelContext.save()
+    }
+
+    private func installShortcut() {
+        guard let encoded = shortcutURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "shortcuts://import-shortcut?url=\(encoded)")
+        else { return }
+        UIApplication.shared.open(url)
     }
 }
