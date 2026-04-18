@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var rulesResult: String? = nil
     @AppStorage("appTheme") private var appTheme = "dark"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
 
     private let shortcutURL = "https://www.icloud.com/shortcuts/ed1fab0bcf0746239c1b17389b9b3f0a"
 
@@ -23,6 +24,15 @@ struct SettingsView: View {
                         Label("Install Bank SMS Shortcut", systemImage: "plus.circle")
                     }
                     .foregroundStyle(Theme.accentLight)
+
+                    HStack {
+                        Label("Shortcut Name", systemImage: "flowchart")
+                        Spacer()
+                        TextField("Expense Tracker", text: $shortcutName)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(Theme.accentLight)
+                            .frame(maxWidth: 160)
+                    }
 
                     Button {
                         hasCompletedOnboarding = false
