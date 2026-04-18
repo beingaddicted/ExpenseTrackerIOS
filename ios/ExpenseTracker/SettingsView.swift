@@ -68,13 +68,15 @@ struct SettingsView: View {
                         Text("1.0.0")
                             .foregroundStyle(Theme.textMuted)
                     }
-                    HStack {
-                        Label("Storage", systemImage: "internaldrive")
-                        Spacer()
-                        Text("On-device only")
-                            .foregroundStyle(Theme.textMuted)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Privacy", systemImage: "lock.shield")
+                            .foregroundStyle(Theme.green)
+                        Text("All data stays on your device — no accounts, no servers, no tracking.")
                             .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .padding(.vertical, 2)
                 }
             }
             .navigationTitle("Settings")

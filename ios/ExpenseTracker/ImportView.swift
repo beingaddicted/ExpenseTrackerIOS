@@ -156,9 +156,12 @@ struct ImportView: View {
             defer { url.stopAccessingSecurityScopedResource() }
             do {
                 let text = try String(contentsOf: url, encoding: .utf8)
+                let fileName = url.lastPathComponent
                 if url.pathExtension.lowercased() == "json" {
-                    let r = try importJSON(text)
-                    resultMessage = "\(r.added) added · \(r.skipped) duplicates · \(r.failed) unparsed"
+                    let r = try importJSON(text, deltaKey: fileName)
+                    var msg = "\(r.added) added · \(r.skipped) duplicates · \(r.failed) unparsed"
+                    if r.deltaSkipped > 0 { msg += " · \(r.deltaSkipped) skipped by delta" }
+                    resultMessage = msg
                 } else {
                     let r = try ImportCoordinator.importCombinedText(text)
                     resultMessage = "\(r.added) added · \(r.skipped) duplicates · \(r.failed) unparsed"
@@ -171,34 +174,37 @@ struct ImportView: View {
         }
     }
 
-    private func importJSON(_ text: String) throws -> (added: Int, skipped: Int, failed: Int) {
+    private func importJSON(_ text: String, deltaKey: String? = nil) throws -> (added: Int, skipped: Int, deltaSkipped: Int, failed: Int) {
         guard let data = text.data(using: .utf8) else {
-            return try ImportCoordinator.importCombinedText(text)
+            let r = try ImportCoordinator.importCombinedText(text)
+            return (r.added, r.skipped, 0, r.failed)
         }
 
         // Try parsing as JSON with messages array
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             if let messages = json["messages"] as? [[String: Any]] {
-                return try importSMSMessages(messages)
+                let r = try importSMSMessages(messages)
+                return (r.added, r.skipped, 0, r.failed)
             }
             if let transactions = json["transactions"] as? [[String: Any]] {
-                return try importTransactionObjects(transactions)
+                return try ImportCoordinator.importTransactionObjects(transactions, deltaKey: deltaKey.map { "json-txn:\($0)" })
             }
         }
 
         // Try as array
         if let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            // Check if SMS messages or transaction objects
             let hasSms = arr.contains { $0["message"] != nil || $0["body"] != nil || $0["text"] != nil }
             if hasSms {
-                return try importSMSMessages(arr)
+                let r = try importSMSMessages(arr)
+                return (r.added, r.skipped, 0, r.failed)
             } else {
-                return try importTransactionObjects(arr)
+                return try ImportCoordinator.importTransactionObjects(arr, deltaKey: deltaKey.map { "json-txn:\($0)" })
             }
         }
 
         // Fallback to plain text
-        return try ImportCoordinator.importCombinedText(text)
+        let r = try ImportCoordinator.importCombinedText(text)
+        return (r.added, r.skipped, 0, r.failed)
     }
 
     @MainActor
@@ -237,45 +243,4 @@ struct ImportView: View {
         return (added, skipped, failed)
     }
 
-    @MainActor
-    private func importTransactionObjects(_ txns: [[String: Any]]) throws -> (added: Int, skipped: Int, failed: Int) {
-        let ctx = Persistence.makeContext()
-        let existing = try ctx.fetch(FetchDescriptor<TransactionRecord>())
-        var added = 0, skipped = 0, failed = 0
-
-        for obj in txns {
-            guard let id = obj["id"] as? String,
-                  let amount = (obj["amount"] as? Double) ?? (obj["amount"] as? Int).map(Double.init) else {
-                failed += 1
-                continue
-            }
-            // Check duplicate by id
-            if existing.contains(where: { $0.id == id }) {
-                skipped += 1
-                continue
-            }
-            let rec = TransactionRecord(
-                id: id,
-                amount: amount,
-                type: (obj["type"] as? String) ?? "debit",
-                currency: (obj["currency"] as? String) ?? "INR",
-                date: (obj["date"] as? String) ?? "",
-                bank: (obj["bank"] as? String) ?? "Unknown",
-                account: obj["account"] as? String,
-                merchant: (obj["merchant"] as? String) ?? "Unknown",
-                category: (obj["category"] as? String) ?? "Other",
-                mode: (obj["mode"] as? String) ?? "Other",
-                refNumber: obj["refNumber"] as? String,
-                balance: obj["balance"] as? Double,
-                rawSMS: (obj["rawSMS"] as? String) ?? "",
-                sender: obj["sender"] as? String,
-                parsedAt: Date(),
-                source: (obj["source"] as? String) ?? "import"
-            )
-            ctx.insert(rec)
-            added += 1
-        }
-        if added > 0 { try ctx.save() }
-        return (added, skipped, failed)
-    }
 }
