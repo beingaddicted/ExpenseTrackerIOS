@@ -153,14 +153,148 @@ const SMSTemplates = (() => {
     },
   });
 
-  // HDFC Debit Alert: HDFC Bank: Rs 1000.00 debited from a/c **1234 on 01-04-26 to VPA merchant@upi(UPI Ref No 123456)
+  // HDFC IMPS debit (hyphen Money Sent-): Money Sent-INR 1,00,000.00 From HDFC Bank A/c XX7782 on 29-12-23 To A/c xxxxxxxx4637 IMPS Ref-336320352111
   register({
-    id: "hdfc_debit_alert",
-    regex: /HDFC\s*Bank.*?(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*debited\s*from\s*(?:a\/c|ac)\s*\*+(\d{4})\s*on\s*(\d{2}-\d{2}-\d{2,4})/i,
+    id: "hdfc_imps_sent",
+    regex: /Money\s+Sent-\s*INR\s*([\d,]+\.?\d*)\s+From\s+HDFC\s+Bank\s+A\/c\s*(?:XX|\*+)(\d+)\s+on\s+(\d{2}-\d{2}-\d{2,4})\s+To\s+A\/c\s+.*?(\d{4})\s+IMPS\s+Ref-?\s*(\d+)/i,
     parse(m) {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
-      return { amount, type: "debit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant: "Unknown", mode: "Other", date: parseIndianDate(m[3]) };
+      return {
+        amount,
+        type: "debit",
+        currency: "INR",
+        bank: "HDFC Bank",
+        account: "XX" + m[2],
+        merchant: cleanMerchant("IMPS XX" + m[4]),
+        mode: "IMPS",
+        date: parseIndianDate(m[3]),
+        refNumber: m[5],
+      };
+    },
+  });
+
+  // HDFC IMPS: Money Transferred - INR 1,00,000.00 from HDFC Bank A/c XX7782 on 01-09-23 to A/c xxxxxxxx4637. (IMPS Ref No. 324421336246)
+  register({
+    id: "hdfc_imps_transferred",
+    regex: /Money\s+Transferred\s*-\s*INR\s*([\d,]+\.?\d*)\s+from\s+HDFC\s+Bank\s+A\/c\s*(?:XX|\*+)(\d+)\s+on\s+(\d{2}-\d{2}-\d{2,4})\s+to\s+A\/c\s+.*?(\d{4})\D+IMPS\s+Ref\s+No\.?\s*(\d+)/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return {
+        amount,
+        type: "debit",
+        currency: "INR",
+        bank: "HDFC Bank",
+        account: "XX" + m[2],
+        merchant: cleanMerchant("IMPS XX" + m[4]),
+        mode: "IMPS",
+        date: parseIndianDate(m[3]),
+        refNumber: m[5],
+      };
+    },
+  });
+
+  // HDFC salary credit (common SMS body)
+  register({
+    id: "hdfc_salary_credit",
+    regex: /Hi,\s+salary\s+of\s+INR\s+([\d,]+\.?\d*)\s+is\s+credited\s+to\s+HDFC\s+Bank\s+A\/c\s*(?:XX|\*+)(\d{4})/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return {
+        amount,
+        type: "credit",
+        currency: "INR",
+        bank: "HDFC Bank",
+        account: "XX" + m[2],
+        merchant: "Salary",
+        mode: "NEFT",
+        date: null,
+      };
+    },
+  });
+
+  // Jio Home / fiber — payment received (bill payment confirmation)
+  register({
+    id: "jiohome_payment_received",
+    regex: /Payment of Rs\.?\s*([\d,]+\.?\d*)\s+for your JioHome connection.*?has been received on\s+(\d{1,2}-\w{3}-\d{2,4})/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return {
+        amount,
+        type: "debit",
+        currency: "INR",
+        bank: "Unknown Bank",
+        account: null,
+        merchant: "Jio Home",
+        mode: "UPI",
+        date: parseIndianDate(m[2]),
+      };
+    },
+  });
+
+  // Mutual fund SIP purchase confirmation (ABSL / generic)
+  register({
+    id: "mf_purchase_sip",
+    regex: /Purchase-SIP in Folio\s+\d+\s+in\s+(.+?)\s+for Rs\.([\d,]+\.?\d*)/i,
+    parse(m) {
+      const amount = cleanAmount(m[2]);
+      if (!amount || amount <= 0) return null;
+      let name = m[1].replace(/\s+-\s+Growth.*$/i, "").trim();
+      if (name.length > 48) name = name.slice(0, 48).trim();
+      return {
+        amount,
+        type: "debit",
+        currency: "INR",
+        bank: "Unknown Bank",
+        account: null,
+        merchant: cleanMerchant(name),
+        mode: "Net Banking",
+        date: null,
+      };
+    },
+  });
+
+  // NPS contribution initiated (Protean / NSDL)
+  register({
+    id: "nps_contribution_initiated",
+    regex: /[Yy]our\s+contribution\s+request\s+of\s+Rs\.?\s*([\d,]+\.?\d*)\s+for\s+PRAN/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      return {
+        amount,
+        type: "debit",
+        currency: "INR",
+        bank: "Unknown Bank",
+        account: null,
+        merchant: "NPS Contribution",
+        mode: "Net Banking",
+        date: null,
+      };
+    },
+  });
+
+  register({
+    id: "hdfc_debit_alert",
+    regex: /HDFC\s*Bank.*?(?:Rs\.?|INR)\s*([\d,]+\.?\d*)\s*debited\s*from\s*(?:a\/c|ac)\s*\*+(\d{4})\s*on\s*(\d{2}-\d{2}-\d{2,4})/i,
+    parse(m, text) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      let merchant = "Unknown";
+      let refNumber = null;
+      let mode = "Other";
+      const vpaM = text.match(/\bto\s+VPA\s+([^\s(]+)/i);
+      if (vpaM) {
+        merchant = cleanMerchant(vpaM[1].replace(/@.*/, "").replace(/[._]/g, " "));
+        if (merchant.length > 1) merchant = merchant.charAt(0).toUpperCase() + merchant.slice(1);
+        mode = "UPI";
+      }
+      const refM = text.match(/UPI\s*Ref\s*No\.?\s*(\d+)/i);
+      if (refM) refNumber = refM[1];
+      return { amount, type: "debit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant, mode, date: parseIndianDate(m[3]), refNumber };
     },
   });
 
@@ -236,10 +370,24 @@ const SMSTemplates = (() => {
   register({
     id: "hdfc_update_debit",
     regex: /UPDATE.*?(?:INR|Rs\.?)\s*([\d,]+\.?\d*)\s*debited\s*from\s*HDFC\s*Bank\s*(?:XX|\**)(\d{4})\s*on\s*(\d{2}-\w{3}-\d{2,4})/i,
-    parse(m) {
+    parse(m, text) {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
-      return { amount, type: "debit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant: "Unknown", mode: "Other", date: parseIndianDate(m[3]) };
+      let merchant = "Unknown";
+      const infoUPI = text.match(/Info:\s*UPI\/P2[AMBP]\/\d+\/([^\/\n]+)/i);
+      if (infoUPI) merchant = cleanMerchant(infoUPI[1]);
+      if (merchant === "Unknown") {
+        const nach = text.match(/Info:\s*NACH[-\s]*(?:DR|CR)[-\s]*(.+?)(?:\s*\||\s*Avl|\s*Bal|\.?\s*$)/i);
+        if (nach) merchant = cleanMerchant(nach[1]);
+      }
+      if (merchant === "Unknown") {
+        const vpa = text.match(/\bto\s+VPA\s+(\S+)/i);
+        if (vpa) merchant = cleanMerchant(vpa[1].replace(/@.*/, ""));
+      }
+      let mode = "Other";
+      if (/Info:\s*UPI\//i.test(text)) mode = "UPI";
+      else if (/\bNACH\b/i.test(text)) mode = "Net Banking";
+      return { amount, type: "debit", currency: "INR", bank: "HDFC Bank", account: "XX" + m[2], merchant, mode, date: parseIndianDate(m[3]) };
     },
   });
 
@@ -368,6 +516,28 @@ const SMSTemplates = (() => {
       const amount = cleanAmount(m[1]);
       if (!amount || amount <= 0) return null;
       return { amount, type: "credit", currency: "INR", bank: "Axis Bank", account: "XX" + m[2], merchant: cleanMerchant(m[5]), mode: "UPI", date: parseIndianDate(m[3]), refNumber: m[4] };
+    },
+  });
+
+  // Axis NEFT credit: "Info - NEFT/UTR/BENE" (space around hyphen — common in real SMS)
+  register({
+    id: "axis_neft_credit_info",
+    regex: /INR\s+([\d,]+\.?\d*)\s+credited\s+to\s+A\/c\s+no\.\s*(?:XX|\*+)(\d+)\s+on\s+(\d{2}-\d{2}-\d{2,4})(?:\s+at\s+[\d:]+\s+IST)?\.\s*Info\s*-\s*NEFT\/([^\/]+)\/([A-Za-z0-9&][^.\s\/\n]*)/i,
+    parse(m) {
+      const amount = cleanAmount(m[1]);
+      if (!amount || amount <= 0) return null;
+      const utr = (m[4] || "").trim();
+      return {
+        amount,
+        type: "credit",
+        currency: "INR",
+        bank: "Axis Bank",
+        account: "XX" + m[2],
+        merchant: cleanMerchant(m[5]),
+        mode: "NEFT",
+        date: parseIndianDate(m[3]),
+        refNumber: utr.length >= 6 ? utr : null,
+      };
     },
   });
 
@@ -816,6 +986,28 @@ const SMSTemplates = (() => {
       const amount = cleanAmount(m[2]);
       if (!amount || amount <= 0) return null;
       return { amount, type: "credit", currency: "INR", bank: "DBS Bank", account: "XX" + m[1], merchant: "Unknown", mode: "Other", date: parseIndianDate(m[3]), refNumber: null, balance: cleanAmount(m[4]) };
+    },
+  });
+
+  // DBS UPI Mandate (your DBS a/c wording; SMS may truncate "UPI" → "UP")
+  register({
+    id: "dbs_mandate_debit_dbs_ac",
+    regex: /Your\s+mandate\s+was\s+successfully\s+executed\s+on\s+(\d{2}\/\d{2}\/\d{4})\s+&\s+your\s+DBS\s+a\/c\s+was\s+debited\s+with\s+INR\s+([\d,]+\.?\d*)\s+towards\s+(.+?)\s+for\s+/i,
+    parse(m, text) {
+      const amount = cleanAmount(m[2]);
+      if (!amount || amount <= 0) return null;
+      const refM = text.match(/UPI\s+Mandate\s+(\d+)/i) || text.match(/(?:^|[\s#.]|UPI[^\d]*)(\d{12})(?:\s|$|\.|,)/);
+      return {
+        amount,
+        type: "debit",
+        currency: "INR",
+        bank: "DBS Bank",
+        account: null,
+        merchant: cleanMerchant(m[3].trim()),
+        mode: "Auto Pay",
+        date: parseIndianDate(m[1]),
+        refNumber: refM ? refM[1] : null,
+      };
     },
   });
 

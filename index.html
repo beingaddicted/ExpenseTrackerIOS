@@ -12,7 +12,7 @@
       content="black-translucent"
     />
     <meta name="apple-mobile-web-app-title" content="ExpenseTrack" />
-    <meta name="theme-color" content="#0f0f23" />
+    <meta name="theme-color" content="#0a0a1a" />
     <title>Expense Tracker</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -61,6 +61,9 @@
             <button class="icon-btn" id="btnParseSMS" aria-label="Parse SMS">
               💬
             </button>
+            <button class="icon-btn" id="btnSyncSMS" aria-label="Sync Messages">
+              🔄
+            </button>
           </div>
         </div>
         <div class="month-selector">
@@ -102,14 +105,14 @@
       <section class="summary-section">
         <div class="summary-cards">
           <div class="summary-card expense">
-            <div class="summary-icon">📉</div>
-            <div class="summary-label">Spent</div>
+            <div class="summary-icon" id="expenseIcon">📉</div>
+            <div class="summary-label" id="expenseLabel">Spent</div>
             <div class="summary-amount" id="totalExpense">₹0</div>
             <div class="summary-count" id="expenseCount">0 transactions</div>
           </div>
           <div class="summary-card income" id="incomeCard">
-            <div class="summary-icon">📈</div>
-            <div class="summary-label">Income</div>
+            <div class="summary-icon" id="incomeIcon">📈</div>
+            <div class="summary-label" id="incomeLabel">Income</div>
             <div class="summary-amount summary-amount-hidden" id="totalIncome">₹0</div>
             <div class="summary-count" id="incomeCount">0 transactions</div>
           </div>
@@ -122,7 +125,6 @@
           </div>
         </div>
         <div class="quick-stats" id="quickStats"></div>
-        <button class="btn-ai-month" id="btnAIMonth" style="display:none;">🤖 AI Classify Month</button>
       </section>
 
       <!-- Category Donut Chart -->
@@ -151,12 +153,10 @@
 
       <!-- Filter -->
       <div class="filter-bar" id="filterBar">
-        <button class="filter-chip active" data-filter="all">All</button>
-        <button class="filter-chip" data-filter="debit">Expenses</button>
-        <button class="filter-chip" data-filter="total-expense">
-          Total Expense
-        </button>
+        <button class="filter-chip active" data-filter="debit">Expenses</button>
         <button class="filter-chip" data-filter="credit">Income</button>
+        <button class="filter-chip" data-filter="all">All</button>
+        <button class="sort-btn" id="btnSort" title="Sort by amount">↕ Date</button>
       </div>
 
       <!-- Transactions -->
@@ -283,14 +283,12 @@
           </div>
         </div>
         <div class="settings-group">
-          <div class="settings-group-title">AI Classification</div>
-          <div class="settings-item" id="settingAI">
-            <div class="settings-icon">🤖</div>
+          <div class="settings-group-title">Classification Rules</div>
+          <div class="settings-item" id="settingRules">
+            <div class="settings-icon">📐</div>
             <div class="settings-info">
-              <div class="settings-label">AI Message Classification</div>
-              <div class="settings-desc" id="aiStatusDesc">
-                Disabled — tap to configure
-              </div>
+              <div class="settings-label">Auto-Classification Rules</div>
+              <div class="settings-desc" id="rulesStatusDesc">0 rules configured</div>
             </div>
             <span class="settings-arrow">›</span>
           </div>
@@ -445,7 +443,7 @@
           <textarea
             class="form-textarea sms-input-area"
             id="smsInput"
-            placeholder="Paste bank transaction SMS here..."
+            placeholder="Paste bank transaction SMS here… (Ctrl+Enter to parse)"
           ></textarea>
         </div>
         <button type="button" class="btn-primary" id="btnParseSMSAction">
@@ -511,6 +509,14 @@
       <div class="modal">
         <div class="modal-handle"></div>
         <button class="detail-close-btn" id="btnCloseDetailX" aria-label="Close">×</button>
+        <button
+          type="button"
+          class="btn-secondary"
+          id="btnCreateRule"
+          style="margin-bottom: 12px; color: var(--accent-light); border-color: var(--accent-light); font-size: 13px; padding: 8px 12px;"
+        >
+          📐 Create Rule
+        </button>
         <div class="detail-header">
           <div class="detail-amount" id="detailAmount"></div>
           <div class="detail-merchant" id="detailMerchant"></div>
@@ -545,23 +551,27 @@
             </button>
           </div>
         </div>
-        <div class="detail-sms" id="detailSMS"></div>
-        <button
-          type="button"
-          class="btn-secondary"
-          style="margin-top: 16px; color: var(--blue, #3b82f6); border-color: var(--blue, #3b82f6)"
-          id="btnReclassifyAI"
-        >
-          🤖 Reclassify with AI
-        </button>
-        <button
-          type="button"
-          class="btn-secondary"
-          style="margin-top: 8px"
-          id="btnToggleInvalid"
-        >
-          Mark as Non-Transaction
-        </button>
+        <div class="detail-sms-wrap" id="detailSMSWrap" style="display: none">
+          <div class="detail-sms-toolbar">
+            <span class="detail-sms-label">Original SMS</span>
+            <button
+              type="button"
+              class="btn-small"
+              id="btnCopyDetailSMS"
+              aria-label="Copy SMS text"
+            >
+              Copy
+            </button>
+          </div>
+          <div class="detail-sms" id="detailSMS"></div>
+        </div>
+        <div class="detail-cat-edit" id="detailTypeEdit">
+          <label class="form-label" style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Transaction Type</label>
+          <div class="type-toggle">
+            <button type="button" class="type-btn" id="detailTypeDebit" data-type="debit">Expense</button>
+            <button type="button" class="type-btn" id="detailTypeCredit" data-type="credit">Income</button>
+          </div>
+        </div>
         <button
           type="button"
           class="btn-secondary"
@@ -630,6 +640,21 @@
         >
           📋 Open Full Setup Guide
         </a>
+        <a
+          href="data/ShortCuts/BankSMS.js"
+          download="BankSMS.js"
+          class="btn-secondary"
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            text-decoration: none;
+            margin-bottom: 12px;
+          "
+        >
+          📥 Download BankSMS.js
+        </a>
         <button
           type="button"
           class="btn-secondary"
@@ -640,80 +665,77 @@
       </div>
     </div>
 
-    <!-- ═══ Modal: AI Classification Settings ═══ -->
-    <div class="modal-overlay" id="modalAI">
+    <!-- ═══ Modal: Classification Rules ═══ -->
+    <div class="modal-overlay" id="modalRules">
       <div class="modal">
         <div class="modal-handle"></div>
-        <button class="detail-close-btn" id="btnCloseAIX" aria-label="Close">×</button>
-        <div class="modal-title">🤖 AI Message Classification</div>
-        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
-          Add multiple free API keys from different providers. Keys auto-rotate
-          on rate limits or errors for uninterrupted classification.
-        </p>
-        <div class="form-group">
-          <label class="form-label">Enable AI Classification</label>
-          <label class="toggle-switch" style="margin-bottom: 12px;">
-            <input type="checkbox" id="aiToggle" />
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div id="aiKeySection" style="display: none;">
-          <div class="form-group">
-            <label class="form-label">API Keys</label>
-            <input
-              type="password"
-              class="form-input"
-              id="aiNewKey"
-              placeholder="Paste API key…"
-              autocomplete="off"
-              style="margin-bottom: 6px;"
-            />
-            <button type="button" class="btn-primary" id="btnAddKey" style="white-space: nowrap; padding: 10px 16px; margin-top: 0; width: 100%;">
-              + Add Key
+        <div class="rules-modal-sticky">
+          <div class="modal-header">
+            <h2>📐 Classification Rules</h2>
+            <button class="modal-close" id="btnCloseRules">✕</button>
+          </div>
+          <div style="padding: 0 16px 12px; display: flex; gap: 8px">
+            <button type="button" class="btn-primary" id="btnAddRule" style="flex: 1; font-size: 13px">
+              ＋ Add Rule
             </button>
-            <div id="aiKeyList"></div>
-            <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-              Provider is auto-detected from key prefix. Get free keys:<br>
-              🔵 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color: var(--accent);">Gemini</a> (AIza…) &nbsp;
-              🟠 <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color: var(--accent);">Groq</a> (gsk_…) &nbsp;
-              🟣 <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style="color: var(--accent);">OpenRouter</a> (sk-or-…) &nbsp;
-              🟢 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" style="color: var(--accent);">OpenAI</a> (sk-…)
-            </p>
-          </div>
-          <button type="button" class="btn-primary" id="btnTestAI" style="margin-bottom: 8px; width: 100%;">
-            🔑 Test All Keys
-          </button>
-          <button type="button" class="btn-primary" id="btnRunAI" style="margin-bottom: 8px; width: 100%;">
-            🚀 Classify Unknown Merchants
-          </button>
-          <button type="button" class="btn-primary" id="btnReclassifyAll" style="margin-bottom: 8px; width: 100%; background: linear-gradient(135deg, var(--orange), #ea580c);">
-            🔄 Reclassify All Transactions
-          </button>
-          <button type="button" id="btnStopAI" style="display: none; margin-bottom: 8px; width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--red); background: rgba(239,68,68,0.1); color: var(--red); font-size: 14px; font-weight: 600; cursor: pointer;">
-            ⏹ Stop Classification
-          </button>
-          <div class="form-group" style="margin-top: 12px;">
-            <label class="form-label">Auto-classify after import</label>
-            <label class="toggle-switch">
-              <input type="checkbox" id="aiAutoToggle" />
-              <span class="toggle-slider"></span>
-            </label>
-            <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-              Automatically run AI on new Unknown transactions after file import.
-            </p>
-          </div>
-          <div id="aiProgress" style="display: none; margin-bottom: 8px;">
-            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;" id="aiProgressText">
-              Processing...
-            </div>
-            <div style="background: var(--border); border-radius: 4px; height: 6px; overflow: hidden;">
-              <div id="aiProgressBar" style="background: var(--accent, #007AFF); height: 100%; width: 0%; transition: width 0.3s;"></div>
-            </div>
+            <button type="button" class="btn-secondary" id="btnRunAllRules" style="flex: 1; font-size: 13px; color: var(--accent-primary); border-color: var(--accent-primary)">
+              ▶ Run All
+            </button>
           </div>
         </div>
-        <button type="button" class="btn-secondary" id="btnCloseAI" style="margin-top: 8px;">
-          Close
-        </button>
+        <div class="modal-body" style="padding: 0 16px 16px; overflow-y: auto">
+          <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 12px">
+            Rules auto-classify imported transactions by matching keywords in the SMS text.
+          </p>
+          <div id="rulesList" class="rules-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Modal: Rule Editor ═══ -->
+    <div class="modal-overlay" id="modalRuleEdit">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <div class="modal-header">
+          <h2 id="ruleEditorTitle">New Rule</h2>
+          <button class="modal-close" id="btnCloseRuleEdit">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 0 16px 16px">
+          <input type="hidden" id="ruleEditId" />
+
+          <label class="form-label">Rule Name</label>
+          <input type="text" class="form-input" id="ruleEditName" placeholder="e.g. Swiggy Orders" />
+
+          <label class="form-label" style="margin-top: 12px">Keywords <span style="font-size: 11px; color: var(--text-muted)">(comma-separated, all must match)</span></label>
+          <textarea class="form-input" id="ruleEditKeywords" placeholder="e.g. swiggy, debited" rows="3" style="resize: vertical; font-family: inherit"></textarea>
+          <div id="ruleKeywordSuggestions" class="keyword-suggestions"></div>
+
+          <label class="form-label" style="margin-top: 12px">Amount Range <span style="font-size: 11px; color: var(--text-muted)">(optional)</span></label>
+          <div style="display: flex; gap: 8px">
+            <input type="number" class="form-input" id="ruleEditMinAmt" placeholder="Min" style="flex: 1" />
+            <input type="number" class="form-input" id="ruleEditMaxAmt" placeholder="Max" style="flex: 1" />
+          </div>
+
+          <label class="form-label" style="margin-top: 12px">Category</label>
+          <select class="form-select" id="ruleEditCategory"></select>
+
+          <label class="form-label" style="margin-top: 12px">Transaction Type</label>
+          <div class="type-toggle">
+            <button type="button" class="type-btn" id="ruleEditTypeDebit" data-type="debit">Expense</button>
+            <button type="button" class="type-btn" id="ruleEditTypeCredit" data-type="credit">Income</button>
+          </div>
+
+          <label class="form-label" style="margin-top: 12px">Mark as</label>
+          <div class="type-toggle">
+            <button type="button" class="type-btn active" id="ruleEditValid" data-valid="true">Valid</button>
+            <button type="button" class="type-btn" id="ruleEditInvalid" data-valid="false">Invalid</button>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 16px">
+            <button type="button" class="btn-secondary" id="btnCancelRuleEdit" style="flex: 1">Cancel</button>
+            <button type="button" class="btn-primary" id="btnSaveRule" style="flex: 1">Save Rule</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -851,6 +873,7 @@
     <script src="js/error-logger.js"></script>
     <script src="js/sms-templates.js"></script>
     <script src="js/sms-parser.js"></script>
+    <script src="js/import-delta.js"></script>
     <script src="js/charts.js"></script>
     <script src="js/app.js"></script>
   </body>

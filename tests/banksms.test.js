@@ -2,25 +2,9 @@
  * @jest-environment node
  */
 
-// BankSMS.js tests — tests pure utility functions from the Scriptable script
-// Must mock Scriptable globals before requiring
+// Pure helpers extracted from BankSMS.js (see scripts/extract-bank-sms-lib-for-jest.js → tests/.generated/).
 
-// ── Mock Scriptable globals ──
-const mockFm = {
-  documentsDirectory: () => "/mock",
-  joinPath: (a, b) => a + "/" + b,
-  fileExists: () => true,
-  createDirectory: () => {},
-  isFileDownloaded: () => true,
-  readString: () => "",
-  writeString: () => {},
-};
-global.FileManager = { iCloud: () => mockFm };
-global.args = { shortcutParameter: null };
-global.Script = { setShortcutOutput: () => {}, complete: () => {} };
-global.Notification = class { schedule() {} };
-
-const { extractTime, splitMessages, reassembleMessages, KEYWORDS, MONEY_RE, SPAM_RE, DATE_ONLY_RE, fmt } = require("../data/ShortCuts/BankSMS");
+const { extractTime, splitMessages, reassembleMessages, KEYWORDS, MONEY_RE, SPAM_RE, DATE_ONLY_RE, fmt } = require("./.generated/bank-sms-lib.cjs");
 
 // ═══════════════════════════════════════════════════════════
 // extractTime

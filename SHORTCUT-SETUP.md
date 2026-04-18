@@ -2,7 +2,7 @@
 
 ## How It Works
 
-1. A single **Bulk Export** Shortcut + **BankSMS.js** (Scriptable) exports all bank SMS to `exportSms.txt`
+1. A single **Bulk Export** Shortcut + **BankSMS.js** (one Scriptable script) exports all bank SMS to `exportSms.txt`
 2. Set up a **nightly automation** to re-run the same shortcut every day — it picks up only new messages
 3. Open the Expense Tracker PWA → tap 📂 → pick `exportSms.txt`
 4. The app uses **delta import** — only new lines are parsed, old entries are skipped automatically
@@ -14,7 +14,7 @@
 
 1. Install **[Scriptable](https://apps.apple.com/app/scriptable/id1405459188)** from the App Store (free)
 2. Create a new script in Scriptable named **BankSMS**, paste the contents of `data/ShortCuts/BankSMS.js`
-3. Install the Bulk Export Shortcut: [Install Shortcut](https://www.icloud.com/shortcuts/eb49974416914b54995b1e0b34d28263)
+3. Install the Bulk Export Shortcut: [Install Shortcut](https://www.icloud.com/shortcuts/9f91949ca6244224ad56d0cd25419877)
 4. Run it once — it processes every day from 2020 to today
 5. Output: **Files → iCloud Drive → Scriptable → expense tracker → exportSms.txt**
 

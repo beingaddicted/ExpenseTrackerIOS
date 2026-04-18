@@ -59,6 +59,48 @@ describe("SMSParser", () => {
         SMSParser.isBankSMS("Your OTP is 123456. Valid for 5 minutes."),
       ).toBe(false);
     });
+    test("rejects loan app marketing (Zype) without money movement", () => {
+      expect(
+        SMSParser.isBankSMS(
+          "Financial control ka matlab options hona. Zype deta hai Rs 2 lakh tak loan, quick acl.cc/WECRLP",
+        ),
+      ).toBe(false);
+    });
+    test("rejects reward / wallet promo (Grab points)", () => {
+      expect(
+        SMSParser.isBankSMS(
+          "Your credit limit is Rs.50000. Grab 2X Reward Points this month. T&C apply.",
+        ),
+      ).toBe(false);
+    });
+    test("rejects bill-pay promo with paytm.me link", () => {
+      expect(
+        SMSParser.isBankSMS(
+          "Your plan expires today! Amount Rs.799 due. Pay now paytm.me/airtelxyz",
+        ),
+      ).toBe(false);
+    });
+    test("rejects IndusInd-style inbl.in marketing footer", () => {
+      expect(
+        SMSParser.isBankSMS(
+          "Get Rs.50000 pre-approved limit. Know more inbl.in/abc123",
+        ),
+      ).toBe(false);
+    });
+    test("rejects HDFC short-link credit limit promos", () => {
+      expect(
+        SMSParser.isBankSMS(
+          "Increase your Credit Limit to Rs 2,00,000 FREE: hdfcbk.io/a/xyz123",
+        ),
+      ).toBe(false);
+    });
+    test("rejects Pepperfry wallet expiry marketing", () => {
+      expect(
+        SMSParser.isBankSMS(
+          "Your Pepperfry cashback credits in your wallet expire on 30-Apr. Shop now!",
+        ),
+      ).toBe(false);
+    });
     test("rejects empty string", () => {
       expect(SMSParser.isBankSMS("")).toBe(false);
     });
@@ -1658,6 +1700,21 @@ describe("SMSParser", () => {
       expect(txn).not.toBeNull();
       expect(txn.amount).toBe(3500);
       expect(txn.type).toBe("credit");
+    });
+
+    test("HDFC UPDATE debit extracts merchant from Info UPI line", () => {
+      const sms =
+        "UPDATE: INR 500.00 debited from HDFC Bank XX7782 on 20-SEP-23. Info: UPI/P2M/12345/SWIGGY/HDFC Bank Avl bal Rs.1000";
+      const txn = SMSParser.parse(sms);
+      expect(txn).not.toBeNull();
+      expect(txn.merchant).toMatch(/swiggy/i);
+      expect(txn.mode).toBe("UPI");
+    });
+
+    test("detects bank from SMS sender id when body has no bank name", () => {
+      expect(
+        SMSParser.detectBank("Rs.500 debited from a/c **1234 on 01-04-26", "AXISBK"),
+      ).toBe("Axis Bank");
     });
   });
 

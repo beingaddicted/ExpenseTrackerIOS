@@ -15,15 +15,19 @@ const Charts = require("../js/charts");
 // ═══════════════════════════════════════════════════════════
 
 describe("Data file integrity", () => {
-  describe("expenses.json", () => {
+  const EXPENSES_JSON = path.join(
+    __dirname,
+    "..",
+    "data",
+    "ShortCuts",
+    "expenses.json",
+  );
+  const expensesJsonExists = fs.existsSync(EXPENSES_JSON);
+
+  (expensesJsonExists ? describe : describe.skip)("expenses.json", () => {
     let data;
     beforeAll(() => {
-      data = JSON.parse(
-        fs.readFileSync(
-          path.join(__dirname, "..", "data", "ShortCuts", "expenses.json"),
-          "utf-8",
-        ),
-      );
+      data = JSON.parse(fs.readFileSync(EXPENSES_JSON, "utf-8"));
     });
 
     test("has transactions array", () => {
@@ -323,8 +327,13 @@ describe("index.html structure", () => {
 
   test("includes all JS files", () => {
     expect(html).toContain("js/sms-parser.js");
+    expect(html).toContain("js/import-delta.js");
     expect(html).toContain("js/charts.js");
     expect(html).toContain("js/app.js");
+    const idxImportDelta = html.indexOf("js/import-delta.js");
+    const idxApp = html.indexOf("js/app.js");
+    expect(idxImportDelta).toBeGreaterThan(-1);
+    expect(idxApp).toBeGreaterThan(idxImportDelta);
   });
 
   test("includes CSS file", () => {
@@ -655,16 +664,15 @@ describe("Transaction display & filtering logic", () => {
 
   function filterTransactions(transactions, activeFilter) {
     return transactions.filter((t) => {
-      if (t.invalid && activeFilter !== "credit") return false;
+      if (t.invalid && activeFilter !== "credit" && activeFilter !== "all") return false;
       if (activeFilter === "debit") {
         if (t.type !== "debit") return false;
         if (EXPENSE_EXCLUDED_CATEGORIES.includes(t.category)) return false;
-      } else if (activeFilter === "total-expense") {
-        if (t.type !== "debit") return false;
       } else if (activeFilter === "credit") {
         if (t.type !== "credit" && !t.invalid) return false;
         if (!t.invalid && isNonGenuineCredit(t)) return false;
       }
+      // "all" tab: show everything
       return true;
     });
   }
@@ -736,8 +744,8 @@ describe("Transaction display & filtering logic", () => {
     });
   });
 
-  describe("Total Expense tab (total-expense filter)", () => {
-    const filtered = filterTransactions(txns, "total-expense");
+  describe("All tab (all filter)", () => {
+    const filtered = filterTransactions(txns, "all");
 
     test("includes regular debits", () => {
       expect(filtered.map((t) => t.id)).toContain("1");
@@ -752,16 +760,19 @@ describe("Transaction display & filtering logic", () => {
       expect(filtered.map((t) => t.id)).toContain("6");
     });
 
-    test("excludes invalid debits", () => {
-      expect(filtered.map((t) => t.id)).not.toContain("7");
-      expect(filtered.map((t) => t.id)).not.toContain("13");
+    test("includes valid genuine credits (salary)", () => {
+      expect(filtered.map((t) => t.id)).toContain("8");
     });
 
-    test("excludes all credits", () => {
-      const creditIds = ["8", "9", "10", "11"];
-      creditIds.forEach((id) => {
-        expect(filtered.map((t) => t.id)).not.toContain(id);
-      });
+    test("includes non-genuine credits (cashback, refund)", () => {
+      expect(filtered.map((t) => t.id)).toContain("9");
+      expect(filtered.map((t) => t.id)).toContain("10");
+    });
+
+    test("includes invalid transactions", () => {
+      expect(filtered.map((t) => t.id)).toContain("7");
+      expect(filtered.map((t) => t.id)).toContain("11");
+      expect(filtered.map((t) => t.id)).toContain("13");
     });
   });
 
@@ -797,17 +808,8 @@ describe("Transaction display & filtering logic", () => {
   describe("All tab (all filter)", () => {
     const filtered = filterTransactions(txns, "all");
 
-    test("includes all valid transactions", () => {
-      const validIds = ["1", "2", "3", "4", "5", "6", "8", "9", "10", "12"];
-      validIds.forEach((id) => {
-        expect(filtered.map((t) => t.id)).toContain(id);
-      });
-    });
-
-    test("excludes invalid transactions", () => {
-      expect(filtered.map((t) => t.id)).not.toContain("7");
-      expect(filtered.map((t) => t.id)).not.toContain("11");
-      expect(filtered.map((t) => t.id)).not.toContain("13");
+    test("includes every transaction (valid, invalid, all types)", () => {
+      expect(filtered).toHaveLength(txns.length);
     });
   });
 

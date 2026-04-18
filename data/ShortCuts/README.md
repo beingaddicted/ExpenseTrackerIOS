@@ -7,8 +7,8 @@
 The fastest way to get started:
 
 1. Install **[Scriptable](https://apps.apple.com/app/scriptable/id1405459188)** from the App Store
-2. Open Scriptable → **+** → paste `BankSMS.js` → rename to **BankSMS** → Done
-3. **[Install the Shortcut](https://www.icloud.com/shortcuts/eb49974416914b54995b1e0b34d28263)** — tap the link on your iPhone → **Add Shortcut**
+2. Open Scriptable → **+** → paste **`BankSMS.js`** → rename to **`BankSMS`** → Done
+3. **[Install the Shortcut](https://www.icloud.com/shortcuts/9f91949ca6244224ad56d0cd25419877)** — tap the link on your iPhone → **Add Shortcut**
 4. Run the shortcut from the Shortcuts app
 5. When done, find the output at **Files → iCloud Drive → Scriptable → expense tracker → exportSms.txt**
 6. Upload `exportSms.txt` into the Expense Tracker app via **Import** or **Batch Paste**
@@ -136,7 +136,7 @@ Tap **Show More** → under **Texts** tap **+ Add** → tap the text field → i
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│ SHORTCUT (9 actions)         SCRIPTABLE (BankSMS.js)      │
+│ SHORTCUT (9 actions)         SCRIPTABLE (BankSMS.js)    │
 │                                                           │
 │ 1. Scriptable "init"  ─────→ Read tracker                 │
 │                        ←──── "2000"                       │
@@ -208,5 +208,5 @@ Run Without Asking: ON
 | -------------------------------- | --------------------------------------------------------------------------------------------------- |
 | "is" date filter gives 0 results | Add an Adjust Date (+1 day → day_end), change Find Messages to: is after the_day, is before day_end |
 | Crashes on a busy day            | Edit `exportSmstracker.txt` in Files → Scriptable → expense tracker to skip past that date          |
-| Want more/fewer keywords         | Edit `KEYWORDS` array in BankSMS.js                                                                 |
+| Want more/fewer keywords         | Edit `KEYWORDS` in `BankSMS.js`                                                                    |
 | Start over                       | Delete all files in Files → Scriptable → expense tracker folder                                     |

@@ -13,6 +13,15 @@ describe("SMSTemplates", () => {
       expect(ids).toContain("dbs_imps_credit");
       expect(ids).toContain("axis_upi_debit");
       expect(ids).toContain("axis_upi_credit");
+      expect(ids).toContain("axis_neft_credit_info");
+      expect(ids).toContain("dbs_mandate_debit_dbs_ac");
+      expect(ids).toContain("hdfc_debit_alert");
+      expect(ids).toContain("hdfc_imps_sent");
+      expect(ids).toContain("hdfc_imps_transferred");
+      expect(ids).toContain("hdfc_salary_credit");
+      expect(ids).toContain("jiohome_payment_received");
+      expect(ids).toContain("mf_purchase_sip");
+      expect(ids).toContain("nps_contribution_initiated");
     });
   });
 
@@ -163,6 +172,20 @@ describe("SMSTemplates", () => {
     });
   });
 
+  // ═══ DBS Mandate Debit (your DBS a/c) ═══
+  describe("dbs_mandate_debit_dbs_ac", () => {
+    test("matches truncated UPI tail", () => {
+      const sms =
+        "Your mandate was successfully executed on 01/02/2026 & your DBS a/c was debited with INR  271.3 towards RENTOMOJO for UP";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("dbs_mandate_debit_dbs_ac");
+      expect(r.amount).toBe(271.3);
+      expect(r.merchant).toMatch(/rentomojo/i);
+      expect(r.mode).toBe("Auto Pay");
+    });
+  });
+
   // ═══ DBS Mandate Debit ═══
   describe("dbs_mandate_debit", () => {
     const sms = "Your mandate was successfully executed on 02/04/2026 & your a/c was debited with INR 571.00 towards RENTOMOJO for UPI Mandate 609252208887. Team DBS";
@@ -209,6 +232,21 @@ describe("SMSTemplates", () => {
       const r = SMSParser.parse(sms);
       expect(r.merchant).toBe("Reglobe");
       expect(r._template).toBe("dbs_imps_credit");
+    });
+  });
+
+  // ═══ Axis NEFT credit (Info - NEFT/…) ═══
+  describe("axis_neft_credit_info", () => {
+    test("extracts remitter short name after NEFT slash chain", () => {
+      const sms =
+        "INR 236119.00 credited to A/c no. XX2912 on 30-03-26 at 02:32:46 IST. Info - NEFT/CITIN26644279560/DELO. Chk Bal https://axismobile.in";
+      const r = SMSParser.parse(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("axis_neft_credit_info");
+      expect(r.amount).toBe(236119);
+      expect(r.merchant).toMatch(/delo/i);
+      expect(r.mode).toBe("NEFT");
+      expect(r.bank).toBe("Axis Bank");
     });
   });
 
@@ -806,6 +844,110 @@ describe("SMSTemplates", () => {
       expect(r.mode).toBe("ATM");
       expect(r.merchant).toBe("ATM Withdrawal");
       expect(r.balance).toBe(344672.27);
+    });
+  });
+
+  // ═══ HDFC debit alert (VPA + UPI ref) ═══
+  describe("hdfc_debit_alert", () => {
+    test("extracts VPA handle as merchant and UPI ref", () => {
+      const sms =
+        "HDFC Bank: Rs.349.00 debited from a/c **7782 on 05-04-26 to VPA swiggyin@icici (UPI Ref No. 609200062538)";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("hdfc_debit_alert");
+      expect(r.amount).toBe(349);
+      expect(r.type).toBe("debit");
+      expect(r.bank).toBe("HDFC Bank");
+      expect(r.account).toBe("XX7782");
+      expect(r.merchant).toBe("Swiggyin");
+      expect(r.mode).toBe("UPI");
+      expect(r.refNumber).toBe("609200062538");
+      expect(r.date).toBe("2026-04-05");
+    });
+  });
+
+  // ═══ HDFC IMPS (hyphen Money Sent / Transferred) ═══
+  describe("hdfc_imps_sent", () => {
+    test("matches Money Sent-INR ... IMPS Ref-", () => {
+      const sms =
+        "Money Sent-INR 1,00,000.00 From HDFC Bank A/c XX7782 on 29-12-23 To A/c xxxxxxxx4637 IMPS Ref-336320352111 Avl bal:INR 45,871.35";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("hdfc_imps_sent");
+      expect(r.amount).toBe(100000);
+      expect(r.mode).toBe("IMPS");
+      expect(r.refNumber).toBe("336320352111");
+      expect(r.account).toBe("XX7782");
+    });
+  });
+
+  describe("hdfc_imps_transferred", () => {
+    test("matches Money Transferred ... IMPS Ref No.", () => {
+      const sms =
+        "Money Transferred - INR 1,00,000.00 from HDFC Bank A/c XX7782 on 01-09-23 to A/c xxxxxxxx4637. (IMPS Ref No. 324421336246) Avl bal:INR 80,348.84";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("hdfc_imps_transferred");
+      expect(r.amount).toBe(100000);
+      expect(r.refNumber).toBe("324421336246");
+    });
+  });
+
+  describe("hdfc_salary_credit", () => {
+    test("matches Hi, salary ... credited to HDFC", () => {
+      const sms =
+        "Hi, salary of INR 87,450.50 is credited to HDFC Bank A/c XX7782";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("hdfc_salary_credit");
+      expect(r.amount).toBe(87450.5);
+      expect(r.type).toBe("credit");
+      expect(r.merchant).toBe("Salary");
+    });
+
+    test("does not match unrelated Hi greeting without salary credit", () => {
+      const sms =
+        "Hi, your HDFC Bank statement is ready. View at net banking.";
+      expect(SMSTemplates.tryMatch(sms)).toBeNull();
+    });
+  });
+
+  describe("jiohome_payment_received", () => {
+    test("matches JioHome bill payment received", () => {
+      const sms =
+        "Payment of Rs.899.00 for your JioHome connection has been received on 15-Mar-26. Thank you.";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("jiohome_payment_received");
+      expect(r.amount).toBe(899);
+      expect(r.merchant).toBe("Jio Home");
+      expect(r.type).toBe("debit");
+      expect(r.date).toBe("2026-03-15");
+    });
+  });
+
+  describe("mf_purchase_sip", () => {
+    test("matches Purchase-SIP ... for Rs.", () => {
+      const sms =
+        "Purchase-SIP in Folio 1038983109 in ABSL Tax Relief 96 Fund-ELSS - Growth for Rs.1,499.93, NAV 44.81";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("mf_purchase_sip");
+      expect(r.amount).toBe(1499.93);
+      expect(r.type).toBe("debit");
+      expect(r.merchant).toContain("ABSL Tax Relief");
+    });
+  });
+
+  describe("nps_contribution_initiated", () => {
+    test("matches NPS contribution request for PRAN", () => {
+      const sms =
+        "Your contribution request of Rs.50,000 for PRAN XXXXXXXXXX has been initiated.";
+      const r = SMSTemplates.tryMatch(sms);
+      expect(r).not.toBeNull();
+      expect(r._template).toBe("nps_contribution_initiated");
+      expect(r.amount).toBe(50000);
+      expect(r.merchant).toBe("NPS Contribution");
     });
   });
 

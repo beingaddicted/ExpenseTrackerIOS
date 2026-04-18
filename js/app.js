@@ -9,7 +9,8 @@ const App = (() => {
   let transactions = [];
   let currentMonth = new Date().getMonth();
   let currentYear = new Date().getFullYear();
-  let activeFilter = "all";
+  let activeFilter = "debit";
+  let sortMode = "date"; // "date" | "amount-desc" | "amount-asc"
   let searchQuery = "";
   let parsedTxn = null;
   let db = null;
@@ -19,213 +20,9 @@ const App = (() => {
   const STORE_NAME = "transactions";
   const LS_KEY = "expense_tracker_transactions"; // for migration
   const DELTA_KEY = "expense_tracker_delta_tracker"; // tracks last import position
-  const AI_KEY = "expense_tracker_ai_config"; // { enabled, apiKeys: [{key, provider}] }
+  const FILTER_PREF_KEY = "expense_tracker_filter_tab";
+  const RULES_KEY = "expense_tracker_rules";
 
-  // ─── AI Provider Definitions ───
-  const AI_PROVIDERS = {
-    gemini: {
-      name: "Gemini",
-      icon: "🔵",
-      defaultModel: "gemini-2.0-flash",
-      freeLink: "https://aistudio.google.com/apikey",
-      async fetchModels(key) {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        return (data.models || [])
-          .filter(m => m.supportedGenerationMethods?.includes("generateContent"))
-          .map(m => ({
-            id: m.name.replace("models/", ""),
-            name: m.displayName || m.name.replace("models/", ""),
-            contextWindow: m.inputTokenLimit || 32000,
-          }))
-          .sort((a, b) => b.contextWindow - a.contextWindow);
-      },
-      async call(key, model, prompt, signal) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 16384, responseMimeType: "application/json" },
-          }),
-          signal,
-        });
-        if (!res.ok) {
-          const errBody = await res.text();
-          throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
-        }
-        const data = await res.json();
-        const finishReason = data?.candidates?.[0]?.finishReason;
-        if (finishReason && finishReason !== "STOP") {
-          console.warn(`[AI] Gemini finishReason: ${finishReason}`);
-          ErrorLogger.log("ai_gemini_truncated", { finishReason, model });
-        }
-        return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      },
-    },
-    groq: {
-      name: "Groq",
-      icon: "🟠",
-      defaultModel: "llama-3.3-70b-versatile",
-      freeLink: "https://console.groq.com/keys",
-      async fetchModels(key) {
-        const res = await fetch("https://api.groq.com/openai/v1/models", {
-          headers: { Authorization: `Bearer ${key}` },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        return (data.data || [])
-          .filter(m => m.active !== false)
-          .map(m => ({
-            id: m.id,
-            name: m.id,
-            contextWindow: m.context_window || 8000,
-          }))
-          .sort((a, b) => b.contextWindow - a.contextWindow);
-      },
-      async call(key, model, prompt, signal) {
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.1,
-            max_tokens: 16384,
-            response_format: { type: "json_object" },
-          }),
-          signal,
-        });
-        if (!res.ok) {
-          const errBody = await res.text();
-          throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
-        }
-        const data = await res.json();
-        return data?.choices?.[0]?.message?.content || "";
-      },
-    },
-    openrouter: {
-      name: "OpenRouter",
-      icon: "🟣",
-      defaultModel: "google/gemini-2.5-flash-preview-04-17:free",
-      freeLink: "https://openrouter.ai/keys",
-      async fetchModels(key) {
-        const res = await fetch("https://openrouter.ai/api/v1/models", {
-          headers: { Authorization: `Bearer ${key}` },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        return (data.data || [])
-          .filter(m => m.id && m.context_length > 0)
-          .map(m => ({
-            id: m.id,
-            name: m.name || m.id,
-            contextWindow: m.context_length || 8000,
-          }))
-          .sort((a, b) => b.contextWindow - a.contextWindow)
-          .slice(0, 100); // limit list size
-      },
-      async call(key, model, prompt, signal) {
-        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.1,
-            max_tokens: 16384,
-          }),
-          signal,
-        });
-        if (!res.ok) {
-          const errBody = await res.text();
-          throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
-        }
-        const data = await res.json();
-        return data?.choices?.[0]?.message?.content || "";
-      },
-    },
-    openai: {
-      name: "OpenAI",
-      icon: "🟢",
-      defaultModel: "gpt-4o-mini",
-      freeLink: "https://platform.openai.com/api-keys",
-      async fetchModels(key) {
-        const res = await fetch("https://api.openai.com/v1/models", {
-          headers: { Authorization: `Bearer ${key}` },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const CONTEXT_MAP = { "gpt-4o": 128000, "gpt-4o-mini": 128000, "gpt-4-turbo": 128000, "gpt-4": 8192, "gpt-3.5-turbo": 16385, "o1": 200000, "o1-mini": 128000, "o3-mini": 200000 };
-        return (data.data || [])
-          .filter(m => m.id && (m.id.startsWith("gpt-") || m.id.startsWith("o1") || m.id.startsWith("o3")))
-          .map(m => ({
-            id: m.id,
-            name: m.id,
-            contextWindow: CONTEXT_MAP[m.id] || 128000,
-          }))
-          .sort((a, b) => b.contextWindow - a.contextWindow);
-      },
-      async call(key, model, prompt, signal) {
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.1,
-            max_tokens: 16384,
-            response_format: { type: "json_object" },
-          }),
-          signal,
-        });
-        if (!res.ok) {
-          const errBody = await res.text();
-          throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
-        }
-        const data = await res.json();
-        return data?.choices?.[0]?.message?.content || "";
-      },
-    },
-  };
-
-  function getBatchSize(contextWindow) {
-    // Each SMS: ~60 input tokens + ~20 output tokens. Prompt template: ~500 tokens.
-    if (!contextWindow || contextWindow <= 8000) return 30;
-    if (contextWindow <= 32000) return 80;
-    if (contextWindow <= 128000) return 150;
-    return 200; // 1M+ context models
-  }
-
-  function detectProvider(key) {
-    if (!key) return null;
-    if (key.startsWith("AIza")) return "gemini";
-    if (key.startsWith("gsk_")) return "groq";
-    if (key.startsWith("sk-or-")) return "openrouter";
-    if (key.startsWith("sk-")) return "openai";
-    return null;
-  }
-
-  const _keyStates = new Map();
-  function getKeyState(key) {
-    if (!_keyStates.has(key)) _keyStates.set(key, { cooldownUntil: 0, errorCount: 0, lastError: null });
-    return _keyStates.get(key);
-  }
-
-  function markKeyError(key, status, message) {
-    const state = getKeyState(key);
-    state.errorCount++;
-    state.lastError = message;
-    if (status === 429) {
-      state.cooldownUntil = Date.now() + 60000;
-    } else if (status === 403 || (message && message.toLowerCase().includes("quota"))) {
-      state.cooldownUntil = Date.now() + 300000;
-    } else if (status >= 500) {
-      state.cooldownUntil = Date.now() + 30000;
-    }
-  }
   const CATEGORY_ICONS = {
     "Food & Dining": "🍕",
     Shopping: "🛍️",
@@ -361,6 +158,7 @@ const App = (() => {
     await openDB();
     await loadData();
     setupEventListeners();
+    restoreFilterPreference();
     populateCategorySelect();
     render();
     loadVersion();
@@ -501,6 +299,265 @@ const App = (() => {
     });
   }
 
+  // ─── Rules Engine ───
+  function getRules() {
+    try { return JSON.parse(localStorage.getItem(RULES_KEY) || "[]"); } catch { return []; }
+  }
+  function saveRules(rules) { localStorage.setItem(RULES_KEY, JSON.stringify(rules)); }
+  function addRule(rule) { const rules = getRules(); rules.push(rule); saveRules(rules); }
+  function deleteRule(id) { saveRules(getRules().filter(r => r.id !== id)); }
+  function updateRule(id, updates) {
+    const rules = getRules();
+    const r = rules.find(r => r.id === id);
+    if (r) Object.assign(r, updates);
+    saveRules(rules);
+  }
+
+  function matchRule(rule, txn) {
+    const sms = (txn.rawSMS || txn.originalSms || txn.merchant || "").toLowerCase();
+    if (!sms) return false;
+    if (!rule.keywords || !rule.keywords.length) return false;
+    if (!rule.keywords.every(kw => sms.includes(kw.toLowerCase()))) return false;
+    if (rule.amountMin != null && txn.amount < rule.amountMin) return false;
+    if (rule.amountMax != null && txn.amount > rule.amountMax) return false;
+    return true;
+  }
+
+  function applyRules(txn) {
+    const rules = getRules();
+    for (const rule of rules) {
+      if (matchRule(rule, txn)) {
+        if (rule.setCategory) txn.category = rule.setCategory;
+        if (rule.setType) txn.type = rule.setType;
+        if (rule.setInvalid === true) txn.invalid = true;
+        else if (rule.setInvalid === false) txn.invalid = false;
+        txn._ruleApplied = rule.id;
+        break;
+      }
+    }
+    return txn;
+  }
+
+  function applyRulesToAll() {
+    const rules = getRules();
+    if (!rules.length) return 0;
+    let count = 0;
+    transactions.forEach(txn => {
+      for (const rule of rules) {
+        if (matchRule(rule, txn)) {
+          let changed = false;
+          if (rule.setCategory && txn.category !== rule.setCategory) { txn.category = rule.setCategory; changed = true; }
+          if (rule.setType && txn.type !== rule.setType) { txn.type = rule.setType; changed = true; }
+          if (rule.setInvalid === true && !txn.invalid) { txn.invalid = true; changed = true; }
+          if (rule.setInvalid === false && txn.invalid) { txn.invalid = false; changed = true; }
+          if (changed) { txn._ruleApplied = rule.id; count++; }
+          break;
+        }
+      }
+    });
+    if (count > 0) saveData();
+    return count;
+  }
+
+  function createRuleFromTransaction(txn) {
+    const sms = (txn.rawSMS || txn.originalSms || "").toLowerCase();
+    const keywords = [];
+    // Only use merchant if it literally appears in the SMS
+    if (txn.merchant && txn.merchant !== "Unknown" && sms.includes(txn.merchant.toLowerCase())) {
+      keywords.push(txn.merchant.toLowerCase());
+    }
+    // Add bank name if present in SMS and we don't have a keyword yet
+    if (keywords.length < 2 && txn.bank && txn.bank !== "Unknown" && sms.includes(txn.bank.toLowerCase())) {
+      const bk = txn.bank.toLowerCase();
+      if (!keywords.includes(bk)) keywords.push(bk);
+    }
+    return {
+      name: txn.merchant || "New Rule",
+      keywords: keywords,
+      amountMin: null,
+      amountMax: null,
+      setCategory: txn.category || null,
+      setType: txn.type || null,
+      setInvalid: txn.invalid || false,
+      _rawSMS: sms,
+    };
+  }
+
+  // ─── Rules UI ───
+  function renderRulesList() {
+    const container = document.getElementById("rulesList");
+    const rules = getRules();
+    const desc = document.getElementById("rulesStatusDesc");
+    if (desc) desc.textContent = rules.length + " rule" + (rules.length !== 1 ? "s" : "") + " configured";
+    if (!container) return;
+    if (!rules.length) {
+      container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:24px 0;font-size:13px">No rules yet. Tap "+ Add New Rule" or create from a transaction.</div>';
+      return;
+    }
+    container.innerHTML = rules.map(r => {
+      const kw = (r.keywords || []).join(", ");
+      const amt = (r.amountMin != null || r.amountMax != null)
+        ? ` · ₹${r.amountMin || 0}–${r.amountMax || "∞"}`
+        : "";
+      return `<div class="rule-card" data-rule-id="${r.id}">
+        <div class="rule-card-header">
+          <span class="rule-card-name">${sanitize(r.name)}</span>
+          <div class="rule-card-actions">
+            <button class="rule-edit-btn" data-rule-id="${r.id}" title="Edit">✏️</button>
+            <button class="rule-delete-btn" data-rule-id="${r.id}" title="Delete">🗑️</button>
+          </div>
+        </div>
+        <div class="rule-card-detail">
+          <span class="rule-keywords">${sanitize(kw)}</span>${amt}
+          → <strong>${sanitize(r.setCategory || "—")}</strong>
+          · ${r.setType === "credit" ? "Income" : "Expense"}
+          ${r.setInvalid ? " · Invalid" : ""}
+        </div>
+      </div>`;
+    }).join("");
+
+    container.querySelectorAll(".rule-edit-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rule = getRules().find(r => r.id === btn.dataset.ruleId);
+        if (rule) openRuleEditor(rule);
+      });
+    });
+    container.querySelectorAll(".rule-delete-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (confirm("Delete this rule?")) {
+          deleteRule(btn.dataset.ruleId);
+          renderRulesList();
+          showToast("Rule deleted", "info");
+        }
+      });
+    });
+  }
+
+  function openRuleEditor(rule) {
+    const isNew = !rule || !rule.id;
+    document.getElementById("ruleEditorTitle").textContent = isNew ? "New Rule" : "Edit Rule";
+    document.getElementById("ruleEditId").value = rule && rule.id ? rule.id : "";
+    document.getElementById("ruleEditName").value = rule ? rule.name : "";
+    document.getElementById("ruleEditKeywords").value = rule ? (rule.keywords || []).join(", ") : "";
+
+    // Keyword suggestions from rawSMS
+    const sugContainer = document.getElementById("ruleKeywordSuggestions");
+    sugContainer.innerHTML = "";
+    const rawSms = rule && rule._rawSMS ? rule._rawSMS : "";
+    if (rawSms) {
+      const tokens = rawSms.match(/[a-z]{3,}/gi) || [];
+      const seen = new Set();
+      const stopWords = new Set(["the","and","for","from","your","with","has","been","was","are","you","this","that","not","but","have","had","will","can","may","dear","customer","info"]);
+      tokens.forEach(t => {
+        const lower = t.toLowerCase();
+        if (!seen.has(lower) && !stopWords.has(lower)) {
+          seen.add(lower);
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "keyword-chip";
+          chip.textContent = lower;
+          chip.addEventListener("click", () => {
+            const ta = document.getElementById("ruleEditKeywords");
+            const current = ta.value.split(",").map(k => k.trim()).filter(Boolean);
+            if (!current.includes(lower)) {
+              current.push(lower);
+              ta.value = current.join(", ");
+            }
+            chip.classList.add("selected");
+          });
+          sugContainer.appendChild(chip);
+        }
+      });
+    }
+
+    document.getElementById("ruleEditMinAmt").value = rule && rule.amountMin != null ? rule.amountMin : "";
+    document.getElementById("ruleEditMaxAmt").value = rule && rule.amountMax != null ? rule.amountMax : "";
+
+    // Populate category select
+    const catSel = document.getElementById("ruleEditCategory");
+    const allCats = getAllCategories();
+    catSel.innerHTML = allCats.map(c =>
+      `<option value="${c}"${rule && rule.setCategory === c ? " selected" : ""}>${c}</option>`
+    ).join("");
+
+    // Type toggle
+    const debitBtn = document.getElementById("ruleEditTypeDebit");
+    const creditBtn = document.getElementById("ruleEditTypeCredit");
+    const ruleType = rule ? rule.setType || "debit" : "debit";
+    debitBtn.classList.toggle("active", ruleType === "debit");
+    creditBtn.classList.toggle("active", ruleType === "credit");
+    debitBtn.onclick = () => { debitBtn.classList.add("active"); creditBtn.classList.remove("active"); };
+    creditBtn.onclick = () => { creditBtn.classList.add("active"); debitBtn.classList.remove("active"); };
+
+    // Valid toggle
+    const validBtn = document.getElementById("ruleEditValid");
+    const invalidBtn = document.getElementById("ruleEditInvalid");
+    const isInvalid = rule ? rule.setInvalid === true : false;
+    validBtn.classList.toggle("active", !isInvalid);
+    invalidBtn.classList.toggle("active", isInvalid);
+    validBtn.onclick = () => { validBtn.classList.add("active"); invalidBtn.classList.remove("active"); };
+    invalidBtn.onclick = () => { invalidBtn.classList.add("active"); validBtn.classList.remove("active"); };
+
+    openModal("modalRuleEdit");
+  }
+
+  function saveRuleFromEditor() {
+    const id = document.getElementById("ruleEditId").value;
+    const name = document.getElementById("ruleEditName").value.trim();
+    const keywordsStr = document.getElementById("ruleEditKeywords").value.trim();
+    const keywords = keywordsStr ? keywordsStr.split(",").map(k => k.trim()).filter(Boolean) : [];
+    const minAmt = document.getElementById("ruleEditMinAmt").value;
+    const maxAmt = document.getElementById("ruleEditMaxAmt").value;
+    const category = document.getElementById("ruleEditCategory").value;
+    const typeIsDebit = document.getElementById("ruleEditTypeDebit").classList.contains("active");
+    const isInvalid = document.getElementById("ruleEditInvalid").classList.contains("active");
+
+    if (!name) { showToast("Rule name is required", "error"); return; }
+    if (!keywords.length) { showToast("At least one keyword is required", "error"); return; }
+
+    const ruleData = {
+      name,
+      keywords,
+      amountMin: minAmt !== "" ? parseFloat(minAmt) : null,
+      amountMax: maxAmt !== "" ? parseFloat(maxAmt) : null,
+      setCategory: category,
+      setType: typeIsDebit ? "debit" : "credit",
+      setInvalid: isInvalid,
+    };
+
+    if (id) {
+      updateRule(id, ruleData);
+      showToast("Rule updated", "success");
+    } else {
+      ruleData.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      addRule(ruleData);
+      showToast("Rule created", "success");
+    }
+
+    closeModal("modalRuleEdit");
+    renderRulesList();
+  }
+
+  function setupRulesListeners() {
+    document.getElementById("settingRules").addEventListener("click", () => {
+      renderRulesList();
+      openModal("modalRules");
+    });
+    document.getElementById("btnCloseRules").addEventListener("click", () => closeModal("modalRules"));
+    document.getElementById("btnAddRule").addEventListener("click", () => openRuleEditor(null));
+    document.getElementById("btnRunAllRules").addEventListener("click", () => {
+      if (!confirm("This will modify existing transactions based on your rules.\n\nPlease export your data first so you can revert if needed.\n\nContinue?")) return;
+      const count = applyRulesToAll();
+      render();
+      showToast(count > 0 ? count + " transaction(s) updated" : "No transactions matched", count > 0 ? "success" : "info");
+    });
+    document.getElementById("btnCloseRuleEdit").addEventListener("click", () => closeModal("modalRuleEdit"));
+    document.getElementById("btnCancelRuleEdit").addEventListener("click", () => closeModal("modalRuleEdit"));
+    document.getElementById("btnSaveRule").addEventListener("click", () => saveRuleFromEditor());
+  }
+
   // ─── Delta Import Tracking ───
   // Stores { lineCount, hash } per filename so re-imports only parse new lines
   function getDeltaTracker() {
@@ -541,12 +598,25 @@ const App = (() => {
 
         let added = 0,
           skipped = 0,
-          failed = 0;
+          failed = 0,
+          skippedFromDelta = 0;
 
+        const fileKey = file.name || "unknown";
 
         if (data && Array.isArray(data.messages)) {
           // Format: { messages: [ { body, originalSms, date, time, sender }, ... ] }
-          data.messages.forEach((item) => {
+          const msgs = data.messages;
+          const jsonKey = ImportDelta.jsonMessagesKey(fileKey);
+          const headFp = ImportDelta.smsMessagesHeadFingerprint(msgs, quickHash);
+          const tracker = getDeltaTracker();
+          const startIdx = ImportDelta.resolveDeltaStart(
+            tracker[jsonKey],
+            msgs.length,
+            headFp,
+          );
+          skippedFromDelta = startIdx;
+          const slice = msgs.slice(startIdx);
+          slice.forEach((item) => {
             const smsText = item.body || item.message || item.text || "";
             const sender = item.sender || item.from || "";
             const dateVal = item.date || item.timestamp || null;
@@ -556,6 +626,7 @@ const App = (() => {
             const txn = SMSParser.parse(smsText, sender, ts);
             if (txn) {
               txn.originalSms = original;
+              applyRules(txn);
               if (!SMSParser.isDuplicate(txn, transactions)) {
                 transactions.unshift(txn);
                 added++;
@@ -566,10 +637,24 @@ const App = (() => {
               failed++;
             }
           });
+          tracker[jsonKey] = { count: msgs.length, headFp };
+          saveDeltaTracker(tracker);
         } else if (data && Array.isArray(data.transactions)) {
           // Format: { transactions: [ { id, amount, ... }, ... ] }
-          data.transactions.forEach((txn) => {
+          const txns = data.transactions;
+          const jsonKey = ImportDelta.jsonTxnsKey(fileKey);
+          const headFp = ImportDelta.txnExportHeadFingerprint(txns, quickHash);
+          const tracker = getDeltaTracker();
+          const startIdx = ImportDelta.resolveDeltaStart(
+            tracker[jsonKey],
+            txns.length,
+            headFp,
+          );
+          skippedFromDelta = startIdx;
+          const slice = txns.slice(startIdx);
+          slice.forEach((txn) => {
             if (txn.id && txn.amount) {
+              applyRules(txn);
               if (!SMSParser.isDuplicate(txn, transactions)) {
                 transactions.unshift(txn);
                 added++;
@@ -578,33 +663,121 @@ const App = (() => {
               }
             }
           });
+          tracker[jsonKey] = { count: txns.length, headFp };
+          saveDeltaTracker(tracker);
         } else if (data && Array.isArray(data)) {
-          // Format: [ { message: "...", ... }, ... ] or [ { id, amount, ... }, ... ]
-          data.forEach((item) => {
-            if (item.message || item.text || item.body) {
-              const smsText = item.message || item.text || item.body || "";
-              const sender = item.sender || item.from || "";
-              const txn = SMSParser.parse(smsText, sender);
-              if (txn && !SMSParser.isDuplicate(txn, transactions)) {
-                transactions.unshift(txn);
-                added++;
-              } else if (txn) {
-                skipped++;
-              } else {
-                failed++;
+          // Format: [ { message: "...", ... }, ... ] and/or [ { id, amount, ... }, ... ]
+          const arr = data;
+          const hasSms = arr.some(
+            (item) => item && (item.message || item.text || item.body),
+          );
+          const hasTxn = arr.some((item) => item && item.id && item.amount);
+          const mixedSmsAndTxn = hasSms && hasTxn;
+
+          if (hasSms && !mixedSmsAndTxn) {
+            const jsonKey = ImportDelta.jsonMessagesKey(`${fileKey}#array`);
+            const headFp = ImportDelta.smsMessagesHeadFingerprint(arr, quickHash);
+            const tracker = getDeltaTracker();
+            const startIdx = ImportDelta.resolveDeltaStart(
+              tracker[jsonKey],
+              arr.length,
+              headFp,
+            );
+            skippedFromDelta = startIdx;
+            const slice = arr.slice(startIdx);
+            slice.forEach((item) => {
+              if (item.message || item.text || item.body) {
+                const smsText = item.message || item.text || item.body || "";
+                const sender = item.sender || item.from || "";
+                const dateVal = item.date || item.timestamp || null;
+                const timeVal = item.time || "";
+                const ts =
+                  dateVal && timeVal ? `${dateVal} ${timeVal}` : dateVal;
+                const txn = SMSParser.parse(smsText, sender, ts || null);
+                if (txn) applyRules(txn);
+                if (txn && !SMSParser.isDuplicate(txn, transactions)) {
+                  txn.originalSms = item.originalSms || smsText;
+                  transactions.unshift(txn);
+                  added++;
+                } else if (txn) {
+                  skipped++;
+                } else {
+                  failed++;
+                }
               }
-            } else if (item.id && item.amount) {
-              if (!SMSParser.isDuplicate(item, transactions)) {
-                transactions.unshift(item);
-                added++;
-              } else {
-                skipped++;
+            });
+            tracker[jsonKey] = { count: arr.length, headFp };
+            saveDeltaTracker(tracker);
+          } else if (hasTxn && !hasSms) {
+            const jsonKey = ImportDelta.jsonTxnsKey(`${fileKey}#array`);
+            const headFp = ImportDelta.txnExportHeadFingerprint(arr, quickHash);
+            const tracker = getDeltaTracker();
+            const startIdx = ImportDelta.resolveDeltaStart(
+              tracker[jsonKey],
+              arr.length,
+              headFp,
+            );
+            skippedFromDelta = startIdx;
+            const slice = arr.slice(startIdx);
+            slice.forEach((item) => {
+              if (item.id && item.amount) {
+                if (!SMSParser.isDuplicate(item, transactions)) {
+                  transactions.unshift(item);
+                  added++;
+                } else {
+                  skipped++;
+                }
               }
-            }
-          });
+            });
+            tracker[jsonKey] = { count: arr.length, headFp };
+            saveDeltaTracker(tracker);
+          } else {
+            const jsonKey = ImportDelta.jsonMixedArrayKey(`${fileKey}#array`);
+            const headFp = ImportDelta.mixedImportHeadFingerprint(arr, quickHash);
+            const tracker = getDeltaTracker();
+            const startIdx = ImportDelta.resolveDeltaStart(
+              tracker[jsonKey],
+              arr.length,
+              headFp,
+            );
+            skippedFromDelta = startIdx;
+            const slice = arr.slice(startIdx);
+            slice.forEach((item) => {
+              if (item.message || item.text || item.body) {
+                const smsText = item.message || item.text || item.body || "";
+                const sender = item.sender || item.from || "";
+                const dateVal = item.date || item.timestamp || null;
+                const timeVal = item.time || "";
+                const ts =
+                  dateVal && timeVal ? `${dateVal} ${timeVal}` : dateVal;
+                const txn = SMSParser.parse(smsText, sender, ts || null);
+                if (txn) applyRules(txn);
+                if (txn && !SMSParser.isDuplicate(txn, transactions)) {
+                  txn.originalSms = item.originalSms || smsText;
+                  transactions.unshift(txn);
+                  added++;
+                } else if (txn) {
+                  skipped++;
+                } else {
+                  failed++;
+                }
+              } else if (item.id && item.amount) {
+                applyRules(item);
+                if (!SMSParser.isDuplicate(item, transactions)) {
+                  transactions.unshift(item);
+                  added++;
+                } else {
+                  skipped++;
+                }
+              }
+            });
+            tracker[jsonKey] = { count: arr.length, headFp };
+            saveDeltaTracker(tracker);
+          }
         } else if (!data && looksLikeCSV(text)) {
           // CSV re-import (exported by this app)
           parseExportedCSV(text).forEach((txn) => {
+            applyRules(txn);
             if (!SMSParser.isDuplicate(txn, transactions)) {
               transactions.unshift(txn);
               added++;
@@ -618,7 +791,6 @@ const App = (() => {
 
           // Delta import: skip already-processed lines for known files
           const tracker = getDeltaTracker();
-          const fileKey = file.name || "unknown";
           const fileHash = quickHash(text);
           const prev = tracker[fileKey];
           let startIdx = 0;
@@ -626,11 +798,13 @@ const App = (() => {
           if (prev && prev.hash === fileHash && prev.lineCount <= allLines.length) {
             startIdx = prev.lineCount;
           }
+          skippedFromDelta = startIdx;
 
           const lines = allLines.slice(startIdx);
           lines.forEach((line) => {
             const { sender, smsText, date } = extractSenderFromLine(line.trim());
             const txn = SMSParser.parse(smsText, sender, date || null);
+            if (txn) applyRules(txn);
             if (txn && !SMSParser.isDuplicate(txn, transactions)) {
               transactions.unshift(txn);
               added++;
@@ -649,24 +823,15 @@ const App = (() => {
         if (added > 0) saveData();
         render();
 
+        const deltaHint =
+          skippedFromDelta > 0
+            ? ` (${skippedFromDelta} skipped — already in this file)`
+            : "";
         showToast(
-          `${added} added, ${skipped} duplicates, ${failed} failed`,
+          `${added} added, ${skipped} duplicates, ${failed} failed${deltaHint}`,
           added > 0 ? "success" : "info",
         );
 
-        // Auto-trigger AI classification after import if enabled
-        if (added > 0) {
-          const aiCfg = getAIConfig();
-          if (aiCfg.enabled && aiCfg.apiKeys?.length > 0 && aiCfg.autoClassify !== false) {
-            const unknowns = transactions.filter(
-              (t) => t.merchant === "Unknown" && !t.aiClassified && !t.aiFailed && (t.rawSMS || t.originalSms),
-            );
-            if (unknowns.length > 0) {
-              showToast(`AI classifying ${unknowns.length} transactions…`, "info");
-              runAIClassification();
-            }
-          }
-        }
       } catch (err) {
         ErrorLogger.log("file_import_error", {
           message: err.message,
@@ -751,18 +916,19 @@ const App = (() => {
       if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear)
         return false;
 
-      // Invalid transactions only appear in Income tab (for review)
-      if (t.invalid && activeFilter !== "credit") return false;
-
+      // Filter by tab
       if (activeFilter === "debit") {
+        // Expenses tab: valid debits excluding EMI/Investment etc.
+        if (t.invalid) return false;
         if (t.type !== "debit") return false;
         if (EXPENSE_EXCLUDED_CATEGORIES.includes(t.category)) return false;
-      } else if (activeFilter === "total-expense") {
-        if (t.type !== "debit") return false;
       } else if (activeFilter === "credit") {
-        if (t.type !== "credit" && !t.invalid) return false;
-        if (!t.invalid && isNonGenuineCredit(t)) return false;
+        // Income tab: only genuine income, no invalid
+        if (t.invalid) return false;
+        if (t.type !== "credit") return false;
+        if (isNonGenuineCredit(t)) return false;
       }
+      // "all" tab: show everything (debits + credits + invalid + excluded)
 
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
@@ -784,7 +950,6 @@ const App = (() => {
     renderMonthLabel();
     renderSummary(filtered);
     renderQuickStats(filtered);
-    updateAIMonthBtn();
     renderCharts(filtered);
     renderTransactions(filtered);
     renderAnalytics();
@@ -819,19 +984,42 @@ const App = (() => {
     const genuineCredits = allCredits.filter((t) => !isNonGenuineCredit(t));
     const totalInc = genuineCredits.reduce((s, t) => s + t.amount, 0);
 
+    // Tab-aware summary
+    let displayExpense, displayIncome, expenseLabel, incomeLabel;
+    if (activeFilter === "debit") {
+      displayExpense = regularExp;
+      displayIncome = totalInc;
+      expenseLabel = `${regularDebits.length} txns \u00b7 Total: ${Charts.formatCurrency(totalExp)}`;
+      incomeLabel = `${genuineCredits.length} transaction${genuineCredits.length !== 1 ? "s" : ""}`;
+    } else if (activeFilter === "credit") {
+      displayExpense = regularExp;
+      displayIncome = totalInc;
+      expenseLabel = `${regularDebits.length} txns`;
+      incomeLabel = `${genuineCredits.length} transaction${genuineCredits.length !== 1 ? "s" : ""}`;
+    } else {
+      // "all" tab — show total debits and total credits for the month
+      displayExpense = totalExp;
+      displayIncome = totalInc;
+      const invalidCount = filtered.filter((t) => t.invalid).length;
+      expenseLabel = `${allDebits.length} debit txns`;
+      incomeLabel = `${genuineCredits.length} credit txns` + (invalidCount > 0 ? ` \u00b7 ${invalidCount} invalid` : "");
+    }
+
     document.getElementById("totalExpense").textContent =
-      Charts.formatCurrency(activeFilter === "total-expense" ? totalExp : regularExp);
+      Charts.formatCurrency(displayExpense);
     document.getElementById("totalIncome").textContent =
-      Charts.formatCurrency(totalInc);
+      Charts.formatCurrency(displayIncome);
     document.getElementById("netBalance").textContent = Charts.formatCurrency(
       totalInc - totalExp,
     );
-    document.getElementById("expenseCount").textContent =
-      activeFilter === "total-expense"
-        ? `${allDebits.length} txns`
-        : `${regularDebits.length} txns \u00b7 Total: ${Charts.formatCurrency(totalExp)}`;
-    document.getElementById("incomeCount").textContent =
-      `${genuineCredits.length} transaction${genuineCredits.length !== 1 ? "s" : ""}`;
+    document.getElementById("expenseCount").textContent = expenseLabel;
+    document.getElementById("incomeCount").textContent = incomeLabel;
+
+    // Reset card labels
+    document.getElementById("expenseLabel").textContent = "Spent";
+    document.getElementById("expenseIcon").textContent = "📉";
+    document.getElementById("incomeLabel").textContent = "Income";
+    document.getElementById("incomeIcon").textContent = "📈";
   }
 
   // ─── Quick Stats Pills ───
@@ -922,28 +1110,41 @@ const App = (() => {
     }
 
     const groups = {};
-    filtered.sort(
-      (a, b) =>
-        new Date(b.date) - new Date(a.date) ||
-        new Date(b.parsedAt) - new Date(a.parsedAt),
-    );
-    filtered.forEach((t) => {
-      if (!groups[t.date]) groups[t.date] = [];
-      groups[t.date].push(t);
-    });
+    if (sortMode === "date") {
+      filtered.sort(
+        (a, b) =>
+          new Date(b.date) - new Date(a.date) ||
+          new Date(b.parsedAt) - new Date(a.parsedAt),
+      );
+      filtered.forEach((t) => {
+        if (!groups[t.date]) groups[t.date] = [];
+        groups[t.date].push(t);
+      });
+    } else {
+      const dir = sortMode === "amount-desc" ? -1 : 1;
+      filtered.sort((a, b) => dir * (a.amount - b.amount));
+      // Single group when sorted by amount
+      groups["_amount"] = filtered;
+    }
 
     let html = "";
-    for (const [date, txns] of Object.entries(groups)) {
-      const d = new Date(date);
-      html += `<div class="date-group"><div class="date-label">${formatDateLabel(d)}</div>`;
+    for (const [key, txns] of Object.entries(groups)) {
+      if (key === "_amount") {
+        html += `<div class="date-group"><div class="date-label">Sorted by Amount${sortMode === "amount-desc" ? " ↓" : " ↑"}</div>`;
+      } else {
+        const d = new Date(key);
+        html += `<div class="date-group"><div class="date-label">${formatDateLabel(d)}</div>`;
+      }
       txns.forEach((t) => {
         const icon = CATEGORY_ICONS[t.category] || "📌";
         const css = CATEGORY_CSS[t.category] || "cat-other";
         const sign = t.type === "debit" ? "-" : "+";
         const invalidCls = t.invalid ? " txn-invalid" : "";
-        const toggleIcon = t.invalid ? "⊘" : "○";
-        const toggleCls = t.invalid ? " toggled" : "";
-        html += `<div class="txn-card${invalidCls}" data-id="${sanitize(t.id)}">
+        const swipeLabel = t.invalid ? "Mark Valid" : "Mark Invalid";
+        const swipeActionCls = t.invalid ? "swipe-action-valid" : "swipe-action-invalid";
+        html += `<div class="txn-swipe-container" data-id="${sanitize(t.id)}">
+          <div class="swipe-action ${swipeActionCls}">${swipeLabel}</div>
+          <div class="txn-card${invalidCls}" data-id="${sanitize(t.id)}">
           <div class="txn-icon ${css}">${icon}</div>
           <div class="txn-info">
             <div class="txn-merchant">${sanitize(t.merchant || "Unknown")}</div>
@@ -954,12 +1155,12 @@ const App = (() => {
             </div>
           </div>
           <div class="txn-amount-wrap">
-            <button class="txn-toggle${toggleCls}" data-id="${sanitize(t.id)}" title="${t.invalid ? "Mark as transaction" : "Mark as non-transaction"}">${toggleIcon}</button>
             <div>
               <div class="txn-amount ${t.type}">${sign}${Charts.formatCurrency(t.amount, t.currency)}</div>
               <div class="txn-mode">${sanitize(t.mode || "")}</div>
             </div>
           </div>
+        </div>
         </div>`;
       });
       html += "</div>";
@@ -967,27 +1168,82 @@ const App = (() => {
     container.innerHTML = html;
 
     container.querySelectorAll(".txn-card").forEach((card) => {
-      card.addEventListener("click", () => showDetail(card.dataset.id));
-    });
-
-    // Non-transaction toggle
-    container.querySelectorAll(".txn-toggle").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const txn = transactions.find((t) => t.id === btn.dataset.id);
-        if (txn) {
-          txn.invalid = !txn.invalid;
-          saveData();
-          render();
-          showToast(
-            txn.invalid ? "Marked as non-transaction" : "Marked as transaction",
-            "info",
-          );
-        }
+      card.addEventListener("click", (e) => {
+        if (card.dataset.swiped) { delete card.dataset.swiped; return; }
+        showDetail(card.dataset.id);
       });
     });
 
+    // Swipe-to-toggle-invalid
+    initSwipeToInvalid(container);
 
+
+  }
+
+  function initSwipeToInvalid(container) {
+    const THRESHOLD = 60;
+    container.querySelectorAll(".txn-swipe-container").forEach((wrapper) => {
+      const card = wrapper.querySelector(".txn-card");
+      let startX = 0, startY = 0, currentX = 0, swiping = false, prevented = false, decided = false;
+
+      wrapper.addEventListener("touchstart", (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        currentX = 0;
+        swiping = false;
+        prevented = false;
+        decided = false;
+        card.style.transition = "none";
+      }, { passive: true });
+
+      wrapper.addEventListener("touchmove", (e) => {
+        if (prevented) return;
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+
+        // Decide direction once after 10px of movement
+        if (!decided && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+          decided = true;
+          if (Math.abs(dy) > Math.abs(dx)) {
+            prevented = true;
+            return;
+          }
+        }
+        if (!decided) return;
+
+        // Prevent vertical scroll once we're swiping horizontally
+        e.preventDefault();
+        if (!swiping) wrapper.classList.add("swiping");
+        swiping = true;
+        currentX = Math.min(0, dx);
+        card.style.transform = `translateX(${currentX}px)`;
+      }, { passive: false });
+
+      wrapper.addEventListener("touchend", () => {
+        card.style.transition = "transform 0.25s ease";
+        if (swiping) card.dataset.swiped = "1";
+        if (currentX < -THRESHOLD) {
+          card.style.transform = `translateX(-100%)`;
+          const id = wrapper.dataset.id;
+          const txn = transactions.find((t) => t.id === id);
+          if (txn) {
+            setTimeout(() => {
+              txn.invalid = !txn.invalid;
+              saveData();
+              render();
+              showToast(
+                txn.invalid ? "Marked as non-transaction" : "Marked as transaction",
+                "info",
+              );
+            }, 200);
+          }
+        } else {
+          card.style.transform = "translateX(0)";
+        }
+        wrapper.classList.remove("swiping");
+        swiping = false;
+      });
+    });
   }
 
   function formatDateLabel(d) {
@@ -1136,41 +1392,27 @@ const App = (() => {
       };
     }
 
-    document.getElementById("detailSMS").textContent =
-      txn.rawSMS || "No raw SMS available";
-    document.getElementById("detailSMS").style.display = txn.rawSMS
-      ? "block"
-      : "none";
-
-    // Toggle non-transaction
-    const btnInvalid = document.getElementById("btnToggleInvalid");
-    btnInvalid.textContent = txn.invalid
-      ? "Mark as Transaction"
-      : "Mark as Non-Transaction";
-    btnInvalid.style.color = txn.invalid
-      ? "var(--green, #22c55e)"
-      : "var(--yellow, #eab308)";
-    btnInvalid.style.borderColor = txn.invalid
-      ? "var(--green, #22c55e)"
-      : "var(--yellow, #eab308)";
-    btnInvalid.onclick = () => {
-      txn.invalid = !txn.invalid;
-      saveData();
-      closeModal("modalDetail");
-      render();
-      showToast(
-        txn.invalid ? "Marked as non-transaction" : "Marked as transaction",
-        "info",
-      );
-    };
-
-    // Reclassify single transaction with AI
-    const btnReclassify = document.getElementById("btnReclassifyAI");
-    const smsText = txn.originalSms || txn.rawSMS;
-    btnReclassify.style.display = smsText ? "block" : "none";
-    btnReclassify.onclick = async () => {
-      await reclassifySingleTransaction(txn);
-    };
+    const smsWrap = document.getElementById("detailSMSWrap");
+    const detailSmsEl = document.getElementById("detailSMS");
+    const btnCopyDetailSMS = document.getElementById("btnCopyDetailSMS");
+    if (txn.rawSMS) {
+      smsWrap.style.display = "block";
+      detailSmsEl.textContent = txn.rawSMS;
+      if (btnCopyDetailSMS) {
+        btnCopyDetailSMS.onclick = async () => {
+          const raw = txn.rawSMS || "";
+          try {
+            await navigator.clipboard.writeText(raw);
+            showToast("SMS copied", "success");
+          } catch {
+            showToast("Could not copy — select text manually", "error");
+          }
+        };
+      }
+    } else {
+      smsWrap.style.display = "none";
+      detailSmsEl.textContent = "";
+    }
 
     document.getElementById("btnDeleteTxn").onclick = async () => {
       if (confirm("Delete this transaction?")) {
@@ -1182,67 +1424,43 @@ const App = (() => {
       }
     };
 
-    openModal("modalDetail");
-  }
-
-  async function reclassifySingleTransaction(txn) {
-    const cfg = getAIConfig();
-    if (!cfg.enabled || !cfg.apiKeys?.length) {
-      showToast("Enable AI and add API keys in Settings", "error");
-      return;
-    }
-    const smsText = (txn.originalSms || txn.rawSMS || "").substring(0, 300);
-    if (!smsText) {
-      showToast("No SMS text available to classify", "error");
-      return;
-    }
-
-    const prompt = buildAIPrompt({ mode: "single", smsContent: smsText });
-
-    const btn = document.getElementById("btnReclassifyAI");
-    btn.textContent = "🤖 Classifying…";
-    btn.disabled = true;
-
-    try {
-      const raw = await callAI(prompt);
-      let result;
-      try {
-        result = JSON.parse(raw);
-      } catch {
-        const m = raw.match(/\{[\s\S]*\}/);
-        result = m ? JSON.parse(m[0]) : null;
-      }
-      if (result && result.invalid === true) {
-        txn.invalid = true;
-        txn.aiReclassified = true;
-        await saveData();
-        render();
-        showToast("Marked as non-transaction (invalid)", "info");
+    // Create Rule from this transaction
+    const btnCreateRule = document.getElementById("btnCreateRule");
+    if (btnCreateRule) {
+      btnCreateRule.onclick = () => {
+        const rule = createRuleFromTransaction(txn);
         closeModal("modalDetail");
-      } else if (result && result.merchant && result.merchant !== "Unknown") {
-        txn.invalid = false;
-        txn.merchant = result.merchant;
-        txn.aiClassified = true;
-        delete txn.aiFailed;
-        if (result.category) txn.category = result.category;
-        if (result.mode) txn.mode = result.mode;
-        await saveData();
-        // Update the detail modal in-place
-        document.getElementById("detailMerchant").textContent = txn.merchant;
-        const catSelect = document.getElementById("detailCategorySelect");
-        if (catSelect) catSelect.value = txn.category;
-        render();
-        showToast(`Classified as: ${txn.merchant}`, "success");
-      } else {
-        showToast("AI could not determine merchant", "error");
-      }
-    } catch (err) {
-      showToast("AI error: " + err.message, "error");
-      ErrorLogger.log("ai_single_classify_error", { message: err.message });
-    } finally {
-      btn.textContent = "🤖 Reclassify with AI";
-      btn.disabled = false;
+        openRuleEditor(rule);
+      };
     }
+
+    // Type toggle (Expense/Income)
+    const detailTypeDebit = document.getElementById("detailTypeDebit");
+    const detailTypeCredit = document.getElementById("detailTypeCredit");
+    if (detailTypeDebit && detailTypeCredit) {
+      detailTypeDebit.classList.toggle("active", txn.type === "debit");
+      detailTypeCredit.classList.toggle("active", txn.type === "credit");
+      detailTypeDebit.onclick = () => {
+        txn.type = "debit";
+        detailTypeDebit.classList.add("active");
+        detailTypeCredit.classList.remove("active");
+        document.getElementById("detailAmount").textContent = "-" + Charts.formatCurrency(txn.amount, txn.currency);
+        document.getElementById("detailAmount").className = "detail-amount debit";
+        saveData();
+        render();
+      };
+      detailTypeCredit.onclick = () => {
+        txn.type = "credit";
+        detailTypeCredit.classList.add("active");
+        detailTypeDebit.classList.remove("active");
+        document.getElementById("detailAmount").textContent = "+" + Charts.formatCurrency(txn.amount, txn.currency);
+        document.getElementById("detailAmount").className = "detail-amount credit";
+        saveData();
+        render();
+      };
+    }
+
+    openModal("modalDetail");
   }
 
   // ─── Add Transaction (Manual) ───
@@ -1463,6 +1681,7 @@ const App = (() => {
     let added = 0,
       skipped = 0;
     results.forEach((txn) => {
+      applyRules(txn);
       if (!SMSParser.isDuplicate(txn, transactions)) {
         transactions.unshift(txn);
         added++;
@@ -1597,6 +1816,25 @@ const App = (() => {
     });
   }
 
+  function restoreFilterPreference() {
+    try {
+      const saved = localStorage.getItem(FILTER_PREF_KEY);
+      if (!saved) return;
+      const allowed = new Set([
+        "debit",
+        "credit",
+        "all",
+      ]);
+      if (!allowed.has(saved)) return;
+      activeFilter = saved;
+      document.querySelectorAll(".filter-chip").forEach((c) => {
+        c.classList.toggle("active", c.dataset.filter === saved);
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
   // ─── Event Listeners ───
   function setupEventListeners() {
     // Month navigation (arrows)
@@ -1615,11 +1853,6 @@ const App = (() => {
         currentYear++;
       }
       render();
-    });
-
-    // AI Classify Month button
-    document.getElementById("btnAIMonth").addEventListener("click", () => {
-      runAIClassificationMonth();
     });
 
     // Month/Year picker — tap label to open
@@ -1694,6 +1927,28 @@ const App = (() => {
         .forEach((c) => c.classList.remove("active"));
       chip.classList.add("active");
       activeFilter = chip.dataset.filter;
+      try {
+        localStorage.setItem(FILTER_PREF_KEY, activeFilter);
+      } catch {
+        /* ignore */
+      }
+      render();
+    });
+
+    // Sort toggle
+    document.getElementById("btnSort").addEventListener("click", () => {
+      const btn = document.getElementById("btnSort");
+      if (sortMode === "date") {
+        sortMode = "amount-desc";
+        btn.textContent = "↕ Amount ↓";
+      } else if (sortMode === "amount-desc") {
+        sortMode = "amount-asc";
+        btn.textContent = "↕ Amount ↑";
+      } else {
+        sortMode = "date";
+        btn.textContent = "↕ Date";
+      }
+      btn.classList.toggle("active", sortMode !== "date");
       render();
     });
 
@@ -1715,9 +1970,16 @@ const App = (() => {
 
     // Add button
     document.getElementById("btnAdd").addEventListener("click", () => {
-      document.getElementById("addDate").value = new Date()
-        .toISOString()
-        .split("T")[0];
+      // Default to current filter month (1st day, or today if current month)
+      const now = new Date();
+      let defaultDate;
+      if (currentMonth === now.getMonth() && currentYear === now.getFullYear()) {
+        defaultDate = now.toISOString().split("T")[0];
+      } else {
+        const m = String(currentMonth + 1).padStart(2, "0");
+        defaultDate = `${currentYear}-${m}-01`;
+      }
+      document.getElementById("addDate").value = defaultDate;
       openModal("modalAdd");
     });
     document
@@ -1741,6 +2003,24 @@ const App = (() => {
     document
       .getElementById("btnParseSMS")
       .addEventListener("click", () => openModal("modalParse"));
+
+    // Sync Messages — trigger iOS Shortcut, auto-import on return
+    let syncPending = false;
+    document
+      .getElementById("btnSyncSMS")
+      .addEventListener("click", () => {
+        syncPending = true;
+        showToast("Running Shortcut…", "info");
+        window.location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent("Extract Sms Using Script");
+      });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && syncPending) {
+        syncPending = false;
+        setTimeout(() => triggerFileImport(), 600);
+      }
+    });
+
     document
       .getElementById("navPaste")
       .addEventListener("click", () => openModal("modalParse"));
@@ -1757,6 +2037,15 @@ const App = (() => {
       document.getElementById("btnConfirmParse").style.display = "none";
       document.getElementById("dupWarning").classList.remove("show");
     });
+
+    const smsInput = document.getElementById("smsInput");
+    if (smsInput) {
+      smsInput.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
+        e.preventDefault();
+        parseSMS();
+      });
+    }
 
     // ── FILE IMPORT (the main way to get Shortcut data in) ──
     const fileInput = document.getElementById("fileInput");
@@ -1837,8 +2126,8 @@ const App = (() => {
           transactions = [];
           if (db) await idbClear().catch(() => {});
           localStorage.removeItem(LS_KEY);
+          localStorage.removeItem(DELTA_KEY);
           render();
-          updateReclassifyBtn();
           showToast("All data cleared", "info");
         }
       });
@@ -1912,8 +2201,14 @@ const App = (() => {
       .getElementById("btnCloseErrorLogs")
       .addEventListener("click", () => closeModal("modalErrorLogs"));
 
-    // AI Classification
-    setupAIListeners();
+    // Classification Rules
+    setupRulesListeners();
+    // Update rules count in settings on init
+    const rulesDesc = document.getElementById("rulesStatusDesc");
+    if (rulesDesc) {
+      const rc = getRules().length;
+      rulesDesc.textContent = rc + " rule" + (rc !== 1 ? "s" : "") + " configured";
+    }
 
     // Category management
     const settingCat = document.getElementById("settingCategories");
@@ -1950,1025 +2245,6 @@ const App = (() => {
         if (e.target === overlay) overlay.classList.remove("active");
       });
     });
-  }
-
-  // ─── AI Classification ───
-
-  function getAICategoryList() {
-    const categories = SMSParser.getCategories
-      ? SMSParser.getCategories()
-      : [];
-    return categories.length > 0
-      ? categories.join(", ")
-      : "Food & Dining, Shopping, Transport, Travel, Bills & Utilities, Entertainment, Health, Education, Insurance, Investment, EMI & Loans, Rent, Groceries, Salary, Transfer, ATM, Subscription, Cashback & Rewards, Refund, Tax, Credit Card Payment, Savings, Other";
-  }
-
-  function parseAIBatchResponse(raw) {
-    if (!raw || typeof raw !== "string") {
-      console.warn("[AI] parseAIBatchResponse: empty or non-string input", typeof raw);
-      return [];
-    }
-
-    // Strip markdown code fences: ```json ... ``` or ``` ... ```
-    let cleaned = raw.trim();
-    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "");
-    cleaned = cleaned.trim();
-
-    // Try direct parse
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      // Try regex extraction of JSON array
-      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
-      if (arrMatch) {
-        try { parsed = JSON.parse(arrMatch[0]); } catch { /* fall through */ }
-      }
-      // Try regex extraction of JSON object wrapping an array
-      if (!parsed) {
-        const objMatch = cleaned.match(/\{[\s\S]*\}/);
-        if (objMatch) {
-          try { parsed = JSON.parse(objMatch[0]); } catch { /* fall through */ }
-        }
-      }
-    }
-
-    if (!parsed) {
-      // Try to salvage truncated JSON — extract all complete objects
-      const objectPattern = /\{[^{}]*"merchant"\s*:\s*"[^"]*"[^{}]*\}/g;
-      const salvaged = [];
-      let objMatch;
-      while ((objMatch = objectPattern.exec(cleaned)) !== null) {
-        try {
-          const obj = JSON.parse(objMatch[0]);
-          if (obj.merchant || obj.category || obj.invalid !== undefined) {
-            salvaged.push(obj);
-          }
-        } catch { /* skip malformed */ }
-      }
-      if (salvaged.length > 0) {
-        console.log(`[AI] parseAIBatchResponse: salvaged ${salvaged.length} items from truncated response`);
-        ErrorLogger.log("ai_parse_salvaged", { count: salvaged.length, rawLen: cleaned.length });
-        return salvaged;
-      }
-
-      console.error("[AI] parseAIBatchResponse: could not parse response", cleaned.substring(0, 500));
-      ErrorLogger.log("ai_parse_fail", { raw: cleaned.substring(0, 500) });
-      return [];
-    }
-
-    // Direct array
-    if (Array.isArray(parsed)) {
-      console.log(`[AI] parseAIBatchResponse: got array with ${parsed.length} items`);
-      return parsed;
-    }
-
-    // Object wrapping an array — check common keys
-    if (parsed && typeof parsed === "object") {
-      // Check known keys first, then any array value
-      for (const key of ["results", "data", "transactions", "classifications", "items", "sms", "response"]) {
-        if (Array.isArray(parsed[key])) {
-          console.log(`[AI] parseAIBatchResponse: unwrapped from key '${key}', ${parsed[key].length} items`);
-          return parsed[key];
-        }
-      }
-      // Fallback: first array value found
-      const arrVal = Object.values(parsed).find(v => Array.isArray(v));
-      if (arrVal) {
-        console.log(`[AI] parseAIBatchResponse: unwrapped from unknown key, ${arrVal.length} items`);
-        return arrVal;
-      }
-      // Single object that looks like a result? Wrap it.
-      if (parsed.merchant || parsed.category || parsed.invalid !== undefined) {
-        console.log("[AI] parseAIBatchResponse: single object result, wrapping in array");
-        return [parsed];
-      }
-    }
-
-    console.error("[AI] parseAIBatchResponse: unexpected structure", JSON.stringify(parsed).substring(0, 500));
-    ErrorLogger.log("ai_parse_unexpected", { structure: JSON.stringify(parsed).substring(0, 300) });
-    return [];
-  }
-
-  function buildAIPrompt({ mode, smsContent }) {
-    const catList = getAICategoryList();
-
-    const isBatch = mode === "batch";
-    const intro = isBatch
-      ? "For each SMS below, perform these steps:"
-      : "For the SMS below, perform these steps:";
-    const returnFormat = isBatch
-      ? `RESPONSE FORMAT — CRITICAL:
-You MUST return ONLY a raw JSON array. No wrapping object, no markdown, no explanation.
-Exact format: [{"i":1,"merchant":"Name","category":"Category","invalid":false,"mode":"UPI"}, ...]
-Do NOT wrap in {"results":[...]} or any other object. Return the bare array ONLY.
-You MUST return exactly one entry per SMS, in order, matching the SMS number.`
-      : 'Return ONLY raw JSON (no markdown, no explanation): {"merchant":"Name","category":"Category","invalid":false,"mode":"UPI"}';
-    const indexRule = isBatch
-      ? '\n- "i": SMS number (1-based)'
-      : "";
-    const footer = isBatch
-      ? `SMS list:\n${smsContent}`
-      : `SMS:\n${smsContent}`;
-
-    return `You are an expert Indian bank SMS classifier for a personal finance tracker.
-
-${intro}
-STEP 1 — Validity: Is this a REAL financial transaction where money actually moved (debit/credit/payment/transfer/EMI/refund)? Or is it non-transactional (OTP, promo, alert, balance check, balance update, bank statement, account summary, spending report, card blocked, app notification, SIP NAV update, portfolio summary, broker report)?
-STEP 2 — If valid: extract ALL key fields — merchant, category, payment mode.
-STEP 3 — Detect special transaction types: EMI, SIP, loan, mutual fund, savings deposit, credit card bill, insurance, subscription, tax.
-
-Categories: ${catList}
-
-${returnFormat}
-
-Field rules:${indexRule}
-- "invalid": true if NOT a real transaction where money moved; false if real money movement
-- "merchant": Clean readable name. "Swiggy" not "SWIGGY INDIA PVT LTD". "Amazon" not "AMZN*IN". For UPI, use person/business name, NOT VPA handles (@ybl/@paytm/@oksbi). Never return "Unknown".
-- "mode": "UPI", "NEFT", "IMPS", "Card", "NetBanking", "ATM", "Auto-debit", "Wallet", or null if unclear.
-
-Category rules (CRITICAL — follow strictly):
-- SIP/mutual fund/stock PURCHASE debit → "Investment"; SIP confirmation without debit → invalid
-- FD/RD/PPF/NPS/EPF deposit or auto-sweep → "Savings"
-- EMI/loan auto-debit or loan repayment → "EMI & Loans"; loan disbursement credit → "EMI & Loans"; EMI reminder without debit → invalid
-- Credit card bill payment from bank account → "Credit Card Payment"
-- Subscription (Netflix, Spotify, YouTube Premium, iCloud, Hotstar) → "Subscription"
-- Recurring bills (electricity, gas, broadband, recharge) → "Bills & Utilities"
-- Salary/employer credit → "Salary"
-- Cashback/reward credit → "Cashback & Rewards"
-- Refund credit → "Refund"
-- Tax payment (income tax, GST, TDS) → "Tax"
-- Insurance premium → "Insurance"
-- ATM withdrawal → "ATM"
-- Rent → "Rent"
-- Food delivery/restaurant → "Food & Dining"
-- Grocery → "Groceries"
-
-Valid credit transactions (income): salary, freelance payment, business income, interest credit, dividend → these go to Income.
-Non-genuine credits: refund, cashback, reward → category as above, NOT income.
-
-INVALID (set invalid:true): OTP, promo offers, balance inquiry, mini-statement, bank statement alerts, account summary, spending reports/analytics, card activation, app prompts, SIP/MF confirmations without debit, portfolio/NAV updates, EMI schedule reminders (no debit), credit score alerts, broker margin reports, standing balance notifications.
-
-${footer}`;
-  }
-
-  function getAIConfig() {
-    try {
-      const raw = JSON.parse(localStorage.getItem(AI_KEY)) || { enabled: false, apiKeys: [], autoClassify: true };
-      // Migrate old single-key format
-      if (raw.apiKey && !raw.apiKeys) {
-        const provider = detectProvider(raw.apiKey) || "gemini";
-        raw.apiKeys = [{ key: raw.apiKey, provider }];
-        delete raw.apiKey;
-        localStorage.setItem(AI_KEY, JSON.stringify(raw));
-      }
-      if (!raw.apiKeys) raw.apiKeys = [];
-      // Migrate gemini-paid to gemini (unified now)
-      raw.apiKeys.forEach(k => { if (k.provider === "gemini-paid") k.provider = "gemini"; });
-      return raw;
-    } catch { return { enabled: false, apiKeys: [], autoClassify: true }; }
-  }
-  function saveAIConfig(cfg) {
-    localStorage.setItem(AI_KEY, JSON.stringify(cfg));
-  }
-
-  function updateAIStatus() {
-    const cfg = getAIConfig();
-    const statusDesc = document.getElementById("aiStatusDesc");
-    if (!statusDesc) return;
-    if (!cfg.enabled) {
-      statusDesc.textContent = "Disabled — tap to configure";
-    } else if (!cfg.apiKeys || cfg.apiKeys.length === 0) {
-      statusDesc.textContent = "Enabled — add API keys";
-    } else {
-      const providers = [...new Set(cfg.apiKeys.map(k => AI_PROVIDERS[k.provider]?.name || k.provider))];
-      statusDesc.textContent = `Enabled — ${cfg.apiKeys.length} key(s): ${providers.join(", ")}`;
-    }
-  }
-
-  function renderKeyList() {
-    const cfg = getAIConfig();
-    const keys = cfg.apiKeys || [];
-    const container = document.getElementById("aiKeyList");
-    if (!container) return;
-    if (keys.length === 0) {
-      container.innerHTML = '<p style="font-size: 12px; color: var(--text-muted); padding: 8px 0;">No API keys added yet.</p>';
-      return;
-    }
-    container.innerHTML = keys.map((entry, i) => {
-      const provider = AI_PROVIDERS[entry.provider];
-      const state = getKeyState(entry.key);
-      const masked = entry.key.substring(0, 6) + "…" + entry.key.substring(entry.key.length - 4);
-      const isOnCooldown = Date.now() < state.cooldownUntil;
-      const statusText = isOnCooldown ? "⏳" : (state.lastError ? "⚠️" : "✅");
-      const modelName = entry.model || provider?.defaultModel || "?";
-      const shortModel = modelName.length > 22 ? modelName.substring(0, 20) + "…" : modelName;
-      const batchSize = getBatchSize(entry.contextWindow || 32000);
-      return `<div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 4px; padding: 6px 8px; font-size: 12px;">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span>${provider?.icon || "❓"}</span>
-          <span style="font-weight: 600; min-width: 55px;">${provider?.name || "Unknown"}</span>
-          <span style="color: var(--text-muted); flex: 1; font-family: monospace; font-size: 11px;">${masked}</span>
-          <span title="${state.lastError || 'Ready'}">${statusText}</span>
-          <button type="button" data-remove-key="${i}" style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 14px; padding: 2px 6px; line-height: 1;">✕</button>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; padding-left: 2px;">
-          <span style="color: var(--text-muted); font-size: 11px;" title="Context: ${(entry.contextWindow || 0).toLocaleString()} tokens → batch ${batchSize}">🤖 ${shortModel}</span>
-          <button type="button" data-change-model="${i}" style="background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--accent, #6366f1); cursor: pointer; font-size: 10px; padding: 1px 6px; line-height: 1.4;">Change</button>
-          <span style="color: var(--text-muted); font-size: 10px; margin-left: auto;">batch: ${batchSize}</span>
-        </div>
-      </div>`;
-    }).join("");
-  }
-
-  let _modelCache = new Map(); // key -> models array
-
-  async function fetchAndShowModelPicker(keyIndex) {
-    const cfg = getAIConfig();
-    const entry = cfg.apiKeys[keyIndex];
-    if (!entry) return;
-    const provider = AI_PROVIDERS[entry.provider];
-    if (!provider) return;
-
-    const cacheKey = entry.provider + ":" + entry.key;
-    let models = _modelCache.get(cacheKey);
-
-    if (!models) {
-      showToast(`Fetching ${provider.name} models…`, "info");
-      try {
-        models = await provider.fetchModels(entry.key);
-        _modelCache.set(cacheKey, models);
-      } catch (err) {
-        showToast(`Failed to fetch models: ${err.message}`, "error");
-        return;
-      }
-    }
-
-    if (!models || models.length === 0) {
-      showToast("No models available", "error");
-      return;
-    }
-
-    // Build and show a picker overlay
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay active";
-    overlay.style.zIndex = "350";
-    overlay.innerHTML = `
-      <div class="modal" style="max-height: 70vh;">
-        <div class="modal-handle"></div>
-        <button class="detail-close-btn" id="btnCloseModelPicker" aria-label="Close">×</button>
-        <div class="modal-title">${provider.icon} Select Model</div>
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-          Current: <strong>${entry.model || provider.defaultModel}</strong>
-        </p>
-        <div style="max-height: 50vh; overflow-y: auto;">
-          ${models.map(m => {
-            const isCurrent = (entry.model || provider.defaultModel) === m.id;
-            const ctx = m.contextWindow >= 1000000 ? (m.contextWindow / 1000000).toFixed(1) + "M" : (m.contextWindow / 1000).toFixed(0) + "K";
-            const batch = getBatchSize(m.contextWindow);
-            return `<button type="button" data-select-model="${m.id}" data-ctx="${m.contextWindow}"
-              style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; margin-bottom: 4px; border-radius: 8px; border: 1px solid ${isCurrent ? 'var(--accent, #6366f1)' : 'var(--border)'}; background: ${isCurrent ? 'rgba(99,102,241,0.1)' : 'var(--bg-card)'}; color: var(--text-primary); cursor: pointer; text-align: left; font-size: 13px; font-family: inherit;">
-              <span style="flex:1; font-weight: ${isCurrent ? '600' : '400'};">${m.name}</span>
-              <span style="color: var(--text-muted); font-size: 11px;">${ctx} · batch ${batch}</span>
-              ${isCurrent ? '<span style="color: var(--accent);">✓</span>' : ''}
-            </button>`;
-          }).join("")}
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-
-    // Handle model selection
-    overlay.addEventListener("click", (e) => {
-      const selectBtn = e.target.closest("[data-select-model]");
-      if (selectBtn) {
-        const modelId = selectBtn.dataset.selectModel;
-        const ctxWindow = parseInt(selectBtn.dataset.ctx) || 32000;
-        const c = getAIConfig();
-        c.apiKeys[keyIndex].model = modelId;
-        c.apiKeys[keyIndex].contextWindow = ctxWindow;
-        saveAIConfig(c);
-        renderKeyList();
-        overlay.remove();
-        const shortName = modelId.length > 30 ? modelId.substring(0, 28) + "…" : modelId;
-        showToast(`Model set: ${shortName} (batch ${getBatchSize(ctxWindow)})`, "success");
-        return;
-      }
-      if (e.target.closest("#btnCloseModelPicker") || e.target === overlay) {
-        overlay.remove();
-      }
-    });
-  }
-
-  function updateReclassifyBtn() {
-    const btn = document.getElementById("btnReclassifyAll");
-    if (!btn) return;
-    const total = transactions.filter((t) => t.rawSMS || t.originalSms).length;
-    const done = transactions.filter((t) => t.aiReclassified).length;
-    if (total > 0 && done >= total) {
-      btn.disabled = true;
-      btn.style.opacity = "0.4";
-      btn.textContent = "✅ All transactions reclassified";
-    } else {
-      btn.disabled = false;
-      btn.style.opacity = "1";
-      btn.textContent = total === 0 ? "🔄 Reclassify All" : `🔄 Reclassify All (${total - done} remaining)`;
-    }
-  }
-
-  function getMonthTransactionsForAI() {
-    return transactions.filter((t) => {
-      const d = new Date(t.date);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear && (t.rawSMS || t.originalSms);
-    });
-  }
-
-  function updateAIMonthBtn() {
-    const btn = document.getElementById("btnAIMonth");
-    if (!btn) return;
-    const cfg = getAIConfig();
-    if (!cfg.enabled || !cfg.apiKeys?.length) {
-      btn.style.display = "none";
-      return;
-    }
-    const monthTxns = getMonthTransactionsForAI();
-    if (monthTxns.length === 0) {
-      btn.style.display = "none";
-      return;
-    }
-    const unclassified = monthTxns.filter((t) => !t.aiReclassified).length;
-    btn.style.display = "block";
-    if (unclassified === 0) {
-      btn.disabled = true;
-      btn.style.opacity = "0.4";
-      btn.textContent = "✅ Month fully classified";
-    } else {
-      btn.disabled = false;
-      btn.style.opacity = "1";
-      btn.textContent = `🤖 AI Classify Month (${unclassified})`;
-    }
-  }
-
-  function setupAIListeners() {
-    const cfg = getAIConfig();
-    const toggle = document.getElementById("aiToggle");
-    const keySection = document.getElementById("aiKeySection");
-    const autoToggle = document.getElementById("aiAutoToggle");
-
-    // Init UI state
-    toggle.checked = cfg.enabled;
-    autoToggle.checked = cfg.autoClassify !== false;
-    keySection.style.display = cfg.enabled ? "block" : "none";
-    updateAIStatus();
-    renderKeyList();
-
-    document.getElementById("settingAI").addEventListener("click", () => {
-      openModal("modalAI");
-      renderKeyList(); // refresh cooldown statuses
-    });
-    document.getElementById("btnCloseAI").addEventListener("click", () => {
-      closeModal("modalAI");
-    });
-    document.getElementById("btnCloseAIX").addEventListener("click", () => {
-      closeModal("modalAI");
-    });
-
-    toggle.addEventListener("change", () => {
-      const c = getAIConfig();
-      c.enabled = toggle.checked;
-      saveAIConfig(c);
-      keySection.style.display = toggle.checked ? "block" : "none";
-      updateAIStatus();
-    });
-
-    // Add key
-    document.getElementById("btnAddKey").addEventListener("click", () => {
-      const input = document.getElementById("aiNewKey");
-      const key = input.value.trim();
-      if (!key) { showToast("Paste an API key first", "error"); return; }
-      const provider = detectProvider(key);
-      if (!provider) {
-        showToast("Unknown key format. Supported: Gemini (AIza…), Groq (gsk_…), OpenRouter (sk-or-…), OpenAI (sk-…)", "error");
-        return;
-      }
-      const c = getAIConfig();
-      if (c.apiKeys.some(k => k.key === key)) {
-        showToast("This key is already added", "error");
-        return;
-      }
-      c.apiKeys.push({ key, provider, model: AI_PROVIDERS[provider].defaultModel, contextWindow: 32000 });
-      saveAIConfig(c);
-      input.value = "";
-      renderKeyList();
-      updateAIStatus();
-      showToast(`${AI_PROVIDERS[provider].icon} ${AI_PROVIDERS[provider].name} key added — tap Change to pick a model`, "success");
-      // Auto-fetch models in background to get context window
-      AI_PROVIDERS[provider].fetchModels(key).then(models => {
-        const defaultId = AI_PROVIDERS[provider].defaultModel;
-        const match = models.find(m => m.id === defaultId);
-        if (match) {
-          const c2 = getAIConfig();
-          const entry = c2.apiKeys.find(k => k.key === key);
-          if (entry) {
-            entry.contextWindow = match.contextWindow;
-            saveAIConfig(c2);
-            renderKeyList();
-          }
-        }
-      }).catch(() => {});
-    });
-
-    // Remove key or change model via event delegation
-    document.getElementById("aiKeyList").addEventListener("click", (e) => {
-      const removeBtn = e.target.closest("[data-remove-key]");
-      if (removeBtn) {
-        const idx = parseInt(removeBtn.dataset.removeKey);
-        const c = getAIConfig();
-        if (idx >= 0 && idx < c.apiKeys.length) {
-          const removed = c.apiKeys.splice(idx, 1)[0];
-          saveAIConfig(c);
-          renderKeyList();
-          updateAIStatus();
-          showToast(`Removed ${AI_PROVIDERS[removed.provider]?.name || ""} key`, "info");
-        }
-        return;
-      }
-      const changeBtn = e.target.closest("[data-change-model]");
-      if (changeBtn) {
-        const idx = parseInt(changeBtn.dataset.changeModel);
-        fetchAndShowModelPicker(idx);
-      }
-    });
-
-    // Test all keys
-    document.getElementById("btnTestAI").addEventListener("click", async () => {
-      const c = getAIConfig();
-      if (!c.apiKeys || c.apiKeys.length === 0) { showToast("Add an API key first", "error"); return; }
-      const btn = document.getElementById("btnTestAI");
-      btn.disabled = true;
-      btn.textContent = "🔑 Testing…";
-      let passed = 0;
-      const failedNames = [];
-      for (const entry of c.apiKeys) {
-        const provider = AI_PROVIDERS[entry.provider];
-        if (!provider) { failedNames.push(entry.provider || "Unknown"); continue; }
-        try {
-          const model = entry.model || provider.defaultModel;
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 15000);
-          try {
-            await testAIKey(provider, entry.key, model, controller.signal);
-          } finally {
-            clearTimeout(timeoutId);
-          }
-          passed++;
-          const state = getKeyState(entry.key);
-          state.errorCount = 0;
-          state.lastError = null;
-        } catch (err) {
-          const msg = err.name === "AbortError" ? "Timeout (15s)" : err.message.substring(0, 60);
-          failedNames.push(`${provider.name} (${msg})`);
-          const state = getKeyState(entry.key);
-          state.lastError = msg;
-          ErrorLogger.log("ai_test_key_error", { provider: provider.name, model: entry.model, status: err.status || 0, message: msg });
-        }
-      }
-      btn.disabled = false;
-      btn.textContent = "🔑 Test All Keys";
-      if (failedNames.length === 0) showToast(`All ${passed} key(s) working! ✅`, "success");
-      else showToast(`${passed} ok, failed: ${failedNames.join("; ")}`, passed > 0 ? "info" : "error");
-      renderKeyList();
-    });
-
-    document.getElementById("btnRunAI").addEventListener("click", () => {
-      runAIClassification();
-    });
-
-    const btnReclassifyAll = document.getElementById("btnReclassifyAll");
-    updateReclassifyBtn();
-    btnReclassifyAll.addEventListener("click", () => {
-      const remaining = transactions.filter((t) => (t.rawSMS || t.originalSms) && !t.aiReclassified).length;
-      if (remaining === 0) {
-        showToast("All transactions already reclassified", "info");
-        return;
-      }
-      if (!confirm("This will reclassify " + remaining + " transactions using AI.\nAI will detect merchant, category, and mark non-transactions as invalid.\nThis may take 15–30 minutes on the free tier.\n\nContinue?")) return;
-      runAIClassificationAll();
-    });
-
-    autoToggle.addEventListener("change", () => {
-      const c = getAIConfig();
-      c.autoClassify = autoToggle.checked;
-      saveAIConfig(c);
-    });
-
-    document.getElementById("btnStopAI").addEventListener("click", () => {
-      _aiStopRequested = true;
-      showToast("Stopping after current batch…", "info");
-    });
-  }
-
-  let _aiStopRequested = false;
-
-  // Lightweight test: just verify the key can make a simple API call successfully
-  async function testAIKey(provider, key, model, signal) {
-    if (provider.name === "Gemini") {
-      // Use a minimal generateContent call — skip responseMimeType to avoid slow JSON-mode overhead
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal,
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: "Say OK" }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 10 },
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        throw Object.assign(new Error(`HTTP ${res.status}: ${errBody.substring(0, 200)}`), { status: res.status });
-      }
-      return;
-    }
-    // For other providers, use their call function directly (already fast)
-    await provider.call(key, model, "Say OK");
-  }
-
-  async function callAI(prompt) {
-    const cfg = getAIConfig();
-    const keys = cfg.apiKeys || [];
-    if (keys.length === 0) throw new Error("No API keys configured");
-
-    let lastError;
-    for (const entry of keys) {
-      const state = getKeyState(entry.key);
-      if (Date.now() < state.cooldownUntil) continue;
-
-      const provider = AI_PROVIDERS[entry.provider];
-      if (!provider) continue;
-
-      const model = entry.model || provider.defaultModel;
-      ErrorLogger.log("ai_call_attempt", { provider: provider.name, model, keyPrefix: entry.key.substring(0, 8) + "…" });
-      const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), 60000);
-      try {
-        const result = await provider.call(entry.key, model, prompt, ac.signal);
-        clearTimeout(timer);
-        state.errorCount = 0;
-        state.lastError = null;
-        ErrorLogger.log("ai_call_success", { provider: provider.name, model, resultLen: (result || "").length });
-        return result;
-      } catch (err) {
-        clearTimeout(timer);
-        if (err.name === "AbortError") {
-          const timeoutErr = Object.assign(new Error(`Timeout (60s) — ${provider.name}`), { status: 408 });
-          markKeyError(entry.key, 408, timeoutErr.message);
-          ErrorLogger.log("ai_call_error", { provider: provider.name, model, status: 408, message: timeoutErr.message });
-          console.warn(`[AI] ${provider.name} timed out (60s), trying next key…`);
-          showToast(`${provider.icon} ${provider.name} timed out, switching…`, "info");
-          lastError = timeoutErr;
-          continue;
-        }
-        const status = err.status || 0;
-        markKeyError(entry.key, status, err.message);
-        ErrorLogger.log("ai_call_error", { provider: provider.name, model, status, message: err.message });
-        lastError = err;
-        if (status === 429 || status === 403 || status === 404 || status >= 500) {
-          console.warn(`[AI] ${provider.name} failed (HTTP ${status}), trying next key…`);
-          showToast(`${provider.icon} ${provider.name} ${status === 404 ? 'model not found' : 'throttled'}, switching…`, "info");
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    throw lastError || new Error("All API keys exhausted or on cooldown — retry manually");
-  }
-
-  function showStopButton(show) {
-    const btn = document.getElementById("btnStopAI");
-    if (btn) btn.style.display = show ? "block" : "none";
-  }
-
-  // Call AI for a batch of SMS, auto-retry with smaller batches on truncation or timeout
-  async function callAIBatch(batch, fn) {
-    const MIN_BATCH = 5;
-    let currentBatch = batch;
-    let currentSize = batch.length;
-
-    for (let attempt = 1; attempt <= 4; attempt++) {
-      const smsList = currentBatch
-        .map((t, i) => `${i + 1}. ${(t.originalSms || t.rawSMS || "").substring(0, 200)}`)
-        .join("\n");
-      const prompt = buildAIPrompt({ mode: "batch", smsContent: smsList });
-
-      ErrorLogger.log("ai_batch_call", { fn, attempt, smsCount: currentBatch.length, promptLen: prompt.length });
-
-      let raw;
-      try {
-        raw = await callAI(prompt);
-      } catch (err) {
-        // On timeout, reduce batch size and retry (same as truncation)
-        if (err.status === 408 && currentSize > MIN_BATCH) {
-          const newSize = Math.max(MIN_BATCH, Math.floor(currentSize / 2));
-          console.warn(`[AI] Timeout with batch ${currentSize}. Reducing to ${newSize} and retrying…`);
-          ErrorLogger.log("ai_batch_timeout_retry", { fn, attempt, batchSize: currentSize, newSize });
-          showToast(`AI timeout — retrying with batch size ${newSize}…`, "info");
-          currentBatch = batch.slice(0, newSize);
-          currentSize = newSize;
-          continue;
-        }
-        throw err; // non-timeout errors bubble up
-      }
-
-      ErrorLogger.log("ai_batch_response", { fn, attempt, rawLen: (raw || "").length, rawPreview: (raw || "").substring(0, 200) });
-
-      const results = parseAIBatchResponse(raw);
-      ErrorLogger.log("ai_batch_parsed", { fn, attempt, sent: currentBatch.length, got: results.length });
-
-      // Good result: got at least half the items back
-      if (results.length >= currentBatch.length * 0.5) {
-        return { results, processedBatch: currentBatch };
-      }
-
-      // Truncation detected — reduce batch size by half
-      const newSize = Math.max(MIN_BATCH, Math.floor(currentSize / 2));
-      if (newSize >= currentSize) {
-        // Can't reduce further, return what we have
-        ErrorLogger.log("ai_batch_min_size", { fn, size: currentSize, got: results.length });
-        return { results, processedBatch: currentBatch };
-      }
-
-      console.warn(`[AI] Truncation detected (sent ${currentBatch.length}, got ${results.length}). Reducing batch to ${newSize} and retrying…`);
-      ErrorLogger.log("ai_batch_truncated_retry", { fn, attempt, sent: currentBatch.length, got: results.length, newSize });
-      showToast(`AI response truncated — retrying with batch size ${newSize}…`, "info");
-
-      currentBatch = batch.slice(0, newSize);
-      currentSize = newSize;
-    }
-
-    // Exhausted retries, return empty
-    ErrorLogger.log("ai_batch_retry_exhausted", { fn, finalSize: currentSize });
-    return { results: [], processedBatch: currentBatch };
-  }
-
-  async function runAIClassification() {
-    const cfg = getAIConfig();
-    if (!cfg.enabled || !cfg.apiKeys?.length) {
-      showToast("Enable AI and add API keys first", "error");
-      return;
-    }
-
-    const unknowns = transactions
-      .filter((t) => t.merchant === "Unknown" && !t.aiClassified && !t.aiFailed && (t.rawSMS || t.originalSms))
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
-    if (unknowns.length === 0) {
-      showToast("No Unknown merchants to classify!", "info");
-      return;
-    }
-    ErrorLogger.log("ai_batch_start", { fn: "classify", total: unknowns.length, keys: cfg.apiKeys.map(k => k.provider + "/" + (k.model || "default")).join(", ") });
-
-    _aiStopRequested = false;
-    const progressDiv = document.getElementById("aiProgress");
-    const progressText = document.getElementById("aiProgressText");
-    const progressBar = document.getElementById("aiProgressBar");
-    progressDiv.style.display = "block";
-    showStopButton(true);
-
-    const firstKey = cfg.apiKeys.find(k => Date.now() >= (getKeyState(k.key).cooldownUntil || 0)) || cfg.apiKeys[0];
-    const BATCH_SIZE = getBatchSize(firstKey?.contextWindow || 32000);
-    const batches = [];
-    for (let i = 0; i < unknowns.length; i += BATCH_SIZE) {
-      batches.push(unknowns.slice(i, i + BATCH_SIZE));
-    }
-
-    let updated = 0;
-    let errors = 0;
-    let invalidCount = 0;
-    let consecutiveErrors = 0;
-
-    for (let b = 0; b < batches.length; b++) {
-      if (_aiStopRequested) {
-        progressText.textContent = `Stopped! ${updated} classified, ${invalidCount} invalid, ${errors} errors`;
-        break;
-      }
-
-      const batch = batches[b];
-      const pct = Math.round(((b + 1) / batches.length) * 100);
-      progressText.textContent = `Batch ${b + 1}/${batches.length} · ${unknowns.length} total · batch size ${batch.length}`;
-      progressBar.style.width = pct + "%";
-
-      try {
-        const { results, processedBatch } = await callAIBatch(batch, "classify");
-        consecutiveErrors = 0;
-        console.log(`[AI] Batch ${b + 1}: sent ${processedBatch.length} SMS, got ${results.length} results`);
-        if (results.length === 0) {
-          ErrorLogger.log("ai_batch_zero_results", { fn: "classify", batch: b + 1 });
-        }
-        const matched = new Set();
-        results.forEach((r) => {
-          const idx = (r.i || r.index || 0) - 1;
-          if (idx >= 0 && idx < processedBatch.length) {
-            matched.add(idx);
-            const txn = processedBatch[idx];
-            if (r.invalid === true) {
-              txn.invalid = true;
-              txn.aiClassified = true;
-              invalidCount++;
-            } else {
-              txn.invalid = false;
-              if (r.merchant && r.merchant !== "Unknown") {
-                txn.merchant = r.merchant;
-                txn.aiClassified = true;
-                delete txn.aiFailed;
-              } else {
-                txn.aiFailed = true;
-              }
-              if (r.category) txn.category = r.category;
-              if (r.mode) txn.mode = r.mode;
-            }
-            updated++;
-          }
-        });
-        if (results.length > 0) {
-          processedBatch.forEach((txn, i) => {
-            if (!matched.has(i) && !txn.aiClassified) txn.aiFailed = true;
-          });
-        }
-        // If batch was reduced due to truncation, re-queue remaining items
-        if (processedBatch.length < batch.length) {
-          const remaining = batch.slice(processedBatch.length);
-          batches.splice(b + 1, 0, remaining);
-        }
-      } catch (err) {
-        errors++;
-        consecutiveErrors++;
-        ErrorLogger.log("ai_classify_error", { fn: "classify", message: err.message, stack: (err.stack || "").substring(0, 300), status: err.status, batch: b + 1, consecutiveErrors });
-        if (consecutiveErrors >= 3) {
-          progressText.textContent = `Stopped after ${consecutiveErrors} consecutive errors. ${updated} classified, ${errors} errors. Retry manually.`;
-          showToast("AI stopped — too many consecutive errors. Fix API keys and retry.", "error");
-          break;
-        }
-      }
-
-      if (b % 10 === 9) await saveData();
-
-      if (b < batches.length - 1 && !_aiStopRequested) {
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-
-    progressBar.style.width = "100%";
-    if (!_aiStopRequested && consecutiveErrors < 3) {
-      progressText.textContent = `Done! ${updated} classified, ${invalidCount} invalid, ${errors} errors`;
-    }
-
-    showStopButton(false);
-    _aiStopRequested = false;
-
-    if (updated > 0 || errors > 0) {
-      await saveData();
-      render();
-    }
-    showToast(`Classified ${updated}, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
-    ErrorLogger.log("ai_batch_done", { fn: "classify", updated, invalidCount, errors, total: unknowns.length });
-  }
-
-  async function runAIClassificationAll() {
-    const cfg = getAIConfig();
-    if (!cfg.enabled || !cfg.apiKeys?.length) {
-      showToast("Enable AI and add API keys first", "error");
-      return;
-    }
-
-    const targets = transactions
-      .filter((t) => (t.rawSMS || t.originalSms) && !t.aiReclassified)
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
-    if (targets.length === 0) {
-      showToast("All transactions already reclassified!", "info");
-      return;
-    }
-
-    _aiStopRequested = false;
-    const progressDiv = document.getElementById("aiProgress");
-    const progressText = document.getElementById("aiProgressText");
-    const progressBar = document.getElementById("aiProgressBar");
-    progressDiv.style.display = "block";
-    showStopButton(true);
-
-    const firstKey = cfg.apiKeys.find(k => Date.now() >= (getKeyState(k.key).cooldownUntil || 0)) || cfg.apiKeys[0];
-    const BATCH_SIZE = getBatchSize(firstKey?.contextWindow || 32000);
-    const batches = [];
-    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
-      batches.push(targets.slice(i, i + BATCH_SIZE));
-    }
-
-    let updated = 0;
-    let errors = 0;
-    let invalidCount = 0;
-    let consecutiveErrors = 0;
-
-    for (let b = 0; b < batches.length; b++) {
-      if (_aiStopRequested) {
-        progressText.textContent = `Stopped! ${updated} reclassified, ${invalidCount} invalid, ${errors} errors`;
-        break;
-      }
-
-      const batch = batches[b];
-      const pct = Math.round(((b + 1) / batches.length) * 100);
-      progressText.textContent = `Batch ${b + 1}/${batches.length} · ${targets.length} total · batch size ${batch.length}`;
-      progressBar.style.width = pct + "%";
-
-      try {
-        const { results, processedBatch } = await callAIBatch(batch, "reclassify");
-        consecutiveErrors = 0;
-        console.log(`[AI Reclassify] Batch ${b + 1}: sent ${processedBatch.length} SMS, got ${results.length} results`);
-        if (results.length === 0) {
-          ErrorLogger.log("ai_batch_zero_results", { fn: "reclassifyAll", batch: b + 1 });
-        }
-        results.forEach((r) => {
-          const idx = (r.i || r.index || 0) - 1;
-          if (idx >= 0 && idx < processedBatch.length) {
-            const txn = processedBatch[idx];
-            txn.aiReclassified = true;
-            if (r.invalid === true) {
-              txn.invalid = true;
-              invalidCount++;
-            } else {
-              txn.invalid = false;
-              if (r.merchant && r.merchant !== "Unknown") {
-                txn.merchant = r.merchant;
-                txn.aiClassified = true;
-                delete txn.aiFailed;
-              }
-              if (r.category) txn.category = r.category;
-              if (r.mode) txn.mode = r.mode;
-            }
-            updated++;
-          }
-        });
-        if (results.length > 0) {
-          processedBatch.forEach((txn) => {
-            if (!txn.aiReclassified) txn.aiReclassified = true;
-          });
-        }
-        // If batch was reduced due to truncation, re-queue remaining items
-        if (processedBatch.length < batch.length) {
-          const remaining = batch.slice(processedBatch.length);
-          batches.splice(b + 1, 0, remaining);
-        }
-      } catch (err) {
-        errors++;
-        consecutiveErrors++;
-        ErrorLogger.log("ai_reclassify_all_error", { message: err.message, batch: b });
-        if (consecutiveErrors >= 3) {
-          progressText.textContent = `Stopped after ${consecutiveErrors} consecutive errors. ${updated} reclassified, ${errors} errors. Retry manually.`;
-          showToast("AI stopped — too many consecutive errors. Fix API keys and retry.", "error");
-          break;
-        }
-      }
-
-      if (b % 10 === 9) await saveData();
-
-      if (b < batches.length - 1 && !_aiStopRequested) {
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-    }
-
-    progressBar.style.width = "100%";
-    if (!_aiStopRequested && consecutiveErrors < 3) {
-      progressText.textContent = `Done! ${updated} reclassified, ${invalidCount} marked invalid, ${errors} errors`;
-    }
-
-    showStopButton(false);
-    _aiStopRequested = false;
-
-    await saveData();
-    render();
-    updateReclassifyBtn();
-
-    showToast(`Reclassified ${updated}, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
-    ErrorLogger.log("ai_batch_done", { fn: "reclassify", updated, invalidCount, errors });
-  }
-
-  async function runAIClassificationMonth() {
-    const cfg = getAIConfig();
-    if (!cfg.enabled || !cfg.apiKeys?.length) {
-      showToast("Enable AI and add API keys first", "error");
-      return;
-    }
-
-    const monthName = MONTHS[currentMonth] + " " + currentYear;
-    const targets = getMonthTransactionsForAI().filter((t) => !t.aiReclassified)
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
-    if (targets.length === 0) {
-      showToast(`All transactions in ${monthName} already classified!`, "info");
-      return;
-    }
-
-    if (!confirm(`AI will classify ${targets.length} transactions in ${monthName}.\nThis will detect merchants, categories, and mark non-transactions as invalid.\n\nContinue?`)) return;
-    ErrorLogger.log("ai_batch_start", { fn: "month", month: monthName, total: targets.length, keys: cfg.apiKeys.map(k => k.provider + "/" + (k.model || "default")).join(", ") });
-
-    _aiStopRequested = false;
-    const progressDiv = document.getElementById("aiProgress");
-    const progressText = document.getElementById("aiProgressText");
-    const progressBar = document.getElementById("aiProgressBar");
-    progressDiv.style.display = "block";
-    showStopButton(true);
-
-    const firstKey = cfg.apiKeys.find(k => Date.now() >= (getKeyState(k.key).cooldownUntil || 0)) || cfg.apiKeys[0];
-    const BATCH_SIZE = getBatchSize(firstKey?.contextWindow || 32000);
-    const batches = [];
-    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
-      batches.push(targets.slice(i, i + BATCH_SIZE));
-    }
-
-    let updated = 0;
-    let errors = 0;
-    let invalidCount = 0;
-    let consecutiveErrors = 0;
-
-    for (let b = 0; b < batches.length; b++) {
-      if (_aiStopRequested) {
-        progressText.textContent = `Stopped! ${updated} classified, ${invalidCount} invalid, ${errors} errors`;
-        break;
-      }
-
-      const batch = batches[b];
-      const pct = Math.round(((b + 1) / batches.length) * 100);
-      progressText.textContent = `${monthName} · Batch ${b + 1}/${batches.length} · ${targets.length} total`;
-      progressBar.style.width = pct + "%";
-
-      try {
-        const { results, processedBatch } = await callAIBatch(batch, "month");
-        consecutiveErrors = 0;
-        console.log(`[AI Month] Batch ${b + 1}: sent ${processedBatch.length} SMS, got ${results.length} results`);
-        if (results.length === 0) {
-          ErrorLogger.log("ai_batch_zero_results", { fn: "month", batch: b + 1 });
-        }
-        results.forEach((r) => {
-          const idx = (r.i || r.index || 0) - 1;
-          if (idx >= 0 && idx < processedBatch.length) {
-            const txn = processedBatch[idx];
-            txn.aiReclassified = true;
-            if (r.invalid === true) {
-              txn.invalid = true;
-              invalidCount++;
-            } else {
-              txn.invalid = false;
-              if (r.merchant && r.merchant !== "Unknown") {
-                txn.merchant = r.merchant;
-                txn.aiClassified = true;
-                delete txn.aiFailed;
-              }
-              if (r.category) txn.category = r.category;
-              if (r.mode) txn.mode = r.mode;
-            }
-            updated++;
-          }
-        });
-        if (results.length > 0) {
-          processedBatch.forEach((txn) => {
-            if (!txn.aiReclassified) txn.aiReclassified = true;
-          });
-        }
-        // If batch was reduced due to truncation, re-queue remaining items
-        if (processedBatch.length < batch.length) {
-          const remaining = batch.slice(processedBatch.length);
-          batches.splice(b + 1, 0, remaining);
-        }
-      } catch (err) {
-        errors++;
-        consecutiveErrors++;
-        ErrorLogger.log("ai_classify_month_error", { message: err.message, stack: (err.stack || "").substring(0, 300), status: err.status, month: monthName, batch: b + 1, consecutiveErrors });
-        if (consecutiveErrors >= 3) {
-          progressText.textContent = `Stopped after ${consecutiveErrors} consecutive errors. ${updated} classified, ${errors} errors.`;
-          showToast("AI stopped — too many consecutive errors. Fix API keys and retry.", "error");
-          break;
-        }
-      }
-
-      if (b % 10 === 9) await saveData();
-
-      if (b < batches.length - 1 && !_aiStopRequested) {
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-
-    progressBar.style.width = "100%";
-    if (!_aiStopRequested && consecutiveErrors < 3) {
-      progressText.textContent = `Done! ${updated} classified, ${invalidCount} invalid, ${errors} errors`;
-    }
-
-    showStopButton(false);
-    _aiStopRequested = false;
-
-    await saveData();
-    render();
-    updateReclassifyBtn();
-
-    showToast(`${monthName}: ${updated} classified, ${invalidCount} invalid, ${errors} errors`, updated > 0 ? "success" : "info");
-    ErrorLogger.log("ai_batch_done", { fn: "month", month: monthName, updated, invalidCount, errors, total: targets.length });
   }
 
   return { init };

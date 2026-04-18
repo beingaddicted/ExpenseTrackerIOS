@@ -349,7 +349,7 @@
               <div style="margin-top: 10px">
                 <button
                   class="btn btn-primary"
-                  onclick="downloadScript()"
+                  onclick="downloadBankSmsMain()"
                   style="margin-bottom: 0"
                 >
                   <span class="btn-icon">📥</span> Download BankSMS.js
@@ -375,7 +375,7 @@
               Install the Shortcut that drives the export:
               <div style="margin-top: 10px">
                 <a
-                  href="https://www.icloud.com/shortcuts/f35ef2b914f146f0ab20c80a07e398a2"
+                  href="https://www.icloud.com/shortcuts/9f91949ca6244224ad56d0cd25419877"
                   class="btn btn-green"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -490,78 +490,7 @@
         </div>
       </div>
 
-      <!-- ─── SECTION 4: AI Classification (Optional) ─── -->
-      <div class="section-label">Step 4 — AI Classification (Optional)</div>
-
-      <div class="card" style="border-color: var(--orange)">
-        <div class="card-header">
-          <span class="card-badge" style="background: var(--orange)">AI</span>
-          <span class="card-title">🤖 Smart Message Classification</span>
-        </div>
-        <div class="card-desc">
-          Many bank SMS don't include a clear merchant name. Enable
-          <strong>AI Classification</strong> to automatically identify
-          merchants and categories. Supports multiple free API providers
-          with automatic failover.
-        </div>
-
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-text">
-              Get one or more API keys from any of these providers:<br>
-              🔵 <a href="https://aistudio.google.com/apikey" style="color: var(--accent-light)" target="_blank" rel="noopener noreferrer">Google Gemini</a> — 2.0 Flash, ~$0.10/1M tokens (key: <code>AIza…</code>)<br>
-              🟠 <a href="https://console.groq.com/keys" style="color: var(--accent-light)" target="_blank" rel="noopener noreferrer">Groq</a> — Llama 3.3 70B (key: <code>gsk_…</code>)<br>
-              🟣 <a href="https://openrouter.ai/keys" style="color: var(--accent-light)" target="_blank" rel="noopener noreferrer">OpenRouter</a> — many free models (key: <code>sk-or-…</code>)<br>
-              🟢 <a href="https://platform.openai.com/api-keys" style="color: var(--accent-light)" target="_blank" rel="noopener noreferrer">OpenAI</a> — GPT-4o Mini (key: <code>sk-…</code>)
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-text">
-              In Expense Tracker, go to <strong>Settings</strong> →
-              <strong>AI Message Classification</strong> → toggle
-              <strong>ON</strong> → paste each key and tap <strong>+ Add Key</strong>.
-              Provider is auto-detected from the key prefix.
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-text">
-              Tap <strong>🔑 Test All Keys</strong> to verify they work.
-              Failed keys show the provider name and error reason.
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">4</div>
-            <div class="step-text">
-              Use <strong>🚀 Classify Unknown Merchants</strong> to batch-classify
-              all "Unknown" transactions, or tap <strong>🤖 Reclassify with AI</strong>
-              on any individual transaction. Use <strong>⏹ Stop</strong> to pause mid-run.
-            </div>
-          </div>
-        </div>
-
-        <div class="note" style="border-color: var(--orange)">
-          <strong style="color: var(--orange)">Multi-provider failover:</strong>
-          Add keys from multiple providers. If one hits a rate limit or
-          quota, the app automatically switches to the next available key.
-          After 3 consecutive errors, classification stops automatically — retry manually.
-          All keys are stored <strong>only on your device</strong>
-          — never sent to our servers.
-        </div>
-
-        <div class="note" style="border-color: var(--accent); margin-top: 8px;">
-          <strong style="color: var(--accent-light)">💎 Cost estimate:</strong>
-          Google Gemini 2.0 Flash at ~$0.10 per 1M input tokens.
-          For ~10,000 transactions at 50/batch = ~200 API calls × ~5K tokens = ~1M tokens ≈ <strong>$0.10 total</strong>.
-          To enable billing: go to
-          <a href="https://console.cloud.google.com/billing" style="color: var(--accent-light)" target="_blank" rel="noopener">Google Cloud Console → Billing</a>
-          → link a billing account to the project.
-        </div>
-      </div>
-
-      <!-- ─── SECTION 5: Install PWA (collapsible) ─── -->
+      <!-- ─── SECTION 4: Install PWA (collapsible) ─── -->
       <div class="section-label">Install the App</div>
 
       <div class="card">
@@ -666,7 +595,7 @@
         body.classList.toggle("open");
       }
 
-      function downloadScript() {
+      function downloadBankSmsMain() {
         fetch("data/ShortCuts/BankSMS.js")
           .then(function (r) {
             if (!r.ok) throw new Error("File not found");

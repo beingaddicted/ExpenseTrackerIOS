@@ -4,7 +4,8 @@
   "description": "",
   "main": "sw.js",
   "scripts": {
-    "test": "jest --verbose"
+    "test": "jest --verbose",
+    "extract-bank-sms-lib": "node scripts/extract-bank-sms-lib-for-jest.js"
   },
   "repository": {
     "type": "git",
