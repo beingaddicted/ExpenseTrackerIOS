@@ -193,17 +193,103 @@ enum SMSBankParser {
     ]
 
     private static let categoryGroups: [(String, [NSRegularExpression])] = [
-        ("Food & Dining", [rx(#"swiggy"#), rx(#"zomato"#), rx(#"uber\s*eats"#), rx(#"restaurant"#), rx(#"food"#)]),
-        ("Shopping", [rx(#"amazon"#), rx(#"flipkart"#), rx(#"myntra"#), rx(#"shopping"#)]),
-        ("Transport", [rx(#"uber"#), rx(#"ola"#), rx(#"metro"#), rx(#"irctc"#), rx(#"fastag"#)]),
-        ("Travel", [rx(#"makemytrip"#), rx(#"flight"#), rx(#"hotel"#), rx(#"booking\.com"#)]),
-        ("Bills & Utilities", [rx(#"electricity"#), rx(#"jio"#), rx(#"airtel"#), rx(#"bill"#), rx(#"recharge"#)]),
-        ("Entertainment", [rx(#"netflix"#), rx(#"spotify"#), rx(#"youtube"#), rx(#"prime\s*video"#)]),
-        ("Groceries", [rx(#"bigbasket"#), rx(#"blinkit"#), rx(#"zepto"#), rx(#"grocery"#)]),
-        ("Health", [rx(#"pharma"#), rx(#"apollo"#), rx(#"hospital"#), rx(#"medical"#)]),
-        ("Investment", [rx(#"mutual\s*fund"#), rx(#"zerodha"#), rx(#"groww"#), rx(#"sip\b"#)]),
-        ("Transfer", [rx(#"neft"#), rx(#"imps"#), rx(#"fund\s*transfer"#)]),
-        ("Salary", [rx(#"salary"#), rx(#"payroll"#)]),
+        ("Food & Dining", [
+            rx(#"swiggy"#), rx(#"zomato"#), rx(#"uber\s*eats"#), rx(#"dominos"#),
+            rx(#"pizza"#), rx(#"mcdonald"#), rx(#"\bkfc\b"#), rx(#"burger"#),
+            rx(#"restaurant"#), rx(#"\bcafe\b"#), rx(#"coffee"#), rx(#"starbucks"#),
+            rx(#"\bfood\b"#), rx(#"dining"#), rx(#"biryani"#), rx(#"grubhub"#),
+            rx(#"doordash"#), rx(#"bakery"#), rx(#"\bsubway\b"#), rx(#"chipotle"#),
+        ]),
+        ("Shopping", [
+            rx(#"amazon"#), rx(#"flipkart"#), rx(#"myntra"#), rx(#"ajio"#),
+            rx(#"meesho"#), rx(#"nykaa"#), rx(#"walmart"#), rx(#"\btarget\b"#),
+            rx(#"costco"#), rx(#"\bebay\b"#), rx(#"shopping"#), rx(#"\bmart\b"#),
+            rx(#"\bmall\b"#), rx(#"retail"#), rx(#"ikea"#), rx(#"home\s*depot"#),
+            rx(#"best\s*buy"#), rx(#"apple\.com"#),
+        ]),
+        ("Transport", [
+            rx(#"\buber\b"#), rx(#"\bola\b"#), rx(#"lyft"#), rx(#"rapido"#),
+            rx(#"\bmetro\b"#), rx(#"railway"#), rx(#"irctc"#), rx(#"petrol"#),
+            rx(#"\bfuel\b"#), rx(#"diesel"#), rx(#"gas\s*station"#), rx(#"\bshell\b"#),
+            rx(#"indian\s*oil"#), rx(#"bharat\s*petroleum"#), rx(#"hp\s*petroleum"#),
+            rx(#"parking"#), rx(#"\btoll\b"#), rx(#"fastag"#),
+        ]),
+        ("Travel", [
+            rx(#"makemytrip"#), rx(#"goibibo"#), rx(#"cleartrip"#), rx(#"yatra"#),
+            rx(#"booking\.com"#), rx(#"airbnb"#), rx(#"\bhotel\b"#), rx(#"flight"#),
+            rx(#"airline"#), rx(#"\bindigo\b"#), rx(#"spicejet"#), rx(#"air\s*india"#),
+            rx(#"vistara"#), rx(#"expedia"#), rx(#"\bresort\b"#), rx(#"hostel"#),
+        ]),
+        ("Bills & Utilities", [
+            rx(#"electricity"#), rx(#"electric\b"#), rx(#"water\s*bill"#), rx(#"gas\s*bill"#),
+            rx(#"broadband"#), rx(#"\binternet\b"#), rx(#"\bwifi\b"#), rx(#"\bjio\b"#),
+            rx(#"\bairtel\b"#), rx(#"vodafone"#), rx(#"\bbsnl\b"#), rx(#"recharge"#),
+            rx(#"tata\s*sky"#), rx(#"dish\s*tv"#), rx(#"utility"#), rx(#"bill\s*pay"#),
+            rx(#"municipal"#), rx(#"maintenance"#), rx(#"society"#),
+        ]),
+        ("Entertainment", [
+            rx(#"netflix"#), rx(#"hotstar"#), rx(#"prime\s*video"#), rx(#"spotify"#),
+            rx(#"youtube"#), rx(#"disney"#), rx(#"\bzee5\b"#), rx(#"sony\s*liv"#),
+            rx(#"apple\s*music"#), rx(#"\bmovie\b"#), rx(#"cinema"#), rx(#"\bpvr\b"#),
+            rx(#"\binox\b"#), rx(#"gaming"#), rx(#"\bsteam\b"#), rx(#"playstation"#),
+            rx(#"\bxbox\b"#), rx(#"\bhulu\b"#), rx(#"\bhbo\b"#),
+        ]),
+        ("Health", [
+            rx(#"hospital"#), rx(#"pharma"#), rx(#"medical"#), rx(#"\bapollo\b"#),
+            rx(#"medplus"#), rx(#"\b1mg\b"#), rx(#"netmeds"#), rx(#"pharmacy"#),
+            rx(#"\bdoctor\b"#), rx(#"\bclinic\b"#), rx(#"\bhealth\b"#), rx(#"dental"#),
+            rx(#"fitness"#), rx(#"\bgym\b"#), rx(#"cure\.fit"#), rx(#"\bcvs\b"#),
+            rx(#"walgreens"#),
+        ]),
+        ("Education", [
+            rx(#"\bschool\b"#), rx(#"college"#), rx(#"university"#), rx(#"udemy"#),
+            rx(#"coursera"#), rx(#"unacademy"#), rx(#"byju"#), rx(#"education"#),
+            rx(#"tuition"#), rx(#"coaching"#), rx(#"\bexam\b"#), rx(#"skillshare"#),
+        ]),
+        ("Insurance", [
+            rx(#"insurance"#), rx(#"\blic\b"#), rx(#"\bpolicy\b"#), rx(#"\bpremium\b"#),
+            rx(#"health\s*ins"#), rx(#"term\s*plan"#), rx(#"geico"#), rx(#"allstate"#),
+            rx(#"progressive"#),
+        ]),
+        ("Investment", [
+            rx(#"mutual\s*fund"#), rx(#"zerodha"#), rx(#"groww"#), rx(#"upstox"#),
+            rx(#"kuvera"#), rx(#"\bsip\b"#), rx(#"\bstock\b"#), rx(#"trading"#),
+            rx(#"\bdemat\b"#), rx(#"robinhood"#), rx(#"fidelity"#), rx(#"vanguard"#),
+            rx(#"schwab"#),
+        ]),
+        ("EMI & Loans", [
+            rx(#"\bemi\b"#), rx(#"\bloan\b"#), rx(#"equated"#), rx(#"installment"#),
+            rx(#"mortgage"#), rx(#"home\s*loan"#), rx(#"car\s*loan"#), rx(#"personal\s*loan"#),
+        ]),
+        ("Rent", [
+            rx(#"\brent\b"#), rx(#"landlord"#), rx(#"housing"#), rx(#"\blease\b"#),
+            rx(#"tenant"#), rx(#"nobroker"#),
+        ]),
+        ("Groceries", [
+            rx(#"grocery"#), rx(#"grofers"#), rx(#"blinkit"#), rx(#"bigbasket"#),
+            rx(#"dunzo"#), rx(#"zepto"#), rx(#"instamart"#), rx(#"vegetable"#),
+            rx(#"supermarket"#), rx(#"instacart"#), rx(#"whole\s*foods"#),
+            rx(#"trader\s*joe"#), rx(#"\baldi\b"#), rx(#"kroger"#),
+        ]),
+        ("Salary", [rx(#"salary"#), rx(#"payroll"#), rx(#"\bwages\b"#)]),
+        ("Transfer", [rx(#"\bneft\b"#), rx(#"\bimps\b"#), rx(#"\brtgs\b"#), rx(#"fund\s*transfer"#)]),
+        ("ATM", [rx(#"\batm\b"#), rx(#"cash\s*withdrawal"#), rx(#"self\s*withdrawal"#)]),
+        ("Subscription", [rx(#"subscription"#), rx(#"recurring"#)]),
+        ("Cashback & Rewards", [
+            rx(#"cashback"#), rx(#"\breward"#), rx(#"\bbonus\b"#), rx(#"\boffer\b"#), rx(#"\bpromo\b"#),
+        ]),
+        ("Refund", [rx(#"refund"#), rx(#"reversal"#), rx(#"reversed"#), rx(#"chargeback"#)]),
+        ("Tax", [rx(#"\btax\b"#), rx(#"income\s*tax"#), rx(#"\bgst\b"#), rx(#"\btds\b"#), rx(#"\birs\b"#)]),
+        ("Credit Card Payment", [
+            rx(#"credit\s*card.{0,20}(?:payment|bill|due|paid|pay)"#),
+            rx(#"card\s*bill\s*pay"#), rx(#"\bcc\s*payment\b"#),
+            rx(#"card\s*outstanding"#),
+        ]),
+        ("Savings", [
+            rx(#"fixed\s*deposit"#), rx(#"recurring\s*deposit"#), rx(#"\bfd\b"#),
+            rx(#"\brd\b"#), rx(#"\bppf\b"#), rx(#"\bnps\b"#), rx(#"\bepf\b"#),
+            rx(#"\bnsc\b"#), rx(#"savings\s*(?:account|deposit|transfer)"#),
+        ]),
     ]
 
     private static let bankRules: [(String, [NSRegularExpression])] = [

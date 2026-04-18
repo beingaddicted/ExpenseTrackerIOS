@@ -17,17 +17,28 @@ enum Theme {
     static let border = Color.white.opacity(0.08)
 
     static let categoryColors: [String: Color] = [
-        "Food": .orange,
+        "Food & Dining": .orange,
         "Shopping": .pink,
         "Transport": .cyan,
         "Travel": .indigo,
-        "Bills": .yellow,
+        "Bills & Utilities": .yellow,
         "Entertainment": .purple,
         "Groceries": .green,
         "Health": .red,
+        "Education": .teal,
+        "Insurance": Color(red: 0.92, green: 0.50, blue: 0.03),
         "Investment": .blue,
-        "Transfer": .gray,
+        "EMI & Loans": Color(red: 0.94, green: 0.47, blue: 0.10),
+        "Rent": Color(red: 0.85, green: 0.30, blue: 0.55),
         "Salary": Color(red: 0.13, green: 0.77, blue: 0.37),
+        "Transfer": .gray,
+        "ATM": Color(white: 0.55),
+        "Subscription": .mint,
+        "Cashback & Rewards": Color(red: 0.65, green: 0.88, blue: 0.18),
+        "Refund": Color(red: 0.20, green: 0.78, blue: 0.62),
+        "Tax": Color(red: 0.85, green: 0.60, blue: 0.10),
+        "Credit Card Payment": Color(red: 0.23, green: 0.51, blue: 0.96),
+        "Savings": Color(red: 0.10, green: 0.68, blue: 0.42),
         "Other": Color(white: 0.5),
     ]
 

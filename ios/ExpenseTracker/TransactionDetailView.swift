@@ -13,9 +13,11 @@ struct TransactionDetailView: View {
     }
 
     private let allCategories = [
-        "Food", "Shopping", "Transport", "Travel", "Bills",
-        "Entertainment", "Groceries", "Health", "Investment",
-        "Transfer", "Salary", "Other"
+        "Food & Dining", "Shopping", "Transport", "Travel", "Bills & Utilities",
+        "Entertainment", "Health", "Education", "Insurance", "Investment",
+        "EMI & Loans", "Rent", "Groceries", "Salary", "Transfer",
+        "ATM", "Subscription", "Cashback & Rewards", "Refund", "Tax",
+        "Credit Card Payment", "Savings", "Other",
     ]
 
     var body: some View {

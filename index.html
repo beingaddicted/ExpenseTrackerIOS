@@ -127,6 +127,15 @@
         <div class="quick-stats" id="quickStats"></div>
       </section>
 
+      <!-- Budget Progress -->
+      <section id="budgetSection" style="display:none; padding: 0 16px 4px;">
+        <div class="section-header" style="margin-bottom:8px;">
+          <span class="section-title">Budget Tracker</span>
+          <button class="section-action" id="btnBudgetEdit">Edit ✏️</button>
+        </div>
+        <div id="budgetProgressList"></div>
+      </section>
+
       <!-- Category Donut Chart -->
       <section class="charts-section">
         <div class="chart-container">
@@ -237,6 +246,17 @@
           </div>
         </div>
         <div class="settings-group">
+          <div class="settings-group-title">Budgets</div>
+          <div class="settings-item" id="settingBudget">
+            <div class="settings-icon">🎯</div>
+            <div class="settings-info">
+              <div class="settings-label">Monthly Budgets</div>
+              <div class="settings-desc">Set spending limits per category</div>
+            </div>
+            <span class="settings-arrow">›</span>
+          </div>
+        </div>
+        <div class="settings-group">
           <div class="settings-group-title">Data</div>
           <div class="settings-item" id="settingExport">
             <div class="settings-icon">📤</div>
@@ -311,8 +331,15 @@
             <div class="settings-info">
               <div class="settings-label">Expense Tracker PWA</div>
               <div class="settings-desc" id="appVersionLabel">
-                All data stored locally on device
+                All data stays on your device — no accounts, no servers, no tracking.
               </div>
+            </div>
+          </div>
+          <div class="settings-item">
+            <div class="settings-icon">🔒</div>
+            <div class="settings-info">
+              <div class="settings-label">Privacy First</div>
+              <div class="settings-desc">Your financial data never leaves your device. No cloud sync, no analytics collection, no third-party sharing — ever.</div>
             </div>
           </div>
         </div>
@@ -867,6 +894,21 @@
         >
           Close
         </button>
+      </div>
+    </div>
+
+    <!-- Budget Modal -->
+    <div class="modal-overlay" id="modalBudget">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        <button class="detail-close-btn" onclick="document.getElementById('modalBudget').classList.remove('active')" aria-label="Close">×</button>
+        <div class="modal-title">Monthly Budgets</div>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">Set a monthly ₹ limit for each category. Leave blank to remove.</p>
+        <div id="budgetModalList" style="max-height:60vh;overflow-y:auto;"></div>
+        <div style="display:flex;gap:10px;margin-top:14px;">
+          <button class="btn-secondary" onclick="document.getElementById('modalBudget').classList.remove('active')">Cancel</button>
+          <button class="btn-primary" id="btnSaveBudgets">Save</button>
+        </div>
       </div>
     </div>
 

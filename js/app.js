@@ -22,6 +22,7 @@ const App = (() => {
   const DELTA_KEY = "expense_tracker_delta_tracker"; // tracks last import position
   const FILTER_PREF_KEY = "expense_tracker_filter_tab";
   const RULES_KEY = "expense_tracker_rules";
+  const BUDGET_KEY = "expense_tracker_budgets";
 
   const CATEGORY_ICONS = {
     "Food & Dining": "🍕",
@@ -174,7 +175,7 @@ const App = (() => {
         const el = document.getElementById("appVersionLabel");
         if (el && data.version) {
           el.textContent =
-            "v" + data.version + " — All data stored locally on device";
+            "v" + data.version + " — All data stays on your device — no accounts, no servers, no tracking.";
         }
       })
       .catch(() => {});
@@ -953,6 +954,7 @@ const App = (() => {
     renderCharts(filtered);
     renderTransactions(filtered);
     renderAnalytics();
+    renderBudgetProgress();
   }
 
   function renderMonthLabel() {
@@ -1835,6 +1837,83 @@ const App = (() => {
     }
   }
 
+  // ─── Budget Tracking ───
+  function getBudgets() {
+    try { return JSON.parse(localStorage.getItem(BUDGET_KEY) || "{}"); } catch { return {}; }
+  }
+
+  function saveBudgets(b) {
+    localStorage.setItem(BUDGET_KEY, JSON.stringify(b));
+  }
+
+  function renderBudgetProgress() {
+    const budgets = getBudgets();
+    const section = document.getElementById("budgetSection");
+    const list = document.getElementById("budgetProgressList");
+    if (!section || !list) return;
+
+    const entries = Object.entries(budgets).filter(([, v]) => v > 0);
+    if (entries.length === 0) { section.style.display = "none"; return; }
+
+    const now = new Date();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+    const monthDebits = transactions.filter((t) => {
+      if (t.type !== "debit" || t.isValid === false) return false;
+      const d = new Date(t.date);
+      return d.getMonth() === month && d.getFullYear() === year;
+    });
+
+    let overBudgetCategories = [];
+    list.innerHTML = entries.map(([cat, limit]) => {
+      const spent = monthDebits.filter((t) => t.category === cat).reduce((s, t) => s + t.amount, 0);
+      const pct = Math.min(spent / limit, 1) * 100;
+      const isOver = spent > limit;
+      if (isOver) overBudgetCategories.push(cat);
+      const color = isOver ? "var(--red)" : getCategoryColor(cat);
+      return `<div class="budget-row">
+        <div class="budget-row-top">
+          <span class="budget-cat">${cat}</span>
+          <span class="budget-amt${isOver ? " budget-over" : ""}">₹${Math.round(spent).toLocaleString()} / ₹${Math.round(limit).toLocaleString()}</span>
+        </div>
+        <div class="budget-bar-bg"><div class="budget-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+        ${isOver ? `<div class="budget-over-label">Over by ₹${Math.round(spent - limit).toLocaleString()}</div>` : ""}
+      </div>`;
+    }).join("");
+    section.style.display = "block";
+  }
+
+  function openBudgetModal() {
+    const budgets = getBudgets();
+    const cats = getAllCategories();
+    const list = document.getElementById("budgetModalList");
+    if (!list) return;
+    list.innerHTML = cats.map((cat) => {
+      const val = budgets[cat] || "";
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span style="flex:1;font-size:13px;">${cat}</span>
+        <input type="number" min="0" placeholder="No limit"
+          data-cat="${cat}" value="${val}"
+          style="width:90px;padding:4px 8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;"/>
+      </div>`;
+    }).join("");
+    openModal("modalBudget");
+  }
+
+  function getCategoryColor(cat) {
+    const map = {
+      "Food & Dining":"#f97316","Shopping":"#ec4899","Transport":"#06b6d4",
+      "Travel":"#6366f1","Bills & Utilities":"#eab308","Entertainment":"#a855f7",
+      "Health":"#ef4444","Education":"#14b8a6","Insurance":"#ea7d07",
+      "Investment":"#3b82f6","Groceries":"#22c55e","Rent":"#d94e8c",
+      "Salary":"#22c55e","Transfer":"#6b7280","ATM":"#8b8b8b",
+      "Subscription":"#6ee7b7","Cashback & Rewards":"#a6e02e",
+      "Refund":"#33c7a0","Tax":"#d99a1a","Credit Card Payment":"#3b82f6",
+      "Savings":"#1aad6b","EMI & Loans":"#f07516","Other":"#888888",
+    };
+    return map[cat] || "#7c3aed";
+  }
+
   // ─── Event Listeners ───
   function setupEventListeners() {
     // Month navigation (arrows)
@@ -2237,6 +2316,27 @@ const App = (() => {
       btnCloseCat.addEventListener("click", () =>
         closeModal("modalCategories"),
       );
+    }
+
+    // Budget
+    const settingBudget = document.getElementById("settingBudget");
+    if (settingBudget) settingBudget.addEventListener("click", openBudgetModal);
+    const btnBudgetEdit = document.getElementById("btnBudgetEdit");
+    if (btnBudgetEdit) btnBudgetEdit.addEventListener("click", openBudgetModal);
+    const btnSaveBudgets = document.getElementById("btnSaveBudgets");
+    if (btnSaveBudgets) {
+      btnSaveBudgets.addEventListener("click", () => {
+        const inputs = document.querySelectorAll("#budgetModalList input[data-cat]");
+        const b = {};
+        inputs.forEach((inp) => {
+          const v = parseFloat(inp.value);
+          if (!isNaN(v) && v > 0) b[inp.dataset.cat] = v;
+        });
+        saveBudgets(b);
+        closeModal("modalBudget");
+        renderBudgetProgress();
+        showToast("Budgets saved", "success");
+      });
     }
 
     // Close modals on overlay click

@@ -1757,3 +1757,13 @@ body {
   background: var(--accent-primary, #7c3aed); color: #fff;
   border-color: var(--accent-primary, #7c3aed);
 }
+
+/* Budget Progress Bars */
+.budget-row { margin-bottom: 10px; }
+.budget-row-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.budget-cat { font-size: 12px; color: var(--text-secondary, #aaa); }
+.budget-amt { font-size: 12px; color: var(--text-muted, #888); }
+.budget-amt.budget-over { color: var(--red, #ef4444); font-weight: 600; }
+.budget-bar-bg { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+.budget-bar-fill { height: 6px; border-radius: 3px; transition: width 0.3s ease; }
+.budget-over-label { font-size: 11px; color: var(--red, #ef4444); margin-top: 2px; }

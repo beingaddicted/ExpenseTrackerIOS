@@ -9,6 +9,8 @@ struct ContentView: View {
     @State private var showExport = false
     @State private var showSettings = false
     @State private var showAddTransaction = false
+    @State private var showAnalytics = false
+    @State private var showBudget = false
 
     private var filtered: [TransactionRecord] {
         vm.filterTransactions(allRows)
@@ -115,13 +117,36 @@ struct ContentView: View {
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { showAnalytics = true } label: {
+                        Image(systemName: "chart.bar.xaxis")
+                            .foregroundStyle(Theme.accentLight)
+                    }
                     Button { showImport = true } label: {
                         Image(systemName: "square.and.arrow.down")
                             .foregroundStyle(Theme.accentLight)
                     }
                     Menu {
+                        Menu {
+                            ForEach(SortMode.allCases, id: \.self) { mode in
+                                Button {
+                                    vm.sortMode = mode
+                                } label: {
+                                    HStack {
+                                        Text(mode.rawValue)
+                                        if vm.sortMode == mode {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label("Sort: \(vm.sortMode.rawValue)", systemImage: "arrow.up.arrow.down")
+                        }
                         Button { showExport = true } label: {
                             Label("Export", systemImage: "square.and.arrow.up")
+                        }
+                        Button { showBudget = true } label: {
+                            Label("Budgets", systemImage: "chart.pie")
                         }
                         Button { showSettings = true } label: {
                             Label("Settings", systemImage: "gear")
@@ -135,6 +160,8 @@ struct ContentView: View {
             .sheet(isPresented: $showImport) { ImportView() }
             .sheet(isPresented: $showExport) { ExportView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(isPresented: $showAnalytics) { AnalyticsView(allTransactions: allRows) }
+            .sheet(isPresented: $showBudget) { BudgetView(allTransactions: allRows) }
             .sheet(isPresented: $showAddTransaction) {
                 AddTransactionView(defaultDate: vm.defaultDateForNewTransaction)
             }
@@ -212,7 +239,13 @@ struct ContentView: View {
                     vm.selectedType = vm.selectedType == "debit" ? nil : "debit"
                 }
 
-                // Invalid chip (replaces Income)
+                // Income chip
+                chipButton("Income", isSelected: vm.selectedType == "credit" && !vm.showInvalidOnly, color: Theme.green) {
+                    vm.showInvalidOnly = false
+                    vm.selectedType = vm.selectedType == "credit" ? nil : "credit"
+                }
+
+                // Invalid chip
                 chipButton("Invalid\(invalidCount > 0 ? " (\(invalidCount))" : "")",
                           isSelected: vm.showInvalidOnly, color: .orange) {
                     vm.selectedType = nil

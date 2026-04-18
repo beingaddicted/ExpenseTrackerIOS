@@ -1,0 +1,261 @@
+import SwiftUI
+import SwiftData
+
+// MARK: - BudgetStore
+
+enum BudgetStore {
+    static let key = "expense_tracker_budgets"
+
+    static func load() -> [String: Double] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let dict = try? JSONDecoder().decode([String: Double].self, from: data)
+        else { return [:] }
+        return dict
+    }
+
+    static func save(_ budgets: [String: Double]) {
+        if let data = try? JSONEncoder().encode(budgets) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+}
+
+// MARK: - BudgetView
+
+struct BudgetView: View {
+    let allTransactions: [TransactionRecord]
+    @Environment(\.dismiss) private var dismiss
+    @State private var budgets: [String: Double] = [:]
+    @State private var editingCategory: String? = nil
+
+    private let vm = AppViewModel()
+
+    private let budgetableCategories = [
+        "Food & Dining", "Shopping", "Transport", "Travel", "Bills & Utilities",
+        "Entertainment", "Health", "Education", "Insurance",
+        "Rent", "Groceries", "Subscription", "Other",
+    ]
+
+    private var currentMonthRows: [TransactionRecord] {
+        let cal = Calendar.current
+        let now = Date()
+        let month = cal.component(.month, from: now)
+        let year = cal.component(.year, from: now)
+        return allTransactions.filter { txn in
+            guard txn.type == "debit" && txn.isValid else { return false }
+            let parts = vm.parseDate(txn.date)
+            return parts.month == month && parts.year == year
+        }
+    }
+
+    private func spent(for category: String) -> Double {
+        currentMonthRows.filter { $0.category == category }.reduce(0) { $0 + $1.amount }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if budgets.isEmpty {
+                    Section {
+                        VStack(spacing: 8) {
+                            Image(systemName: "chart.pie")
+                                .font(.system(size: 32))
+                                .foregroundStyle(Theme.accentLight)
+                            Text("Set monthly spending limits per category. Tap any category below to add a limit.")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textMuted)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .listRowBackground(Theme.bgPrimary)
+                    }
+                } else {
+                    Section("This Month") {
+                        ForEach(budgets.keys.sorted(), id: \.self) { cat in
+                            let limit = budgets[cat] ?? 0
+                            let spentAmt = spent(for: cat)
+                            let pct = limit > 0 ? min(spentAmt / limit, 1.0) : 0
+                            let isOver = spentAmt > limit && limit > 0
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Circle()
+                                        .fill(Theme.colorForCategory(cat))
+                                        .frame(width: 8, height: 8)
+                                    Text(cat)
+                                        .font(.subheadline)
+                                        .foregroundStyle(Theme.textPrimary)
+                                    Spacer()
+                                    Text("₹\(Int(spentAmt)) / ₹\(Int(limit))")
+                                        .font(.caption)
+                                        .foregroundStyle(isOver ? Theme.red : Theme.textMuted)
+                                }
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 3)
+                                            .fill(Theme.border)
+                                            .frame(height: 6)
+                                        RoundedRectangle(cornerRadius: 3)
+                                            .fill(isOver ? Theme.red : Theme.colorForCategory(cat))
+                                            .frame(width: max(4, geo.size.width * CGFloat(pct)), height: 6)
+                                    }
+                                }
+                                .frame(height: 6)
+                                if isOver {
+                                    Text("Over budget by ₹\(Int(spentAmt - limit))")
+                                        .font(.caption2)
+                                        .foregroundStyle(Theme.red)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                            .onTapGesture { editingCategory = cat }
+                        }
+                    }
+                }
+
+                Section("Set Limits") {
+                    ForEach(budgetableCategories, id: \.self) { cat in
+                        HStack {
+                            Circle()
+                                .fill(Theme.colorForCategory(cat))
+                                .frame(width: 10, height: 10)
+                            Text(cat)
+                                .font(.subheadline)
+                            Spacer()
+                            if let limit = budgets[cat], limit > 0 {
+                                Text("₹\(Int(limit))")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.accentLight)
+                            } else {
+                                Text("—")
+                                    .foregroundStyle(Theme.textMuted)
+                                    .font(.caption)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { editingCategory = cat }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Theme.bgPrimary)
+            .navigationTitle("Monthly Budgets")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                        .foregroundStyle(Theme.accentLight)
+                }
+            }
+            .sheet(item: Binding(
+                get: { editingCategory.map { IdentifiableString(value: $0) } },
+                set: { editingCategory = $0?.value }
+            )) { item in
+                BudgetEditSheet(
+                    category: item.value,
+                    currentLimit: budgets[item.value] ?? 0,
+                    spent: spent(for: item.value)
+                ) { newLimit in
+                    if newLimit > 0 {
+                        budgets[item.value] = newLimit
+                    } else {
+                        budgets.removeValue(forKey: item.value)
+                    }
+                    BudgetStore.save(budgets)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .onAppear { budgets = BudgetStore.load() }
+    }
+}
+
+// MARK: - Supporting types
+
+struct IdentifiableString: Identifiable {
+    let id = UUID()
+    let value: String
+}
+
+// MARK: - BudgetEditSheet
+
+struct BudgetEditSheet: View {
+    let category: String
+    let currentLimit: Double
+    let spent: Double
+    let onSave: (Double) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String
+
+    init(category: String, currentLimit: Double, spent: Double, onSave: @escaping (Double) -> Void) {
+        self.category = category
+        self.currentLimit = currentLimit
+        self.spent = spent
+        self.onSave = onSave
+        _text = State(initialValue: currentLimit > 0 ? String(Int(currentLimit)) : "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                HStack(spacing: 10) {
+                    Circle().fill(Theme.colorForCategory(category)).frame(width: 14, height: 14)
+                    Text(category).font(.headline).foregroundStyle(Theme.textPrimary)
+                }
+                .padding(.top, 8)
+
+                if spent > 0 {
+                    Text("Spent this month: ₹\(Int(spent))")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Monthly limit (₹)")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                    TextField("e.g. 5000", text: $text)
+                        .keyboardType(.numberPad)
+                        .font(.title2)
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding()
+                        .background(Theme.cardBg)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .padding(.horizontal)
+
+                if currentLimit > 0 {
+                    Button(role: .destructive) {
+                        onSave(0)
+                        dismiss()
+                    } label: {
+                        Text("Remove limit")
+                            .font(.caption)
+                            .foregroundStyle(Theme.red)
+                    }
+                }
+
+                Spacer()
+            }
+            .background(Theme.bgPrimary)
+            .navigationTitle("Set Budget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.foregroundStyle(Theme.accentLight)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(Double(text) ?? 0)
+                        dismiss()
+                    }
+                    .foregroundStyle(Theme.accentLight)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
