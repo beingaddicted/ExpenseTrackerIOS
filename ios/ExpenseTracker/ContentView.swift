@@ -11,6 +11,8 @@ struct ContentView: View {
     @State private var showAddTransaction = false
     @State private var showAnalytics = false
     @State private var showBudget = false
+    @State private var syncToast: String? = nil
+    @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
 
     private var filtered: [TransactionRecord] {
         vm.filterTransactions(allRows)
@@ -114,6 +116,10 @@ struct ContentView: View {
                             Image(systemName: "plus.circle")
                                 .foregroundStyle(Theme.accentLight)
                         }
+                        Button(action: triggerShortcut) label: {
+                            Image(systemName: "arrow.trianglehead.2.clockwise")
+                                .foregroundStyle(Theme.green)
+                        }
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -167,6 +173,47 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .overlay(alignment: .bottom) {
+            if let msg = syncToast {
+                Text(msg)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .padding(.bottom, 90)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .onTapGesture { syncToast = nil }
+            }
+        }
+        .animation(.spring(duration: 0.4), value: syncToast)
+        .onAppear(perform: checkSyncResult)
+    }
+
+    // MARK: - Sync
+
+    private func triggerShortcut() {
+        guard let encoded = shortcutName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "shortcuts://run-shortcut?name=\(encoded)")
+        else { return }
+        UIApplication.shared.open(url)
+    }
+
+    private func checkSyncResult() {
+        let defaults = UserDefaults.standard
+        guard let date = defaults.object(forKey: "lastSyncDate") as? Date,
+              Date().timeIntervalSince(date) < 30 else { return }
+        let added = defaults.integer(forKey: "lastSyncAdded")
+        let skipped = defaults.integer(forKey: "lastSyncSkipped")
+        defaults.removeObject(forKey: "lastSyncDate")
+        let msg = added > 0
+            ? "✅ \(added) new transaction\(added == 1 ? "" : "s") imported"
+            : "✅ All caught up · \(skipped) already seen"
+        withAnimation { syncToast = msg }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+            withAnimation { syncToast = nil }
+        }
     }
 
     // MARK: - Month Navigator
