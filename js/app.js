@@ -319,6 +319,7 @@ const App = (() => {
     if (!sms) return false;
     if (!rule.keywords || !rule.keywords.length) return false;
     if (!rule.keywords.every(kw => sms.includes(kw.toLowerCase()))) return false;
+    if (rule.amountExact != null && txn.amount !== rule.amountExact) return false;
     if (rule.amountMin != null && txn.amount < rule.amountMin) return false;
     if (rule.amountMax != null && txn.amount > rule.amountMax) return false;
     return true;
@@ -375,8 +376,7 @@ const App = (() => {
     return {
       name: txn.merchant || "New Rule",
       keywords: keywords,
-      amountMin: null,
-      amountMax: null,
+      amountExact: txn.amount != null ? txn.amount : null,
       setCategory: txn.category || null,
       setType: txn.type || null,
       setInvalid: txn.invalid || false,
@@ -397,9 +397,11 @@ const App = (() => {
     }
     container.innerHTML = rules.map(r => {
       const kw = (r.keywords || []).join(", ");
-      const amt = (r.amountMin != null || r.amountMax != null)
-        ? ` · ₹${r.amountMin || 0}–${r.amountMax || "∞"}`
-        : "";
+      const amt = r.amountExact != null
+        ? ` · ₹${r.amountExact}`
+        : (r.amountMin != null || r.amountMax != null)
+          ? ` · ₹${r.amountMin || 0}–${r.amountMax || "∞"}`
+          : "";
       return `<div class="rule-card" data-rule-id="${r.id}">
         <div class="rule-card-header">
           <span class="rule-card-name">${sanitize(r.name)}</span>
@@ -473,8 +475,10 @@ const App = (() => {
       });
     }
 
-    document.getElementById("ruleEditMinAmt").value = rule && rule.amountMin != null ? rule.amountMin : "";
-    document.getElementById("ruleEditMaxAmt").value = rule && rule.amountMax != null ? rule.amountMax : "";
+    const exactAmt = rule
+      ? (rule.amountExact != null ? rule.amountExact : (rule.amountMin != null ? rule.amountMin : ""))
+      : "";
+    document.getElementById("ruleEditAmt").value = exactAmt;
 
     // Populate category select
     const catSel = document.getElementById("ruleEditCategory");
@@ -509,8 +513,7 @@ const App = (() => {
     const name = document.getElementById("ruleEditName").value.trim();
     const keywordsStr = document.getElementById("ruleEditKeywords").value.trim();
     const keywords = keywordsStr ? keywordsStr.split(",").map(k => k.trim()).filter(Boolean) : [];
-    const minAmt = document.getElementById("ruleEditMinAmt").value;
-    const maxAmt = document.getElementById("ruleEditMaxAmt").value;
+    const exactAmt = document.getElementById("ruleEditAmt").value;
     const category = document.getElementById("ruleEditCategory").value;
     const typeIsDebit = document.getElementById("ruleEditTypeDebit").classList.contains("active");
     const isInvalid = document.getElementById("ruleEditInvalid").classList.contains("active");
@@ -521,8 +524,7 @@ const App = (() => {
     const ruleData = {
       name,
       keywords,
-      amountMin: minAmt !== "" ? parseFloat(minAmt) : null,
-      amountMax: maxAmt !== "" ? parseFloat(maxAmt) : null,
+      amountExact: exactAmt !== "" ? parseFloat(exactAmt) : null,
       setCategory: category,
       setType: typeIsDebit ? "debit" : "credit",
       setInvalid: isInvalid,

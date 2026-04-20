@@ -699,7 +699,7 @@
         <div class="rules-modal-sticky">
           <div class="modal-header">
             <h2>📐 Classification Rules</h2>
-            <button class="modal-close" id="btnCloseRules">✕</button>
+            <button class="modal-close" id="btnCloseRules"><span>✕</span> Close</button>
           </div>
           <div style="padding: 0 16px 12px; display: flex; gap: 8px">
             <button type="button" class="btn-primary" id="btnAddRule" style="flex: 1; font-size: 13px">
@@ -725,7 +725,7 @@
         <div class="modal-handle"></div>
         <div class="modal-header">
           <h2 id="ruleEditorTitle">New Rule</h2>
-          <button class="modal-close" id="btnCloseRuleEdit">✕</button>
+          <button class="modal-close" id="btnCloseRuleEdit"><span>✕</span> Close</button>
         </div>
         <div class="modal-body" style="padding: 0 16px 16px">
           <input type="hidden" id="ruleEditId" />
@@ -737,11 +737,8 @@
           <textarea class="form-input" id="ruleEditKeywords" placeholder="e.g. swiggy, debited" rows="3" style="resize: vertical; font-family: inherit"></textarea>
           <div id="ruleKeywordSuggestions" class="keyword-suggestions"></div>
 
-          <label class="form-label" style="margin-top: 12px">Amount Range <span style="font-size: 11px; color: var(--text-muted)">(optional)</span></label>
-          <div style="display: flex; gap: 8px">
-            <input type="number" class="form-input" id="ruleEditMinAmt" placeholder="Min" style="flex: 1" />
-            <input type="number" class="form-input" id="ruleEditMaxAmt" placeholder="Max" style="flex: 1" />
-          </div>
+          <label class="form-label" style="margin-top: 12px">Exact Amount <span style="font-size: 11px; color: var(--text-muted)">(optional)</span></label>
+          <input type="number" class="form-input" id="ruleEditAmt" placeholder="e.g. 499" />
 
           <label class="form-label" style="margin-top: 12px">Category</label>
           <select class="form-select" id="ruleEditCategory"></select>

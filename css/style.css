@@ -1699,6 +1699,33 @@ body {
 
 .export-btn .export-icon { font-size: 24px; }
 
+/* ─── Modal Header & Close ─── */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 12px;
+}
+.modal-header h2 { margin: 0; font-size: 18px; font-weight: 700; }
+
+.modal-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  background: rgba(255,255,255,0.06);
+  color: var(--text-secondary, #aaa);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.modal-close:active { background: rgba(255,255,255,0.12); color: var(--text-primary, #fff); }
+.modal-close span { font-size: 14px; line-height: 1; }
+
 /* ─── Rules ─── */
 .rules-list { display: flex; flex-direction: column; gap: 8px; }
 
