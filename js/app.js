@@ -830,10 +830,15 @@ const App = (() => {
           skippedFromDelta > 0
             ? ` (${skippedFromDelta} skipped — already in this file)`
             : "";
-        showToast(
-          `${added} added, ${skipped} duplicates, ${failed} failed${deltaHint}`,
-          added > 0 ? "success" : "info",
-        );
+        const today = new Date().toDateString();
+        const lastImportToast = localStorage.getItem("lastImportToastDay");
+        if (lastImportToast !== today) {
+          localStorage.setItem("lastImportToastDay", today);
+          showToast(
+            `${added} added, ${skipped} duplicates, ${failed} failed${deltaHint}`,
+            added > 0 ? "success" : "info",
+          );
+        }
 
       } catch (err) {
         ErrorLogger.log("file_import_error", {
