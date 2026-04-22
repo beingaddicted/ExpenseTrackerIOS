@@ -173,18 +173,19 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .overlay(alignment: .bottom) {
+        .overlay(alignment: .top) {
             if let msg = syncToast {
                 Text(msg)
                     .font(.subheadline)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
-                    .padding(.bottom, 90)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .onTapGesture { syncToast = nil }
+                    .fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity)
+                    .background(Theme.green.opacity(0.95))
+                    .foregroundStyle(.white)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .onTapGesture { withAnimation { syncToast = nil } }
             }
         }
         .animation(.spring(duration: 0.4), value: syncToast)
@@ -204,9 +205,16 @@ struct ContentView: View {
         let defaults = UserDefaults.standard
         guard let date = defaults.object(forKey: "lastSyncDate") as? Date,
               Date().timeIntervalSince(date) < 30 else { return }
+        // Only show once per calendar day
+        if let lastShown = defaults.object(forKey: "lastSyncToastDay") as? Date,
+           Calendar.current.isDateInToday(lastShown) {
+            defaults.removeObject(forKey: "lastSyncDate")
+            return
+        }
         let added = defaults.integer(forKey: "lastSyncAdded")
         let skipped = defaults.integer(forKey: "lastSyncSkipped")
         defaults.removeObject(forKey: "lastSyncDate")
+        defaults.set(Date(), forKey: "lastSyncToastDay")
         let msg = added > 0
             ? "✅ \(added) new transaction\(added == 1 ? "" : "s") imported"
             : "✅ All caught up · \(skipped) already seen"
