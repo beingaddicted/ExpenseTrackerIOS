@@ -162,6 +162,11 @@ const App = (() => {
     restoreFilterPreference();
     populateCategorySelect();
     render();
+    consumeSharedImport();
+    if (consumeShortcutCallback() && pendingShortcutPick) {
+      pendingShortcutPick = false;
+      setTimeout(() => document.getElementById("btnLoadFile").click(), 600);
+    }
     loadVersion();
     if (location.protocol !== "file:") {
       registerSW();
@@ -850,6 +855,57 @@ const App = (() => {
       }
     };
     reader.readAsText(file);
+  }
+
+  // Web Share Target: the Service Worker stashed a POSTed file under the
+  // SHARE_CACHE and redirected here with ?share-target=1. Pull it out and
+  // run it through the same handler the file picker uses — no taps needed.
+  async function consumeSharedImport() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("share-target") !== "1") return false;
+    try {
+      const stashURL = new URL("__shared-incoming", document.baseURI).href;
+      const res = await fetch(stashURL);
+      if (res && res.ok) {
+        const blob = await res.blob();
+        const filename =
+          res.headers.get("X-Share-Filename") || "shared.json";
+        const file = new File([blob], filename, {
+          type: blob.type || "application/json",
+        });
+        handleFileImport(file);
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: "CLEAR_SHARED",
+          });
+        }
+      } else {
+        showToast("No shared file found", "info");
+      }
+    } catch (e) {
+      showToast("Couldn't read shared file", "error");
+    }
+    history.replaceState({}, "", window.location.pathname);
+    return true;
+  }
+
+  // x-callback-url return from the iOS Shortcut. On success we auto-prompt
+  // the file picker so the user only needs one confirming tap to ingest the
+  // file the shortcut just wrote to iCloud Drive.
+  // Returns true if a callback was detected (regardless of outcome).
+  let pendingShortcutPick = false;
+  function consumeShortcutCallback() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("from") !== "shortcut") return false;
+    if (params.get("err")) {
+      showToast("Shortcut returned an error", "error");
+    } else if (params.get("cancel")) {
+      // user canceled — silent
+    } else {
+      pendingShortcutPick = true;
+    }
+    history.replaceState({}, "", window.location.pathname);
+    return true;
   }
 
   // ─── CSV Import Helpers ───
@@ -2090,19 +2146,45 @@ const App = (() => {
       .getElementById("btnParseSMS")
       .addEventListener("click", () => openModal("modalParse"));
 
-    // Sync Messages — trigger iOS Shortcut, auto-import on return
+    // Sync Messages — trigger iOS Shortcut via x-callback-url. On success
+    // the PWA auto-prompts the file picker so ingest takes one tap. On
+    // cancel/error we stay quiet. If no callback fires we still prompt the
+    // picker on resume as a fallback.
     let syncPending = false;
     document
       .getElementById("btnSyncSMS")
       .addEventListener("click", () => {
         syncPending = true;
         showToast("Running Shortcut…", "info");
-        window.location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent("Extract Sms Using Script");
+        const cb =
+          window.location.origin +
+          window.location.pathname +
+          "?from=shortcut";
+        const url =
+          "shortcuts://x-callback-url/run-shortcut" +
+          "?name=" +
+          encodeURIComponent("Extract Sms Using Script") +
+          "&x-success=" +
+          encodeURIComponent(cb) +
+          "&x-error=" +
+          encodeURIComponent(cb + "&err=1") +
+          "&x-cancel=" +
+          encodeURIComponent(cb + "&cancel=1");
+        window.location.href = url;
       });
 
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && syncPending) {
-        syncPending = false;
+      if (document.visibilityState !== "visible" || !syncPending) return;
+      syncPending = false;
+      // x-callback-url tells us the shortcut's outcome: only auto-prompt the
+      // picker on success. If no callback came through (e.g. user swiped
+      // away mid-run), fall back to the picker prompt anyway.
+      if (consumeShortcutCallback()) {
+        if (pendingShortcutPick) {
+          pendingShortcutPick = false;
+          setTimeout(() => triggerFileImport(), 600);
+        }
+      } else {
         setTimeout(() => triggerFileImport(), 600);
       }
     });

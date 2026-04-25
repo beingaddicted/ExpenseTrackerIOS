@@ -1,5 +1,12 @@
-const CACHE_NAME = "expense-tracker-v11";
+const CACHE_NAME = "expense-tracker-v12";
 const VERSION_URL = "./version.json";
+
+// Web Share Target stash — the POSTed file is parked here, then served back
+// to the page at the same URL on the next navigation.
+const SHARE_CACHE = "expense-tracker-share-v1";
+function shareKeyURL() {
+  return new URL("__shared-incoming", self.registration.scope).href;
+}
 
 // Build asset list relative to service worker scope
 const ASSETS = [
@@ -79,6 +86,57 @@ async function checkForUpdate() {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
+  // Web Share Target: a shortcut/app shared a file to the PWA. The platform
+  // POSTs multipart form data to our share_target action (./index.html).
+  // Pull the file out, stash it in a cache, and redirect into the app with a
+  // marker so the page knows to fetch the stash and ingest it.
+  const shareActionURL = new URL("index.html", self.registration.scope).href;
+  if (
+    event.request.method === "POST" &&
+    url.origin === self.location.origin &&
+    url.href.split("?")[0] === shareActionURL
+  ) {
+    event.respondWith(
+      (async () => {
+        try {
+          const fd = await event.request.formData();
+          const file =
+            fd.getAll("file").find((v) => v instanceof File) || null;
+          if (file) {
+            const cache = await caches.open(SHARE_CACHE);
+            await cache.put(
+              shareKeyURL(),
+              new Response(file, {
+                headers: {
+                  "Content-Type":
+                    file.type || "application/octet-stream",
+                  "X-Share-Filename": file.name || "shared.json",
+                },
+              }),
+            );
+          }
+        } catch (_) {}
+        const target = new URL(
+          "index.html?share-target=1",
+          self.registration.scope,
+        );
+        return Response.redirect(target.href, 303);
+      })(),
+    );
+    return;
+  }
+
+  // Serve the stashed shared file when the page asks for it.
+  if (url.href === shareKeyURL()) {
+    event.respondWith(
+      caches
+        .open(SHARE_CACHE)
+        .then((c) => c.match(shareKeyURL()))
+        .then((r) => r || new Response(null, { status: 404 })),
+    );
+    return;
+  }
+
   // On navigation requests (page loads), check for updates in background
   if (event.request.mode === "navigate") {
     event.respondWith(
@@ -129,5 +187,11 @@ self.addEventListener("message", (event) => {
         });
       }
     });
+  }
+  if (event.data && event.data.type === "CLEAR_SHARED") {
+    caches
+      .open(SHARE_CACHE)
+      .then((c) => c.delete(shareKeyURL()))
+      .catch(() => {});
   }
 });
