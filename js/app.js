@@ -162,6 +162,7 @@ const App = (() => {
     restoreFilterPreference();
     populateCategorySelect();
     render();
+    consumeSharedImport();
     if (consumeShortcutCallback() && pendingShortcutPick) {
       pendingShortcutPick = false;
       setTimeout(() => document.getElementById("btnLoadFile").click(), 600);
@@ -854,6 +855,38 @@ const App = (() => {
       }
     };
     reader.readAsText(file);
+  }
+
+  // Web Share Target: the Service Worker stashed a POSTed file under the
+  // SHARE_CACHE and redirected here with ?share-target=1. Pull it out and
+  // run it through the same handler the file picker uses — no taps needed.
+  async function consumeSharedImport() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("share-target") !== "1") return false;
+    try {
+      const stashURL = new URL("__shared-incoming", document.baseURI).href;
+      const res = await fetch(stashURL);
+      if (res && res.ok) {
+        const blob = await res.blob();
+        const filename =
+          res.headers.get("X-Share-Filename") || "shared.json";
+        const file = new File([blob], filename, {
+          type: blob.type || "application/json",
+        });
+        handleFileImport(file);
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: "CLEAR_SHARED",
+          });
+        }
+      } else {
+        showToast("No shared file found", "info");
+      }
+    } catch (e) {
+      showToast("Couldn't read shared file", "error");
+    }
+    history.replaceState({}, "", window.location.pathname);
+    return true;
   }
 
   // x-callback-url return from the iOS Shortcut. On success we auto-prompt
