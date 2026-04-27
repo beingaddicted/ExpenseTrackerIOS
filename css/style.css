@@ -851,6 +851,12 @@ body {
     will-change: transform;
 }
 
+/* Avoid the :active scale clobbering the inline translateX during a swipe
+   — `transform` is a single property, so the two rules would fight. */
+.txn-swipe-container .txn-card:active {
+    transform: none;
+}
+
 /* ─── Inline Category Label ─── */
 .txn-cat-label {
     color: var(--text-muted);

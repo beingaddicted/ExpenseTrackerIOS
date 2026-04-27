@@ -1243,19 +1243,26 @@ const App = (() => {
         const dx = e.touches[0].clientX - startX;
         const dy = e.touches[0].clientY - startY;
 
-        // Decide direction once after 10px of movement
-        if (!decided && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+        // Decide direction at small movement so the slide engages quickly.
+        // Only lock to vertical when the motion is *clearly* vertical
+        // (>1.5x more vertical than horizontal); otherwise prefer the swipe
+        // gesture so casual diagonal flicks still reveal the action.
+        if (!decided && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
           decided = true;
-          if (Math.abs(dy) > Math.abs(dx)) {
+          if (Math.abs(dy) > Math.abs(dx) * 1.5) {
             prevented = true;
             return;
           }
         }
         if (!decided) return;
 
-        // Prevent vertical scroll once we're swiping horizontally
         e.preventDefault();
-        if (!swiping) wrapper.classList.add("swiping");
+        if (!swiping) {
+          wrapper.classList.add("swiping");
+          // Suppress the trailing click so showDetail doesn't fire when the
+          // user lifts their finger after a real swipe.
+          card.dataset.swiped = "1";
+        }
         swiping = true;
         currentX = Math.min(0, dx);
         card.style.transform = `translateX(${currentX}px)`;
@@ -1263,7 +1270,6 @@ const App = (() => {
 
       wrapper.addEventListener("touchend", () => {
         card.style.transition = "transform 0.25s ease";
-        if (swiping) card.dataset.swiped = "1";
         if (currentX < -THRESHOLD) {
           card.style.transform = `translateX(-100%)`;
           const id = wrapper.dataset.id;
