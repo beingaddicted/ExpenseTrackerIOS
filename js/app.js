@@ -1184,7 +1184,7 @@ const App = (() => {
         const invalidCls = t.invalid ? " txn-invalid" : "";
         const swipeLabel = t.invalid ? "Mark Valid" : "Mark Invalid";
         const swipeActionCls = t.invalid ? "swipe-action-valid" : "swipe-action-invalid";
-        html += `<div class="txn-swipe-container" data-id="${sanitize(t.id)}">
+        html += `<div class="txn-swipe-container" data-id="${sanitize(t.id)}" data-invalid="${t.invalid ? "1" : "0"}">
           <div class="swipe-action ${swipeActionCls}">${swipeLabel}</div>
           <div class="txn-card${invalidCls}" data-id="${sanitize(t.id)}">
           <div class="txn-icon ${css}">${icon}</div>
@@ -1226,6 +1226,10 @@ const App = (() => {
     const THRESHOLD = 60;
     container.querySelectorAll(".txn-swipe-container").forEach((wrapper) => {
       const card = wrapper.querySelector(".txn-card");
+      // Valid txns swipe LEFT (negative dx) to be marked invalid.
+      // Invalid txns swipe RIGHT (positive dx) to be marked valid.
+      const isInvalid = wrapper.dataset.invalid === "1";
+      const dir = isInvalid ? 1 : -1;
       let startX = 0, startY = 0, currentX = 0, swiping = false, prevented = false, decided = false;
 
       wrapper.addEventListener("touchstart", (e) => {
@@ -1244,12 +1248,13 @@ const App = (() => {
         const dy = e.touches[0].clientY - startY;
 
         // Decide direction at small movement so the slide engages quickly.
-        // Only lock to vertical when the motion is *clearly* vertical
-        // (>1.5x more vertical than horizontal); otherwise prefer the swipe
-        // gesture so casual diagonal flicks still reveal the action.
+        // Lock to vertical when motion is clearly vertical (>1.5x dx) OR
+        // when the horizontal motion is in the wrong direction for this
+        // txn's state (e.g. valid txn dragged right — nothing to reveal).
         if (!decided && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
           decided = true;
-          if (Math.abs(dy) > Math.abs(dx) * 1.5) {
+          const wrongWay = dir > 0 ? dx < 0 : dx > 0;
+          if (Math.abs(dy) > Math.abs(dx) * 1.5 || wrongWay) {
             prevented = true;
             return;
           }
@@ -1264,14 +1269,16 @@ const App = (() => {
           card.dataset.swiped = "1";
         }
         swiping = true;
-        currentX = Math.min(0, dx);
+        // Clamp to the allowed direction (left for valid, right for invalid)
+        currentX = dir > 0 ? Math.max(0, dx) : Math.min(0, dx);
         card.style.transform = `translateX(${currentX}px)`;
       }, { passive: false });
 
       wrapper.addEventListener("touchend", () => {
         card.style.transition = "transform 0.25s ease";
-        if (currentX < -THRESHOLD) {
-          card.style.transform = `translateX(-100%)`;
+        const past = dir > 0 ? currentX > THRESHOLD : currentX < -THRESHOLD;
+        if (past) {
+          card.style.transform = `translateX(${dir > 0 ? "100%" : "-100%"})`;
           const id = wrapper.dataset.id;
           const txn = transactions.find((t) => t.id === id);
           if (txn) {
