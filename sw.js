@@ -1,4 +1,4 @@
-const CACHE_NAME = "expense-tracker-v13";
+const CACHE_NAME = "expense-tracker-v14";
 const VERSION_URL = "./version.json";
 
 // Web Share Target stash — the POSTed file is parked here, then served back
