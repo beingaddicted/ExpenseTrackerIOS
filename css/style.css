@@ -817,13 +817,10 @@ body {
 .swipe-action {
     position: absolute;
     top: 0;
-    right: 0;
     bottom: 0;
     width: 100%;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    padding-right: 20px;
     font-size: 13px;
     font-weight: 600;
     color: #fff;
@@ -836,11 +833,19 @@ body {
     opacity: 1;
 }
 
+/* Mark Invalid: revealed by a right-to-left swipe → action lives on the right */
 .swipe-action-invalid {
+    right: 0;
+    justify-content: flex-end;
+    padding-right: 20px;
     background: var(--red, #ef4444);
 }
 
+/* Mark Valid: revealed by a left-to-right swipe → action lives on the left */
 .swipe-action-valid {
+    left: 0;
+    justify-content: flex-start;
+    padding-left: 20px;
     background: var(--green, #22c55e);
 }
 
