@@ -11,6 +11,7 @@ struct RuleEditorView: View {
     @State private var category: String
     @State private var type: String
     @State private var markInvalid: Bool
+    @State private var suggestedKeywords: [String] = []
 
     init(rule: ClassificationRule?, onSave: @escaping (ClassificationRule) -> Void) {
         self.initialRule = rule
@@ -33,10 +34,36 @@ struct RuleEditorView: View {
                 Section {
                     TextField("e.g. swiggy, debited", text: $keywords, axis: .vertical)
                         .lineLimit(2...4)
+                    if !suggestedKeywords.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Possible keywords")
+                                .font(.caption2)
+                                .foregroundStyle(Theme.textMuted)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(suggestedKeywords, id: \.self) { suggestion in
+                                        Button {
+                                            addKeywordSuggestion(suggestion)
+                                        } label: {
+                                            Text(suggestion)
+                                                .font(.caption)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 6)
+                                                .background(Theme.accentPrimary.opacity(0.15))
+                                                .foregroundStyle(Theme.accentLight)
+                                                .clipShape(Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
                 } header: {
                     Text("Keywords")
                 } footer: {
-                    Text("Comma-separated. All keywords must appear in the SMS (case-insensitive).")
+                    Text("Comma-separated. All keywords must appear in the SMS (case-insensitive). Tap a suggestion to auto-add it.")
                         .font(.caption2)
                 }
 
@@ -70,6 +97,11 @@ struct RuleEditorView: View {
             }
             .navigationTitle(initialRule == nil ? "New Rule" : "Edit Rule")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear(perform: recomputeSuggestions)
+            .onChange(of: name) { _, _ in recomputeSuggestions() }
+            .onChange(of: category) { _, _ in recomputeSuggestions() }
+            .onChange(of: type) { _, _ in recomputeSuggestions() }
+            .onChange(of: keywords) { _, _ in recomputeSuggestions() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
@@ -118,5 +150,53 @@ struct RuleEditorView: View {
         )
         onSave(rule)
         dismiss()
+    }
+
+    private func recomputeSuggestions() {
+        let existing = Set(parsedKeywords.map { $0.lowercased() })
+        var pool: [String] = []
+
+        let nameTokens = name
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 3 }
+        pool.append(contentsOf: nameTokens)
+
+        let categoryTokens = category
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 3 && $0 != "other" }
+        pool.append(contentsOf: categoryTokens)
+
+        if type == "debit" {
+            pool.append(contentsOf: ["debited", "paid", "upi", "purchase", "spent"])
+        } else {
+            pool.append(contentsOf: ["credited", "received", "salary", "refund", "deposit"])
+        }
+
+        let frequent = RulesStore.load()
+            .flatMap(\.keywords)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { $0.count >= 3 }
+        pool.append(contentsOf: frequent)
+
+        var unique: [String] = []
+        var seen = Set<String>()
+        for item in pool {
+            guard !existing.contains(item) else { continue }
+            guard seen.insert(item).inserted else { continue }
+            unique.append(item)
+            if unique.count == 5 { break }
+        }
+        suggestedKeywords = unique
+    }
+
+    private func addKeywordSuggestion(_ suggestion: String) {
+        let current = parsedKeywords
+        if current.map({ $0.lowercased() }).contains(suggestion.lowercased()) {
+            return
+        }
+        let updated = current + [suggestion]
+        keywords = updated.joined(separator: ", ")
     }
 }
