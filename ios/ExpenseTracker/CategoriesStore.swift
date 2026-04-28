@@ -15,7 +15,7 @@ enum CategoriesStore {
     ]
 
     static func custom() -> [String] {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = AppGroup.defaults.data(forKey: key),
               let arr = try? JSONDecoder().decode([String].self, from: data)
         else { return [] }
         return arr
@@ -23,7 +23,7 @@ enum CategoriesStore {
 
     static func saveCustom(_ list: [String]) {
         if let data = try? JSONEncoder().encode(list) {
-            UserDefaults.standard.set(data, forKey: key)
+            AppGroup.defaults.set(data, forKey: key)
         }
     }
 

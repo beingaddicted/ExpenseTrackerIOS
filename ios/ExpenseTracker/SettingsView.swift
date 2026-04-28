@@ -213,7 +213,7 @@ struct SettingsView: View {
         // so a fresh import starts from the user's newly chosen date.
         ImportStartDateStore.reset()
         hasSelectedImportStartDate = false
-        UserDefaults.standard.removeObject(forKey: "expense_tracker_ios_delta")
+        AppGroup.defaults.removeObject(forKey: "expense_tracker_ios_delta")
         dismiss()
     }
 

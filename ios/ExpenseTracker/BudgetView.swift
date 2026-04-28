@@ -7,7 +7,7 @@ enum BudgetStore {
     static let key = "expense_tracker_budgets"
 
     static func load() -> [String: Double] {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = AppGroup.defaults.data(forKey: key),
               let dict = try? JSONDecoder().decode([String: Double].self, from: data)
         else { return [:] }
         return dict
@@ -15,7 +15,7 @@ enum BudgetStore {
 
     static func save(_ budgets: [String: Double]) {
         if let data = try? JSONEncoder().encode(budgets) {
-            UserDefaults.standard.set(data, forKey: key)
+            AppGroup.defaults.set(data, forKey: key)
         }
     }
 }

@@ -40,7 +40,7 @@ enum RulesStore {
     private static let key = "expense_tracker_rules"
 
     static func load() -> [ClassificationRule] {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = AppGroup.defaults.data(forKey: key),
               let rules = try? JSONDecoder().decode([ClassificationRule].self, from: data)
         else { return [] }
         return rules
@@ -48,7 +48,7 @@ enum RulesStore {
 
     static func save(_ rules: [ClassificationRule]) {
         if let data = try? JSONEncoder().encode(rules) {
-            UserDefaults.standard.set(data, forKey: key)
+            AppGroup.defaults.set(data, forKey: key)
         }
     }
 

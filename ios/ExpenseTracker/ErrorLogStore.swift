@@ -24,7 +24,7 @@ enum ErrorLogStore {
     private static let maxEntries = 200
 
     static func load() -> [ErrorLogEntry] {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = AppGroup.defaults.data(forKey: key),
               let entries = try? JSONDecoder().decode([ErrorLogEntry].self, from: data)
         else { return [] }
         return entries
@@ -32,7 +32,7 @@ enum ErrorLogStore {
 
     static func save(_ entries: [ErrorLogEntry]) {
         if let data = try? JSONEncoder().encode(entries) {
-            UserDefaults.standard.set(data, forKey: key)
+            AppGroup.defaults.set(data, forKey: key)
         }
     }
 
@@ -46,6 +46,6 @@ enum ErrorLogStore {
     }
 
     static func clear() {
-        UserDefaults.standard.removeObject(forKey: key)
+        AppGroup.defaults.removeObject(forKey: key)
     }
 }

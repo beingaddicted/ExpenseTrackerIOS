@@ -44,6 +44,9 @@
 		C10000000000000000000034 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000034 /* MainTabView.swift */; };
 		C10000000000000000000035 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000035 /* DashboardView.swift */; };
 		C10000000000000000000036 /* ParseSMSView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000036 /* ParseSMSView.swift */; };
+		C10000000000000000000037 /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000037 /* AppGroup.swift */; };
+		C10000000000000000000038 /* ImportCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000038 /* ImportCore.swift */; };
+		C10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -84,6 +87,10 @@
 		B10000000000000000000034 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		B10000000000000000000035 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		B10000000000000000000036 /* ParseSMSView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParseSMSView.swift; sourceTree = "<group>"; };
+		B10000000000000000000037 /* AppGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/AppGroup.swift; sourceTree = "<group>"; };
+		B10000000000000000000038 /* ImportCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/ImportCore.swift; sourceTree = "<group>"; };
+		B10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition */ = {isa = PBXFileReference; lastKnownFileType = file.intentdefinition; path = ExpenseTrackerIntents.intentdefinition; sourceTree = "<group>"; };
+		B10000000000000000000041 /* ExpenseTracker.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ExpenseTracker.entitlements; sourceTree = "<group>"; };
 		B20000000000000000000001 /* ExpenseTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ExpenseTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -150,6 +157,10 @@
 				B10000000000000000000034 /* MainTabView.swift */,
 				B10000000000000000000035 /* DashboardView.swift */,
 				B10000000000000000000036 /* ParseSMSView.swift */,
+				B10000000000000000000037 /* AppGroup.swift */,
+				B10000000000000000000038 /* ImportCore.swift */,
+				B10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition */,
+				B10000000000000000000041 /* ExpenseTracker.entitlements */,
 				B10000000000000000000040 /* Assets.xcassets */,
 				1A0000000000000000000004 /* Intents */,
 			);
@@ -271,6 +282,9 @@
 				C10000000000000000000034 /* MainTabView.swift in Sources */,
 				C10000000000000000000035 /* DashboardView.swift in Sources */,
 				C10000000000000000000036 /* ParseSMSView.swift in Sources */,
+				C10000000000000000000037 /* AppGroup.swift in Sources */,
+				C10000000000000000000038 /* ImportCore.swift in Sources */,
+				C10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -305,6 +319,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ExpenseTracker/ExpenseTracker.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SRTZ8MBHSB;
@@ -333,6 +348,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ExpenseTracker/ExpenseTracker.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SRTZ8MBHSB;
