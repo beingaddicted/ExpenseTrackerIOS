@@ -23,7 +23,6 @@ struct SettingsView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage(ImportStartDateStore.selectedKey) private var hasSelectedImportStartDate = false
     @AppStorage("hasSeenFirstRunHeadsUp") private var hasSeenFirstRunHeadsUp = false
-    @AppStorage("hasSetupShortcut") private var hasSetupShortcut = false
     @AppStorage("iCloudAutoSyncEnabled") private var iCloudAutoSyncEnabled = false
     @AppStorage("iCloudSuppressAutoSync") private var iCloudSuppressAutoSync = false
     @AppStorage("iCloudNeedsRestorePrompt") private var iCloudNeedsRestorePrompt = false
@@ -31,26 +30,17 @@ struct SettingsView: View {
     @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
     @AppStorage("compactMode") private var compactMode = false
 
-    private let shortcutURL = "https://www.icloud.com/shortcuts/dca0bcfd90524403bfdf8327c52cb1f0"
-
     var body: some View {
         NavigationStack {
             List {
-                Section("Import") {
+                Section("Set Up") {
                     Button {
-                        installShortcut()
-                    } label: {
-                        Label("Install Bank SMS Shortcut", systemImage: "plus.circle")
-                    }
-                    .foregroundStyle(Theme.accentLight)
-
-                    Button {
-                        ShortcutLauncher.run(named: shortcutName)
+                        hasCompletedOnboarding = false
                         dismiss()
                     } label: {
-                        Label("Sync SMS", systemImage: "play.circle")
+                        Label("Set Up Guide", systemImage: "arrow.counterclockwise")
                     }
-                    .foregroundStyle(Theme.green)
+                    .foregroundStyle(Theme.accentLight)
 
                     HStack {
                         Label("Shortcut Name", systemImage: "flowchart")
@@ -60,14 +50,6 @@ struct SettingsView: View {
                             .foregroundStyle(Theme.accentLight)
                             .frame(maxWidth: 160)
                     }
-
-                    Button {
-                        hasCompletedOnboarding = false
-                        dismiss()
-                    } label: {
-                        Label("Set Up Guide", systemImage: "arrow.counterclockwise")
-                    }
-                    .foregroundStyle(Theme.accentLight)
                 }
 
                 Section("Data") {
@@ -309,18 +291,6 @@ struct SettingsView: View {
         }
 
         dismiss()
-    }
-
-    private func installShortcut() {
-        // Open the gallery link directly. `shortcuts://import-shortcut?url=` expects a URL
-        // that serves a raw .shortcut file; iCloud gallery pages are HTML, which triggers
-        // “couldn’t be opened because it isn’t in the correct format.”
-        guard let url = URL(string: shortcutURL) else { return }
-        UIApplication.shared.open(url) { success in
-            if success {
-                hasSetupShortcut = true
-            }
-        }
     }
 
     private func handleFileImport(_ result: Result<URL, Error>) {

@@ -20,11 +20,12 @@ enum ICloudSyncService {
         var errorDescription: String? {
             switch self {
             case .iCloudUnavailable:
-                return "iCloud Drive is unavailable on this device."
+                return "iCloud Drive is unavailable for this app right now. Please check iCloud login, iCloud Drive, and app iCloud capability."
             }
         }
     }
 
+    private static let containerIdentifier = "iCloud.com.rajesh.expensetracker.ios"
     private static let fileName = "expense-tracker-transactions.json"
 
     @MainActor
@@ -92,7 +93,9 @@ enum ICloudSyncService {
     }
 
     private static func iCloudFileURL() throws -> URL {
-        guard let container = FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
+        let container = FileManager.default.url(forUbiquityContainerIdentifier: containerIdentifier)
+            ?? FileManager.default.url(forUbiquityContainerIdentifier: nil)
+        guard let container else {
             throw SyncError.iCloudUnavailable
         }
 

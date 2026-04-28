@@ -75,8 +75,8 @@ struct OnboardingView: View {
                             .buttonStyle(.plain)
                             .padding(.top, 4)
                         }
-                        stepRow(icon: "arrow.down.doc", number: "2", title: "Tap Sync SMS for new messages",
-                                desc: "Sync SMS brings only the new bank SMS into the app.")
+                        stepRow(icon: "arrow.down.doc", number: "2", title: "Restore iCloud backup, then Sync SMS",
+                                desc: "If you already have an iCloud backup, import it first. Then run Sync SMS to bring only new bank SMS into the app.")
                         stepRow(icon: "rectangle.and.hand.point.up.left", number: "3", title: "Swipe left to set Valid/Invalid",
                                 desc: "On any transaction, swipe left to set Valid/Invalid. Invalid transactions remain visible in the All tab.")
                         stepRow(icon: "ruler", number: "4", title: "Use Classification Rules",
@@ -164,7 +164,7 @@ struct OnboardingView: View {
             Button("Set Up Shortcut") { installShortcut() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("You can always add the Shortcut later from Settings → Import.")
+            Text("You can always add the Shortcut later from Settings → Set Up.")
         }
     }
 
