@@ -35,6 +35,10 @@ struct ImportView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.accentPrimary.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Theme.border, lineWidth: 1)
+                    )
                     .padding(.horizontal)
 
                     // Paste area
@@ -91,10 +95,10 @@ struct ImportView: View {
                                 }
                                 Text("Import Pasted SMS")
                             }
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding()
+                            .frame(minHeight: 44)
+                            .padding(.vertical, 6)
                             .background(Theme.accentPrimary)
                             .foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -108,10 +112,10 @@ struct ImportView: View {
                                 Image(systemName: "folder")
                                 Text("Import from File")
                             }
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding()
+                            .frame(minHeight: 44)
+                            .padding(.vertical, 6)
                             .background(Color.clear)
                             .foregroundStyle(Theme.accentLight)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -133,6 +137,10 @@ struct ImportView: View {
                             .frame(maxWidth: .infinity)
                             .background(Theme.cardBg)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Theme.border, lineWidth: 1)
+                            )
                             .padding(.horizontal)
                     }
                 }

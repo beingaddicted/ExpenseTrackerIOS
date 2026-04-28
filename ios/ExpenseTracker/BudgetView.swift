@@ -163,7 +163,6 @@ struct BudgetView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .onAppear {
             budgets = BudgetStore.load()
             recomputeMonthSpendByCategory()
@@ -258,6 +257,5 @@ struct BudgetEditSheet: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 }

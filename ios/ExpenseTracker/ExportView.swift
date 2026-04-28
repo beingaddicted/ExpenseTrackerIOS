@@ -26,6 +26,10 @@ struct ExportView: View {
                 .padding()
                 .background(Theme.cardBg)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
                 .padding(.horizontal)
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -37,6 +41,10 @@ struct ExportView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.cardBg)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
                 .padding(.horizontal)
 
                 Button {
@@ -46,10 +54,10 @@ struct ExportView: View {
                         Image(systemName: "square.and.arrow.up")
                         Text("Export & Share")
                     }
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .frame(minHeight: 44)
+                    .padding(.vertical, 6)
                     .background(Theme.accentPrimary)
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 12))

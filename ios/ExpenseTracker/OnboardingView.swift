@@ -93,7 +93,6 @@ struct OnboardingView: View {
                 .animation(.spring(duration: 0.4), value: shortcutInstalled)
             }
         }
-        .preferredColorScheme(.dark)
         .confirmationDialog(
             "Skip Shortcut Setup?",
             isPresented: $showSkipConfirm,
@@ -151,5 +150,9 @@ struct OnboardingView: View {
         .padding(14)
         .background(Theme.cardBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Theme.border, lineWidth: 1)
+        )
     }
 }

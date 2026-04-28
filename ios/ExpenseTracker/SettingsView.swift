@@ -117,6 +117,15 @@ struct SettingsView: View {
                 }
 
                 Section("Customisation") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("App Theme", systemImage: "circle.lefthalf.filled")
+                        Picker("App Theme", selection: $appTheme) {
+                            Text("Dark").tag("dark")
+                            Text("Light").tag("light")
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
                     VStack(alignment: .leading, spacing: 4) {
                         Toggle(isOn: $compactMode) {
                             Label("Compact Mode", systemImage: "rectangle.compress.vertical")

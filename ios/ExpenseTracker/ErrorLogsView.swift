@@ -59,6 +59,10 @@ struct ErrorLogsView: View {
                     }
                 }
             }
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(.compact)
+            .scrollContentBackground(.hidden)
+            .background(Theme.bgPrimary)
             .navigationTitle("Error Logs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

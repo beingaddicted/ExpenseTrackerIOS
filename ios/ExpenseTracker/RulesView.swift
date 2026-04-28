@@ -18,6 +18,7 @@ struct RulesView: View {
                         showAdd = true
                     } label: {
                         Label("Add Rule", systemImage: "plus.circle")
+                            .font(.subheadline.weight(.semibold))
                     }
                     .foregroundStyle(Theme.accentLight)
 
@@ -29,6 +30,7 @@ struct RulesView: View {
                             : "No transactions matched"
                     } label: {
                         Label("Run All Rules", systemImage: "play.circle")
+                            .font(.subheadline.weight(.semibold))
                     }
                     .foregroundStyle(Theme.green)
                 } footer: {
@@ -60,6 +62,7 @@ struct RulesView: View {
                             } label: {
                                 ruleRow(rule)
                             }
+                            .buttonStyle(.plain)
                         }
                         .onDelete { indexSet in
                             for i in indexSet { RulesStore.delete(id: rules[i].id) }
@@ -68,6 +71,10 @@ struct RulesView: View {
                     }
                 }
             }
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(.compact)
+            .scrollContentBackground(.hidden)
+            .background(Theme.bgPrimary)
             .navigationTitle("Classification Rules")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

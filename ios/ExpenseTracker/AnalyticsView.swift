@@ -129,7 +129,6 @@ struct AnalyticsView: View {
             .navigationTitle("Analytics")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .preferredColorScheme(.dark)
         .onAppear(perform: recomputeAnalyticsData)
         .onChange(of: scope) { _, _ in recomputeAnalyticsData() }
         .onChange(of: selectedMonth) { _, _ in recomputeAnalyticsData() }

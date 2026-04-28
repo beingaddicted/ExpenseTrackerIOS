@@ -111,7 +111,6 @@ struct ImportStartDateView: View {
                 .padding(.top, 40)
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     // MARK: - Subviews

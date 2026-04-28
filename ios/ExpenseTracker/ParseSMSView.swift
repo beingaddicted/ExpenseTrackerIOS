@@ -31,7 +31,7 @@ struct ParseSMSView: View {
                             showBatch = true
                         } label: {
                             Label("Paste many SMS at once", systemImage: "list.bullet.rectangle")
-                                .font(.subheadline)
+                                .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Theme.accentLight)
                         }
                         .padding(.top, 8)
@@ -62,6 +62,10 @@ struct ParseSMSView: View {
                 .padding(10)
                 .background(Theme.cardBg)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
                 .foregroundStyle(Theme.textPrimary)
                 .autocapitalization(.allCharacters)
                 .autocorrectionDisabled()
@@ -79,6 +83,10 @@ struct ParseSMSView: View {
                 .padding(10)
                 .background(Theme.cardBg)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
                 .foregroundStyle(Theme.textPrimary)
         }
     }
@@ -88,10 +96,10 @@ struct ParseSMSView: View {
             parseNow()
         } label: {
             Label("Parse & Preview", systemImage: "wand.and.rays")
-                .font(.subheadline)
-                .fontWeight(.semibold)
+                .font(.subheadline.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .padding()
+                .frame(minHeight: 44)
+                .padding(.vertical, 6)
                 .background(Theme.accentPrimary)
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -129,10 +137,10 @@ struct ParseSMSView: View {
                     confirm(p)
                 } label: {
                     Label("Confirm & Save", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                        .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .padding()
+                        .frame(minHeight: 44)
+                        .padding(.vertical, 6)
                         .background(Theme.green)
                         .foregroundStyle(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -143,6 +151,10 @@ struct ParseSMSView: View {
         .padding(12)
         .background(Theme.cardBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Theme.border, lineWidth: 1)
+        )
     }
 
     private var batchSection: some View {
@@ -156,16 +168,20 @@ struct ParseSMSView: View {
                 .padding(10)
                 .background(Theme.cardBg)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
                 .foregroundStyle(Theme.textPrimary)
 
             Button {
                 runBatch()
             } label: {
                 Label("Parse All", systemImage: "tray.and.arrow.down")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+                    .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .frame(minHeight: 44)
+                    .padding(.vertical, 6)
                     .background(Theme.accentLight)
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -180,6 +196,10 @@ struct ParseSMSView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.cardBg)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Theme.border, lineWidth: 1)
+                    )
             }
         }
         .padding(.top, 8)

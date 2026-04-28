@@ -6,6 +6,7 @@ struct CategoriesView: View {
     @Query private var allRows: [TransactionRecord]
     @State private var customCategories: [String] = []
     @State private var newCategory = ""
+    @State private var categoryCounts: [String: Int] = [:]
 
     var body: some View {
         NavigationStack {
@@ -13,6 +14,7 @@ struct CategoriesView: View {
                 Section {
                     HStack {
                         TextField("New category…", text: $newCategory)
+                            .textFieldStyle(.roundedBorder)
                         Button("Add") {
                             let name = newCategory.trimmingCharacters(in: .whitespaces)
                             guard !name.isEmpty else { return }
@@ -20,8 +22,10 @@ struct CategoriesView: View {
                             newCategory = ""
                             customCategories = CategoriesStore.custom()
                         }
+                        .font(.subheadline.weight(.semibold))
                         .disabled(newCategory.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .foregroundStyle(Theme.accentLight)
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.accentPrimary)
                     }
                 } footer: {
                     Text("Custom categories appear in the dropdowns when adding or editing transactions.")
@@ -37,7 +41,7 @@ struct CategoriesView: View {
                                     .frame(width: 10, height: 10)
                                 Text(cat)
                                 Spacer()
-                                Text("\(allRows.filter { $0.category == cat }.count)")
+                                Text("\(categoryCounts[cat, default: 0])")
                                     .foregroundStyle(Theme.textMuted)
                                     .font(.caption)
                             }
@@ -57,13 +61,17 @@ struct CategoriesView: View {
                                 .frame(width: 10, height: 10)
                             Text(cat)
                             Spacer()
-                            Text("\(allRows.filter { $0.category == cat }.count)")
+                            Text("\(categoryCounts[cat, default: 0])")
                                 .foregroundStyle(Theme.textMuted)
                                 .font(.caption)
                         }
                     }
                 }
             }
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(.compact)
+            .scrollContentBackground(.hidden)
+            .background(Theme.bgPrimary)
             .navigationTitle("Categories")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -72,7 +80,21 @@ struct CategoriesView: View {
                         .foregroundStyle(Theme.accentLight)
                 }
             }
-            .onAppear { customCategories = CategoriesStore.custom() }
+            .onAppear {
+                customCategories = CategoriesStore.custom()
+                recomputeCategoryCounts()
+            }
+            .onChange(of: allRows.count) { _, _ in
+                recomputeCategoryCounts()
+            }
         }
+    }
+
+    private func recomputeCategoryCounts() {
+        var counts: [String: Int] = [:]
+        for row in allRows {
+            counts[row.category, default: 0] += 1
+        }
+        categoryCounts = counts
     }
 }

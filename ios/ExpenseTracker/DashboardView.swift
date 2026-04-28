@@ -434,7 +434,7 @@ struct DashboardView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        .stroke(Theme.border, lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
                 .frame(width: 210)
@@ -452,7 +452,7 @@ struct DashboardView: View {
                     .clipShape(Circle())
                     .overlay(
                         Circle()
-                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                            .stroke(Theme.border, lineWidth: 1)
                     )
                     .shadow(color: .black.opacity(0.14), radius: 10, x: 0, y: 4)
             }
