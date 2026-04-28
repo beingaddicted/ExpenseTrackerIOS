@@ -13,7 +13,6 @@ struct SettingsView: View {
     @State private var showRules = false
     @State private var showCategories = false
     @State private var showErrorLogs = false
-    @State private var showResetStartDate = false
     @State private var rulesResult: String? = nil
     @State private var showContactDeveloperPrompt = false
     @State private var showContactDeveloperMail = false
@@ -22,6 +21,7 @@ struct SettingsView: View {
     @AppStorage("appTheme") private var appTheme = "dark"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage(ImportStartDateStore.selectedKey) private var hasSelectedImportStartDate = false
+    @AppStorage("hasSeenFirstRunHeadsUp") private var hasSeenFirstRunHeadsUp = false
     @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
     @AppStorage("compactMode") private var compactMode = false
 
@@ -56,43 +56,21 @@ struct SettingsView: View {
                     }
 
                     Button {
-                        showImportFile = true
-                    } label: {
-                        Label("Import from File", systemImage: "tray.and.arrow.down")
-                    }
-                    .foregroundStyle(Theme.accentLight)
-
-                    HStack {
-                        Label("Import From", systemImage: "calendar.badge.clock")
-                        Spacer()
-                        Text(ImportStartDateStore.loadString())
-                            .foregroundStyle(Theme.textMuted)
-                            .font(.caption)
-                    }
-
-                    Button {
-                        showResetStartDate = true
-                    } label: {
-                        Label("Reset Import Start Date", systemImage: "arrow.uturn.backward.circle")
-                    }
-                    .foregroundStyle(Theme.accentLight)
-
-                    Button {
                         hasCompletedOnboarding = false
                         dismiss()
                     } label: {
-                        Label("Replay Setup Guide", systemImage: "arrow.counterclockwise")
+                        Label("Set Up Guide", systemImage: "arrow.counterclockwise")
                     }
                     .foregroundStyle(Theme.accentLight)
                 }
 
                 Section("Data") {
-                    HStack {
-                        Label("Total Transactions", systemImage: "doc.text")
-                        Spacer()
-                        Text("\(allRows.count)")
-                            .foregroundStyle(Theme.textMuted)
+                    Button {
+                        showImportFile = true
+                    } label: {
+                        Label("Import from File", systemImage: "tray.and.arrow.down")
                     }
+                    .foregroundStyle(Theme.accentLight)
 
                     Button {
                         let vm = AppViewModel()
@@ -212,16 +190,6 @@ struct SettingsView: View {
             } message: {
                 Text("This will permanently remove all \(allRows.count) transactions. You'll be prompted again for the import start date when you reopen the app.")
             }
-            .alert("Reset Import Start Date?", isPresented: $showResetStartDate) {
-                Button("Reset", role: .destructive) {
-                    ImportStartDateStore.reset()
-                    hasSelectedImportStartDate = false
-                    dismiss()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("You'll be asked again from which date to import bank SMS. Existing transactions are not affected.")
-            }
             .sheet(isPresented: $showExport) { ExportView() }
             .fileImporter(isPresented: $showImportFile, allowedContentTypes: [.json, .plainText, .commaSeparatedText]) { result in
                 handleFileImport(result)
@@ -252,14 +220,12 @@ struct SettingsView: View {
                 Text("This will open an email to support@ojaslive.com and attach your error logs.")
             }
             .alert("Mail Not Available", isPresented: $showMailUnavailableAlert) {
-                Button("Open Mail App") {
-                    if let url = URL(string: "mailto:support@ojaslive.com") {
-                        UIApplication.shared.open(url)
-                    }
+                Button("Open Gmail") {
+                    openGmailCompose()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Please configure a Mail account on this device to send email with attached logs.")
+                Text("Please configure a Mail account on this device. We'll try opening Gmail instead.")
             }
             .alert("Rules Result", isPresented: Binding(
                 get: { rulesResult != nil },
@@ -281,6 +247,7 @@ struct SettingsView: View {
         // so a fresh import starts from the user's newly chosen date.
         ImportStartDateStore.reset()
         hasSelectedImportStartDate = false
+        hasSeenFirstRunHeadsUp = false
         AppGroup.defaults.removeObject(forKey: "expense_tracker_ios_delta")
         dismiss()
     }
@@ -400,6 +367,35 @@ struct SettingsView: View {
         }
         supportAttachmentData = buildErrorLogAttachment()
         showContactDeveloperMail = true
+    }
+
+    private func openGmailCompose() {
+        let gmailAppURL = URL(string: "googlegmail://co?to=support@ojaslive.com&subject=Expense%20Tracker%20Support%20Request")
+        let gmailWebURL = URL(string: "https://mail.google.com/mail/?view=cm&fs=1&to=support@ojaslive.com&su=Expense%20Tracker%20Support%20Request")
+        let mailtoURL = URL(string: "mailto:support@ojaslive.com?subject=Expense%20Tracker%20Support%20Request")
+
+        if let gmailAppURL {
+            UIApplication.shared.open(gmailAppURL) { opened in
+                if opened { return }
+                if let gmailWebURL {
+                    UIApplication.shared.open(gmailWebURL) { webOpened in
+                        if webOpened { return }
+                        if let mailtoURL {
+                            UIApplication.shared.open(mailtoURL)
+                        }
+                    }
+                } else if let mailtoURL {
+                    UIApplication.shared.open(mailtoURL)
+                }
+            }
+            return
+        }
+
+        if let gmailWebURL {
+            UIApplication.shared.open(gmailWebURL)
+        } else if let mailtoURL {
+            UIApplication.shared.open(mailtoURL)
+        }
     }
 
     private func buildErrorLogAttachment() -> Data {

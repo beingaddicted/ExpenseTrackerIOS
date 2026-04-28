@@ -73,12 +73,21 @@ struct AddTransactionView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Cancel")
                         .foregroundStyle(Theme.accentLight)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
-                        .fontWeight(.semibold)
+                    Button {
+                        save()
+                    } label: {
+                        Image(systemName: "externaldrive.fill")
+                    }
+                    .accessibilityLabel("Save")
                         .foregroundStyle(Theme.accentLight)
                         .disabled(amount.isEmpty || merchant.trimmingCharacters(in: .whitespaces).isEmpty)
                 }

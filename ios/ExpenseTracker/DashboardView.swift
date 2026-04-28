@@ -292,16 +292,16 @@ struct DashboardView: View {
         .navigationDestination(for: TransactionRecord.self) { txn in
             TransactionDetailView(txn: txn)
         }
-        .alert("Importing your bank SMS…", isPresented: $showFirstRunHeadsUp) {
-            Button("Sync SMS") {
+        .alert("Run first Sync SMS", isPresented: $showFirstRunHeadsUp) {
+            Button("Open right menu") {
                 hasSeenFirstRunHeadsUp = true
-                ShortcutLauncher.run(named: shortcutName)
+                showActionDrawer = true
             }
             Button("Later", role: .cancel) {
                 hasSeenFirstRunHeadsUp = true
             }
         } message: {
-            Text("First imports can take a few minutes if you picked a wide date range. If anything goes wrong, just reopen this app — we remember where it stopped and finish automatically.")
+            Text("Use the right arrow menu and tap Sync SMS. Sync time depends on how many messages are extracted. If first attempt fails because iOS stops the app, just relaunch and run Sync SMS again — it should complete without issue.")
         }
         .onAppear {
             currentMonth = selectedMonth
@@ -853,7 +853,12 @@ private struct MonthPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Cancel")
                         .foregroundStyle(Theme.accentLight)
                 }
             }

@@ -138,6 +138,7 @@ struct TransactionDetailView: View {
                     .foregroundStyle(Theme.accentLight)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal)
 
                 // Delete
@@ -154,6 +155,7 @@ struct TransactionDetailView: View {
                     .foregroundStyle(Theme.red)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal)
                 .padding(.bottom, 24)
             }
@@ -195,7 +197,7 @@ struct TransactionDetailView: View {
         return ClassificationRule(
             name: txn.merchant.isEmpty ? "New Rule" : txn.merchant,
             keywords: keywords,
-            amountExact: nil,
+            amountExact: txn.amount,
             setCategory: txn.category,
             setType: txn.type,
             setInvalid: !txn.isValid
@@ -220,6 +222,7 @@ struct TransactionDetailView: View {
                         .stroke(txn.type == type ? Theme.accentPrimary : Theme.border, lineWidth: 1)
                 )
         }
+        .buttonStyle(.plain)
     }
 
     private func infoCell(_ label: String, _ value: String) -> some View {

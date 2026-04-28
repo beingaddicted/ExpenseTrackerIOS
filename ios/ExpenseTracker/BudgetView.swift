@@ -246,13 +246,22 @@ struct BudgetEditSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.foregroundStyle(Theme.accentLight)
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Cancel")
+                    .foregroundStyle(Theme.accentLight)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button {
                         onSave(Double(text) ?? 0)
                         dismiss()
+                    } label: {
+                        Image(systemName: "externaldrive.fill")
                     }
+                    .accessibilityLabel("Save")
                     .foregroundStyle(Theme.accentLight)
                 }
             }

@@ -11,86 +11,119 @@ struct OnboardingView: View {
         ZStack {
             Theme.bgPrimary.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Spacer()
-
-                // Icon
-                ZStack {
-                    Circle()
-                        .fill(Theme.accentPrimary.opacity(0.15))
-                        .frame(width: 100, height: 100)
-                    Image(systemName: "creditcard.and.123")
-                        .font(.system(size: 44))
-                        .foregroundStyle(Theme.accentLight)
-                }
-                .padding(.bottom, 28)
-
-                // Title
-                Text("Welcome to\nExpense Tracker")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 12)
-
-                Text("Automatically track every bank transaction\nfrom your SMS — privately, on your device.")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 40)
-
-                // Steps
-                VStack(spacing: 14) {
-                    stepRow(icon: "iphone", number: "1", title: "Install the Shortcut",
-                            desc: "A free iOS Shortcut reads your bank SMS and sends it to this app.")
-                    stepRow(icon: "arrow.down.doc", number: "2", title: "Run it monthly",
-                            desc: "Open Shortcuts, tap Run — all transactions import automatically.")
-                    stepRow(icon: "lock.shield", number: "3", title: "Everything stays private",
-                            desc: "No servers. No accounts. Your data never leaves your phone.")
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 40)
-
-                Spacer()
-
-                // CTA
-                VStack(spacing: 12) {
-                    Button(action: installShortcut) {
-                        HStack(spacing: 10) {
-                            Image(systemName: shortcutInstalled ? "checkmark.circle.fill" : "plus.circle.fill")
-                            Text(shortcutInstalled ? "Shortcut Added!" : "Set Up Shortcut")
-                        }
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(shortcutInstalled ? Theme.green : Theme.accentPrimary)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                    }
-                    .animation(.spring(duration: 0.3), value: shortcutInstalled)
-
-                    if shortcutInstalled {
-                        Button(action: complete) {
-                            Text("Get Started →")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Theme.accentPrimary.opacity(0.15))
-                                .foregroundStyle(Theme.accentLight)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                        }
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else {
-                        Button("I'll set it up later") {
-                            showSkipConfirm = true
+            ScrollView {
+                VStack(spacing: 0) {
+                    HStack {
+                        Spacer()
+                        Button("Skip for now") {
+                            complete()
                         }
                         .font(.subheadline)
                         .foregroundStyle(Theme.textMuted)
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+
+                    // Icon
+                    ZStack {
+                        Circle()
+                            .fill(Theme.accentPrimary.opacity(0.15))
+                            .frame(width: 100, height: 100)
+                        Image(systemName: "creditcard.and.123")
+                            .font(.system(size: 44))
+                            .foregroundStyle(Theme.accentLight)
+                    }
+                    .padding(.bottom, 28)
+
+                    // Title
+                    Text("Welcome to\nExpense Tracker")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 12)
+
+                    Text("Automatically track every bank transaction\nfrom your SMS — privately, on your device.")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 40)
+
+                    // Steps
+                    VStack(spacing: 14) {
+                        stepRow(icon: "iphone", number: "1", title: "Install the Shortcut",
+                                desc: "A free iOS Shortcut reads your bank SMS and sends it to this app.")
+                        stepRow(icon: "arrow.down.doc", number: "2", title: "Tap Sync SMS for new messages",
+                                desc: "Sync SMS brings only the new bank SMS into the app.")
+                        stepRow(icon: "rectangle.and.hand.point.up.left", number: "3", title: "Swipe left to set Valid/Invalid",
+                                desc: "Invalid transactions remain visible in the All tab.")
+                        stepRow(icon: "ruler", number: "4", title: "Use Classification Rules",
+                                desc: "Add rules from Settings > Classification Rules, or directly from any transaction using Create Rule.")
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("First sync can take time", systemImage: "hourglass")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("On first install, iOS can stop sync in the background. Nothing to worry about — relaunch the app and run Sync SMS again. It should go through.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.cardBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Theme.border, lineWidth: 1)
+                    )
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+
+                    // CTA
+                    VStack(spacing: 12) {
+                        Button(action: installShortcut) {
+                            HStack(spacing: 10) {
+                                Image(systemName: shortcutInstalled ? "checkmark.circle.fill" : "plus.circle.fill")
+                                Text(shortcutInstalled ? "Shortcut Added!" : "Set Up Shortcut")
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(shortcutInstalled ? Theme.green : Theme.accentPrimary)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                        .animation(.spring(duration: 0.3), value: shortcutInstalled)
+
+                        if shortcutInstalled {
+                            Button(action: complete) {
+                                Text("Get Started →")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                                    .background(Theme.accentPrimary.opacity(0.15))
+                                    .foregroundStyle(Theme.accentLight)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                            }
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        } else {
+                            Button("I'll set it up later") {
+                                showSkipConfirm = true
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.textMuted)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
+                    .animation(.spring(duration: 0.4), value: shortcutInstalled)
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 40)
-                .animation(.spring(duration: 0.4), value: shortcutInstalled)
             }
         }
         .confirmationDialog(
