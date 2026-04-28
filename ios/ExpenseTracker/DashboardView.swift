@@ -13,19 +13,56 @@ struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var vm = AppViewModel()
     @State private var search = ""
+    @State private var currentMonth = Calendar.current.component(.month, from: Date())
+    @State private var currentYear = Calendar.current.component(.year, from: Date())
     @State private var typeFilter: TypeFilter = .expenses
-    @State private var sortMode: SortMode = .date
+    @State private var sortMode: SortMode = .dateDesc
     @State private var showMonthPicker = false
     @State private var showAdd = false
+    @State private var showSearchBar = false
     @State private var showParseSMS = false
-    @State private var showImport = false
     @State private var showPendingBanner = false
     @State private var showFirstRunHeadsUp = false
     @State private var revealIncome = false
+    @State private var showActionDrawer = false
+    @State private var monthRowsCache: [TransactionRecord] = []
+    @State private var validMonthDebitsCache: [TransactionRecord] = []
+    @State private var filteredRowsCache: [TransactionRecord] = []
+    @State private var budgetLimits: [String: Double] = [:]
+    @State private var regularExpenseTotal: Double = 0
+    @State private var totalIncomeValue: Double = 0
+    @State private var avgDebitAmount: Double = 0
+    @State private var maxDebitAmount: Double = 0
+    @State private var topDebitCategory: String = "—"
+    @State private var topDebitMode: String = "—"
+    @State private var budgetSpendByCategory: [String: Double] = [:]
+    @State private var searchDebounceTask: Task<Void, Never>? = nil
 
-    @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
+    @AppStorage("shortcutName") private var shortcutName = "Sync SMS"
     @AppStorage("hasSeenFirstRunHeadsUp") private var hasSeenFirstRunHeadsUp = false
     @AppStorage("pendingBannerSnoozedAt") private var pendingBannerSnoozedAt: Double = 0
+    @AppStorage("compactMode") private var compactMode = false
+    @AppStorage("selectedMonth") private var selectedMonth = Calendar.current.component(.month, from: Date())
+    @AppStorage("selectedYear") private var selectedYear = Calendar.current.component(.year, from: Date())
+
+    private static let monthLabelFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMMM yyyy"
+        return fmt
+    }()
+    private static let inrFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        return f
+    }()
+
+    private var monthLabel: String {
+        var comps = DateComponents()
+        comps.year = currentYear
+        comps.month = currentMonth
+        comps.day = 1
+        return Self.monthLabelFormatter.string(from: Calendar.current.date(from: comps) ?? Date())
+    }
 
     enum TypeFilter: String, CaseIterable, Identifiable {
         case expenses = "Expenses"
@@ -42,41 +79,15 @@ struct DashboardView: View {
     }
 
     private var monthRows: [TransactionRecord] {
-        allRows.filter { row in
-            let parts = vm.parseDate(row.date)
-            guard let m = parts.month, let y = parts.year else { return true }
-            return m == vm.currentMonth && y == vm.currentYear
-        }
+        monthRowsCache
     }
 
     private var validMonthDebits: [TransactionRecord] {
-        monthRows.filter { $0.type == "debit" && $0.isValid }
+        validMonthDebitsCache
     }
 
     private var filtered: [TransactionRecord] {
-        var rows = monthRows
-        if let t = typeFilter.swiftType {
-            rows = rows.filter { txn in
-                guard txn.isValid else { return false }
-                if txn.type != t { return false }
-                if t == "debit", AppViewModel.expenseExcludedCategories.contains(txn.category) { return false }
-                if t == "credit", AppViewModel.nonGenuineCreditCategories.contains(txn.category) { return false }
-                return true
-            }
-        }
-        if !search.isEmpty {
-            let q = search.lowercased()
-            rows = rows.filter { row in
-                let hay = "\(row.merchant) \(row.category) \(row.bank) \(row.rawSMS)".lowercased()
-                return hay.contains(q)
-            }
-        }
-        switch sortMode {
-        case .date:        break
-        case .amountDesc:  rows.sort { $0.amount > $1.amount }
-        case .amountAsc:   rows.sort { $0.amount < $1.amount }
-        }
-        return rows
+        filteredRowsCache
     }
 
     var body: some View {
@@ -84,25 +95,35 @@ struct DashboardView: View {
             if showPendingBanner {
                 Section { pendingBannerRow }
                     .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                    .listRowInsets(EdgeInsets(
+                        top: compactMode ? 1 : 2,
+                        leading: compactMode ? 10 : 14,
+                        bottom: compactMode ? 2 : 4,
+                        trailing: compactMode ? 10 : 14
+                    ))
             }
 
             Section { summaryRow }
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowInsets(EdgeInsets(
+                    top: compactMode ? 1 : 2,
+                    leading: compactMode ? 10 : 14,
+                    bottom: compactMode ? 0 : 1,
+                    trailing: compactMode ? 10 : 14
+                ))
                 .listRowBackground(Color.clear)
 
             if !validMonthDebits.isEmpty {
                 Section { quickStatsRow }
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
+                    .listRowInsets(EdgeInsets(
+                        top: 0,
+                        leading: compactMode ? 10 : 14,
+                        bottom: compactMode ? 1 : 2,
+                        trailing: compactMode ? 10 : 14
+                    ))
                     .listRowBackground(Color.clear)
             }
 
-            if !validMonthDebits.isEmpty {
-                Section("By category") { donutChart }
-                Section("Daily spending") { dailyChart }
-            }
-
-            if !BudgetStore.load().filter({ $0.value > 0 }).isEmpty {
+            if !budgetLimits.filter({ $0.value > 0 }).isEmpty {
                 Section("Budgets") { budgetRows }
             }
 
@@ -113,8 +134,42 @@ struct DashboardView: View {
                 .pickerStyle(.segmented)
             }
             .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(
+                top: 0,
+                leading: compactMode ? 10 : 14,
+                bottom: compactMode ? 1 : 2,
+                trailing: compactMode ? 10 : 14
+            ))
 
-            Section(transactionsSectionTitle) {
+            Section {
+                HStack {
+                    Text("\(filtered.count) \(filtered.count == 1 ? "transaction" : "transactions")")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                    Spacer()
+                    Text("Sort")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textMuted)
+                    Menu {
+                        ForEach(SortMode.allCases, id: \.self) { mode in
+                            Button(mode.rawValue) { sortMode = mode }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(sortMode.rawValue)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption2)
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.cardBg)
+                        .clipShape(Capsule())
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+
                 if filtered.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: isFiltering ? "line.3.horizontal.decrease.circle" : "tray")
@@ -140,12 +195,12 @@ struct DashboardView: View {
                                 }
                                 .buttonStyle(.bordered)
                             } else if allRows.isEmpty {
-                                Button("Run Shortcut") {
+                                Button("Sync SMS") {
                                     ShortcutLauncher.run(named: shortcutName)
                                 }
                                 .buttonStyle(.borderedProminent)
                             } else {
-                                Button("Import SMS") { showImport = true }
+                                Button("Paste SMS") { showParseSMS = true }
                                     .buttonStyle(.bordered)
                             }
 
@@ -153,7 +208,7 @@ struct DashboardView: View {
                                 .buttonStyle(.bordered)
                         }
                     }
-                    .padding(.vertical, 12)
+                    .padding(.vertical, compactMode ? 6 : 8)
                     .frame(maxWidth: .infinity)
                 } else {
                     ForEach(filtered) { txn in
@@ -164,6 +219,7 @@ struct DashboardView: View {
                             Button {
                                 txn.isValid.toggle()
                                 try? modelContext.save()
+                                recomputeDashboardData()
                             } label: {
                                 Label(txn.isValid ? "Invalid" : "Valid",
                                       systemImage: txn.isValid ? "xmark.circle" : "checkmark.circle")
@@ -175,61 +231,69 @@ struct DashboardView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .listSectionSpacing(.compact)
         .scrollContentBackground(.hidden)
         .background(Theme.bgPrimary)
-        .navigationTitle(vm.monthLabel)
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .automatic),
-                    prompt: "Search transactions")
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { showMonthPicker = true } label: {
-                    Image(systemName: "calendar")
-                }
-                .accessibilityLabel("Choose month")
-            }
-            ToolbarItem(placement: .principal) {
-                Button { showMonthPicker = true } label: {
-                    HStack(spacing: 4) {
-                        Text(vm.monthLabel).fontWeight(.semibold)
-                        Image(systemName: "chevron.down").font(.caption2)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 2) {
+                if showSearchBar {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(Theme.textMuted)
+                        TextField("Search transactions", text: $search)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        if !search.isEmpty {
+                            Button {
+                                search = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                        }
                     }
-                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.horizontal, compactMode ? 10 : 14)
+                    .padding(.vertical, compactMode ? 6 : 8)
+                    .background(Theme.cardBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, compactMode ? 10 : 14)
+                    .padding(.top, 2)
                 }
+
+                monthHeaderRow
+                    .padding(.horizontal, compactMode ? 10 : 14)
+                    .padding(.vertical, 0)
             }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Sort", selection: $sortMode) {
-                        ForEach(SortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            .background(Theme.bgPrimary)
+        }
+        .overlay {
+            if showActionDrawer {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        showActionDrawer = false
                     }
-                    Divider()
-                    Button { showParseSMS = true } label: { Label("Paste SMS", systemImage: "text.bubble") }
-                    Button { showImport = true } label: { Label("Import file", systemImage: "tray.and.arrow.down") }
-                    Button { ShortcutLauncher.run(named: shortcutName) } label: {
-                        Label("Run Shortcut", systemImage: "play.circle")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .accessibilityLabel("More actions")
-                Button { showAdd = true } label: { Image(systemName: "plus") }
-                    .accessibilityLabel("Add transaction")
             }
+        }
+        .overlay(alignment: .trailing) {
+            actionDrawerOverlay
+                .padding(.trailing, compactMode ? 10 : 14)
         }
         .sheet(isPresented: $showMonthPicker) {
-            MonthPickerSheet(month: $vm.currentMonth, year: $vm.currentYear)
-                .presentationDetents([.medium])
+            MonthPickerSheet(month: $currentMonth, year: $currentYear)
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showAdd) {
-            AddTransactionView(defaultDate: vm.defaultDateForNewTransaction)
+            AddTransactionView(defaultDate: defaultDateForNewTransaction)
         }
         .sheet(isPresented: $showParseSMS) { ParseSMSView() }
-        .sheet(isPresented: $showImport) { ImportView() }
         .navigationDestination(for: TransactionRecord.self) { txn in
             TransactionDetailView(txn: txn)
         }
         .alert("Importing your bank SMS…", isPresented: $showFirstRunHeadsUp) {
-            Button("Run Shortcut now") {
+            Button("Sync SMS") {
                 hasSeenFirstRunHeadsUp = true
                 ShortcutLauncher.run(named: shortcutName)
             }
@@ -240,29 +304,198 @@ struct DashboardView: View {
             Text("First imports can take a few minutes if you picked a wide date range. If anything goes wrong, just reopen this app — we remember where it stopped and finish automatically.")
         }
         .onAppear {
+            currentMonth = selectedMonth
+            currentYear = selectedYear
             evaluatePendingImport()
             evaluateFirstRunHeadsUp()
+            recomputeDashboardData()
         }
+        .onDisappear {
+            searchDebounceTask?.cancel()
+            searchDebounceTask = nil
+        }
+        .onChange(of: currentMonth) { _, newValue in
+            selectedMonth = newValue
+            recomputeDashboardData()
+        }
+        .onChange(of: currentYear) { _, newValue in
+            selectedYear = newValue
+            recomputeDashboardData()
+        }
+        .onChange(of: typeFilter) { _, _ in recomputeDashboardData() }
+        .onChange(of: sortMode) { _, _ in recomputeDashboardData() }
+        .onChange(of: search) { _, _ in
+            searchDebounceTask?.cancel()
+            searchDebounceTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 220_000_000)
+                if !Task.isCancelled {
+                    recomputeDashboardData()
+                }
+            }
+        }
+        .onChange(of: allRows.count) { _, _ in recomputeDashboardData() }
     }
 
     // MARK: - Rows
 
-    private var summaryRow: some View {
-        let allDebits = monthRows.filter { $0.type == "debit" && $0.isValid }
-        let regularDebits = allDebits.filter { !AppViewModel.expenseExcludedCategories.contains($0.category) }
-        let regularExpense = regularDebits.reduce(0.0) { $0 + $1.amount }
-        let credits = monthRows.filter { $0.type == "credit" && $0.isValid && !AppViewModel.nonGenuineCreditCategories.contains($0.category) }
-        let totalIncome = credits.reduce(0.0) { $0 + $1.amount }
+    private func shiftMonth(by delta: Int) {
+        var nextMonth = currentMonth + delta
+        var nextYear = currentYear
+        if nextMonth < 1 {
+            nextMonth = 12
+            nextYear -= 1
+        } else if nextMonth > 12 {
+            nextMonth = 1
+            nextYear += 1
+        }
+        currentMonth = nextMonth
+        currentYear = nextYear
+    }
 
-        return HStack(spacing: 12) {
-            summaryTile(title: "Spent", amount: regularExpense, sign: "-",
+    private var defaultDateForNewTransaction: String {
+        let cal = Calendar.current
+        let now = Date()
+        let nowMonth = cal.component(.month, from: now)
+        let nowYear = cal.component(.year, from: now)
+        if currentMonth == nowMonth && currentYear == nowYear {
+            let d = cal.component(.day, from: now)
+            return String(format: "%04d-%02d-%02d", currentYear, currentMonth, d)
+        }
+        return String(format: "%04d-%02d-01", currentYear, currentMonth)
+    }
+
+    private var monthHeaderRow: some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+
+            Button {
+                shiftMonth(by: -1)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 30, height: 30)
+                    .background(Theme.cardBg)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Previous month")
+
+            Button {
+                showMonthPicker = true
+            } label: {
+                HStack(spacing: 4) {
+                    Text(monthLabel)
+                        .font(.headline)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                }
+                .foregroundStyle(Theme.textPrimary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Choose month")
+
+            Button {
+                shiftMonth(by: 1)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 30, height: 30)
+                    .background(Theme.cardBg)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Next month")
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var actionDrawerOverlay: some View {
+        HStack(spacing: 10) {
+            if showActionDrawer {
+                VStack(alignment: .leading, spacing: 14) {
+                    drawerButton("Sync SMS", systemImage: "play.circle") {
+                        ShortcutLauncher.run(named: shortcutName)
+                    }
+                    drawerButton("Search", systemImage: "magnifyingglass") {
+                        showSearchBar.toggle()
+                        if !showSearchBar { search = "" }
+                    }
+                    drawerButton("Paste SMS", systemImage: "text.bubble") {
+                        showParseSMS = true
+                    }
+                    drawerButton("Add Transaction", systemImage: "plus.circle") {
+                        showAdd = true
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
+                .frame(width: 210)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
+            Button {
+                toggleActionDrawer()
+            } label: {
+                Image(systemName: showActionDrawer ? "chevron.right" : "chevron.left")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .frame(width: 46, height: 46)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.14), radius: 10, x: 0, y: 4)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(showActionDrawer ? "Close actions" : "Open actions")
+        }
+        .frame(maxHeight: .infinity, alignment: .center)
+        .animation(.easeInOut(duration: 0.2), value: showActionDrawer)
+    }
+
+    private func drawerButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            showActionDrawer = false
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.body)
+                Text(title)
+                    .font(.callout)
+                Spacer()
+            }
+            .padding(.vertical, 2)
+            .foregroundStyle(Theme.textPrimary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggleActionDrawer() {
+        showActionDrawer.toggle()
+    }
+
+    private var summaryRow: some View {
+        return HStack(spacing: compactMode ? 6 : 8) {
+            summaryTile(title: "Spent", amount: regularExpenseTotal, sign: "-",
                         color: Theme.red, icon: "arrow.up.right")
             Button {
                 revealIncome.toggle()
             } label: {
                 summaryTile(
                     title: "Income",
-                    amount: revealIncome ? totalIncome : 0,
+                    amount: revealIncome ? totalIncomeValue : 0,
                     sign: "+",
                     color: Theme.green,
                     icon: revealIncome ? "arrow.down.left" : "eye.slash",
@@ -299,23 +532,18 @@ struct DashboardView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(compactMode ? 8 : 10)
         .background(Theme.cardBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var quickStatsRow: some View {
-        let debits = validMonthDebits
-        let avg = debits.reduce(0.0) { $0 + $1.amount } / Double(max(1, debits.count))
-        let maxAmt = debits.map { $0.amount }.max() ?? 0
-        let topCat = topGroup(debits, key: \.category)
-        let topMode = topGroup(debits, key: \.mode)
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                pill(symbol: "function", label: "Avg ₹\(shortAmount(avg))")
-                pill(symbol: "arrow.up.to.line", label: "Max ₹\(shortAmount(maxAmt))")
-                pill(symbol: "tag", label: "Top: \(topCat)")
-                pill(symbol: "creditcard", label: "Via: \(topMode)")
+                pill(symbol: "function", label: "Avg ₹\(shortAmount(avgDebitAmount))")
+                pill(symbol: "arrow.up.to.line", label: "Max ₹\(shortAmount(maxDebitAmount))")
+                pill(symbol: "tag", label: "Top: \(topDebitCategory)")
+                pill(symbol: "creditcard", label: "Via: \(topDebitMode)")
             }
         }
         .listRowSeparator(.hidden)
@@ -327,72 +555,18 @@ struct DashboardView: View {
             Text(label).font(.caption)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, compactMode ? 2 : 4)
         .background(Theme.cardBg)
         .foregroundStyle(Theme.textPrimary)
         .clipShape(Capsule())
     }
 
-    private var donutChart: some View {
-        var byCat: [String: Double] = [:]
-        for d in validMonthDebits where !AppViewModel.expenseExcludedCategories.contains(d.category) {
-            byCat[d.category, default: 0] += d.amount
-        }
-        let slices = byCat.sorted { $0.value > $1.value }.prefix(8).map { (cat: $0.key, amt: $0.value) }
-        return VStack(spacing: 8) {
-            Chart(slices, id: \.cat) { slice in
-                SectorMark(angle: .value("Amount", slice.amt),
-                           innerRadius: .ratio(0.55), angularInset: 1)
-                .foregroundStyle(Theme.colorForCategory(slice.cat))
-            }
-            .frame(height: 160)
-            .chartLegend(.hidden)
-
-            FlowLayout(spacing: 6) {
-                ForEach(slices.prefix(6), id: \.cat) { s in
-                    HStack(spacing: 4) {
-                        Circle().fill(Theme.colorForCategory(s.cat)).frame(width: 6, height: 6)
-                        Text(s.cat).font(.caption2).foregroundStyle(Theme.textSecondary)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Theme.bgSecondary)
-                    .clipShape(Capsule())
-                }
-            }
-        }
-    }
-
-    private var dailyChart: some View {
-        let cal = Calendar.current
-        var comps = DateComponents(); comps.year = vm.currentYear; comps.month = vm.currentMonth; comps.day = 1
-        let firstOfMonth = cal.date(from: comps) ?? Date()
-        let daysInMonth = cal.range(of: .day, in: .month, for: firstOfMonth)?.count ?? 30
-        var daily = [Double](repeating: 0, count: daysInMonth)
-        for d in validMonthDebits where !AppViewModel.expenseExcludedCategories.contains(d.category) {
-            if let day = dayFromDateString(d.date), day >= 1, day <= daysInMonth {
-                daily[day - 1] += d.amount
-            }
-        }
-        let endDay = isCurrentMonth ? cal.component(.day, from: Date()) : daysInMonth
-        let startDay = max(1, endDay - 6)
-        let data = (startDay...endDay).map { (day: $0, amount: daily[$0 - 1]) }
-        return Chart(data, id: \.day) { d in
-            BarMark(x: .value("Day", String(d.day)),
-                    y: .value("Amount", d.amount))
-            .foregroundStyle(LinearGradient(
-                colors: [Theme.accentLight, Theme.accentPrimary],
-                startPoint: .top, endPoint: .bottom))
-            .cornerRadius(4)
-        }
-        .frame(height: 130)
-    }
 
     private var budgetRows: some View {
-        let budgets = BudgetStore.load().filter { $0.value > 0 }
+        let budgets = budgetLimits.filter { $0.value > 0 }
         return ForEach(Array(budgets.keys).sorted(), id: \.self) { cat in
             let limit = budgets[cat] ?? 0
-            let spent = validMonthDebits.filter { $0.category == cat }.reduce(0.0) { $0 + $1.amount }
+            let spent = budgetSpendByCategory[cat] ?? 0
             let pct = limit > 0 ? min(spent / limit, 1.0) : 0
             let isOver = spent > limit
             VStack(alignment: .leading, spacing: 6) {
@@ -445,7 +619,7 @@ struct DashboardView: View {
             }
             Spacer()
         }
-        .padding(12)
+        .padding(compactMode ? 10 : 12)
         .background(LinearGradient(colors: [Theme.accentPrimary, Theme.accentLight],
                                    startPoint: .leading, endPoint: .trailing))
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -473,12 +647,6 @@ struct DashboardView: View {
         return "Import more SMS or switch month to view earlier activity."
     }
 
-    private var isCurrentMonth: Bool {
-        let cal = Calendar.current
-        return vm.currentMonth == cal.component(.month, from: Date())
-            && vm.currentYear == cal.component(.year, from: Date())
-    }
-
     private func topGroup<K: Hashable & CustomStringConvertible>(_ list: [TransactionRecord],
                                                                   key: KeyPath<TransactionRecord, K>) -> String {
         var totals: [String: Double] = [:]
@@ -488,23 +656,9 @@ struct DashboardView: View {
         return totals.max(by: { $0.value < $1.value })?.key ?? "—"
     }
 
-    private func dayFromDateString(_ s: String) -> Int? {
-        let trimmed = String(s.trimmingCharacters(in: .whitespaces).prefix(10))
-        let formats = ["yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy"]
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        for fmt in formats {
-            f.dateFormat = fmt
-            if let d = f.date(from: trimmed) { return Calendar.current.component(.day, from: d) }
-        }
-        return nil
-    }
-
     private func formatINR(_ v: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.maximumFractionDigits = v.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 2
-        let s = f.string(from: NSNumber(value: v)) ?? "\(Int(v))"
+        Self.inrFormatter.maximumFractionDigits = v.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 2
+        let s = Self.inrFormatter.string(from: NSNumber(value: v)) ?? "\(Int(v))"
         return "₹\(s)"
     }
 
@@ -513,6 +667,78 @@ struct DashboardView: View {
         if v >= 100_000    { return String(format: "%.1fL", v / 100_000) }
         if v >= 1_000      { return String(format: "%.1fK", v / 1_000) }
         return String(Int(v))
+    }
+
+    private func recomputeDashboardData() {
+        budgetLimits = BudgetStore.load()
+
+        var monthRows: [TransactionRecord] = []
+        monthRows.reserveCapacity(allRows.count)
+        for row in allRows {
+            let parts = vm.parseDate(row.date)
+            if let m = parts.month, let y = parts.year, (m != currentMonth || y != currentYear) {
+                continue
+            }
+            monthRows.append(row)
+        }
+        monthRowsCache = monthRows
+
+        var validDebits: [TransactionRecord] = []
+        validDebits.reserveCapacity(monthRows.count)
+
+        var regularExpense = 0.0
+        var incomeTotal = 0.0
+        var byTopCategory: [String: Double] = [:]
+        var byTopMode: [String: Double] = [:]
+
+        for row in monthRows {
+            if row.type == "debit", row.isValid {
+                validDebits.append(row)
+                byTopCategory[row.category, default: 0] += row.amount
+                byTopMode[row.mode, default: 0] += row.amount
+
+                if !AppViewModel.expenseExcludedCategories.contains(row.category) {
+                    regularExpense += row.amount
+                }
+            } else if row.type == "credit", row.isValid,
+                      !AppViewModel.nonGenuineCreditCategories.contains(row.category) {
+                incomeTotal += row.amount
+            }
+        }
+
+        validMonthDebitsCache = validDebits
+        budgetSpendByCategory = byTopCategory
+        regularExpenseTotal = regularExpense
+        totalIncomeValue = incomeTotal
+        avgDebitAmount = validDebits.isEmpty ? 0 : validDebits.reduce(0.0, { $0 + $1.amount }) / Double(validDebits.count)
+        maxDebitAmount = validDebits.map(\.amount).max() ?? 0
+        topDebitCategory = byTopCategory.max(by: { $0.value < $1.value })?.key ?? "—"
+        topDebitMode = byTopMode.max(by: { $0.value < $1.value })?.key ?? "—"
+
+        var filteredRows = monthRows
+        if let t = typeFilter.swiftType {
+            filteredRows = filteredRows.filter { txn in
+                guard txn.isValid else { return false }
+                if txn.type != t { return false }
+                if t == "debit", AppViewModel.expenseExcludedCategories.contains(txn.category) { return false }
+                if t == "credit", AppViewModel.nonGenuineCreditCategories.contains(txn.category) { return false }
+                return true
+            }
+        }
+        if !search.isEmpty {
+            let q = search.lowercased()
+            filteredRows = filteredRows.filter { row in
+                let hay = "\(row.merchant) \(row.category) \(row.bank) \(row.rawSMS)".lowercased()
+                return hay.contains(q)
+            }
+        }
+        switch sortMode {
+        case .dateDesc: break
+        case .dateAsc: filteredRows.sort { $0.date < $1.date }
+        case .amountDesc: filteredRows.sort { $0.amount > $1.amount }
+        case .amountAsc: filteredRows.sort { $0.amount < $1.amount }
+        }
+        filteredRowsCache = filteredRows
     }
 
     private func evaluatePendingImport() {
@@ -549,52 +775,80 @@ private struct MonthPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                HStack {
-                    Button { pickerYear -= 1 } label: { Image(systemName: "chevron.left") }
-                    Spacer()
-                    Text(String(pickerYear))
-                        .font(.title2).fontWeight(.semibold)
-                    Spacer()
-                    Button { pickerYear += 1 } label: { Image(systemName: "chevron.right") }
-                }
-                .padding(.horizontal)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Year")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.horizontal, 4)
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                    ForEach(0..<12, id: \.self) { i in
-                        let m = i + 1
-                        let isActive = (m == month && pickerYear == year)
-                        Button {
-                            month = m
-                            year = pickerYear
-                            dismiss()
-                        } label: {
-                            Text(monthNames[i])
-                                .font(.subheadline)
-                                .fontWeight(isActive ? .bold : .regular)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(isActive ? Theme.accentPrimary : Theme.cardBg)
-                                .foregroundStyle(isActive ? .white : Theme.textPrimary)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                    ScrollViewReader { proxy in
+                        ScrollView(.vertical, showsIndicators: true) {
+                            LazyVStack(spacing: 6) {
+                                ForEach((2000...2050).reversed(), id: \.self) { y in
+                                    Button {
+                                        pickerYear = y
+                                    } label: {
+                                        Text(String(y))
+                                            .font(.subheadline)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 8)
+                                            .background(pickerYear == y ? Theme.accentPrimary : Theme.cardBg)
+                                            .foregroundStyle(pickerYear == y ? .white : Theme.textPrimary)
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    }
+                                    .id(y)
+                                }
+                            }
+                        }
+                        .frame(width: 88)
+                        .onAppear {
+                            proxy.scrollTo(pickerYear, anchor: .center)
                         }
                     }
                 }
-                .padding(.horizontal)
 
-                Button("Jump to current month") {
-                    let now = Date()
-                    let cal = Calendar.current
-                    month = cal.component(.month, from: now)
-                    year = cal.component(.year, from: now)
-                    dismiss()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Month")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.horizontal, 4)
+
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                        ForEach(0..<12, id: \.self) { i in
+                            let m = i + 1
+                            let isActive = (m == month && pickerYear == year)
+                            Button {
+                                month = m
+                                year = pickerYear
+                                dismiss()
+                            } label: {
+                                Text(monthNames[i])
+                                    .font(.subheadline)
+                                    .fontWeight(isActive ? .bold : .regular)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(isActive ? Theme.accentPrimary : Theme.cardBg)
+                                    .foregroundStyle(isActive ? .white : Theme.textPrimary)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }
+
+                    Button("Jump to current month") {
+                        let now = Date()
+                        let cal = Calendar.current
+                        month = cal.component(.month, from: now)
+                        year = cal.component(.year, from: now)
+                        dismiss()
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Theme.accentLight)
                 }
-                .font(.subheadline)
-                .padding(.top, 4)
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .padding(.top, 16)
+            .padding(.horizontal)
+            .padding(.top, 12)
             .navigationTitle("Pick a month")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

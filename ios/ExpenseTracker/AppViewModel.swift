@@ -2,7 +2,8 @@ import SwiftUI
 import SwiftData
 
 enum SortMode: String, CaseIterable {
-    case date = "Date"
+    case dateDesc = "Date ↓"
+    case dateAsc = "Date ↑"
     case amountDesc = "Amount ↓"
     case amountAsc = "Amount ↑"
 }
@@ -17,7 +18,7 @@ final class AppViewModel {
     var showInvalidOnly = false
     var showSearch = false
     var toastMessage: String? = nil
-    var sortMode: SortMode = .date
+    var sortMode: SortMode = .dateDesc
 
     // Categories excluded from the Expense view (transfers/investments, not real spending)
     static let expenseExcludedCategories: Set<String> = [
@@ -28,6 +29,12 @@ final class AppViewModel {
         "Refund", "Cashback & Rewards",
     ]
 
+    private static let monthLabelFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMMM yyyy"
+        return fmt
+    }()
+
     init() {
         let now = Calendar.current.dateComponents([.month, .year], from: Date())
         currentMonth = now.month ?? 1
@@ -35,13 +42,11 @@ final class AppViewModel {
     }
 
     var monthLabel: String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "MMMM yyyy"
         var comps = DateComponents()
         comps.year = currentYear
         comps.month = currentMonth
         comps.day = 1
-        return fmt.string(from: Calendar.current.date(from: comps) ?? Date())
+        return Self.monthLabelFormatter.string(from: Calendar.current.date(from: comps) ?? Date())
     }
 
     func previousMonth() {
@@ -80,7 +85,8 @@ final class AppViewModel {
             return true
         }
         switch sortMode {
-        case .date: break // already sorted by date from @Query
+        case .dateDesc: break // already sorted by date desc from @Query
+        case .dateAsc: result.sort { $0.date < $1.date }
         case .amountDesc: result.sort { $0.amount > $1.amount }
         case .amountAsc: result.sort { $0.amount < $1.amount }
         }
@@ -96,18 +102,24 @@ final class AppViewModel {
 
     func parseDate(_ dateStr: String) -> (month: Int?, year: Int?) {
         let trimmed = dateStr.trimmingCharacters(in: .whitespaces)
-        // Try YYYY-MM-DD
-        let isoRegex = try? NSRegularExpression(pattern: #"^(\d{4})-(\d{2})-(\d{2})"#)
-        if let match = isoRegex?.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
-            let y = Int((trimmed as NSString).substring(with: match.range(at: 1)))
-            let m = Int((trimmed as NSString).substring(with: match.range(at: 2)))
-            return (m, y)
+        let core = String(trimmed.prefix(10))
+
+        // Fast path: YYYY-MM-DD
+        if core.count >= 7 {
+            let chars = Array(core)
+            if chars.count >= 7,
+               chars[4] == "-",
+               let y = Int(String(chars[0...3])),
+               let m = Int(String(chars[5...6])) {
+                return (m, y)
+            }
         }
-        // Try DD/MM/YYYY or DD-MM-YYYY
-        let ddmmRegex = try? NSRegularExpression(pattern: #"^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})"#)
-        if let match = ddmmRegex?.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
-            let m = Int((trimmed as NSString).substring(with: match.range(at: 2)))
-            var y = Int((trimmed as NSString).substring(with: match.range(at: 3)))
+
+        // Fallback: DD/MM/YYYY or DD-MM-YYYY
+        let parts = core.split(whereSeparator: { $0 == "/" || $0 == "-" })
+        if parts.count >= 3 {
+            let m = Int(parts[1])
+            var y = Int(parts[2])
             if let yr = y, yr < 100 { y = yr + 2000 }
             return (m, y)
         }

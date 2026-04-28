@@ -24,9 +24,10 @@ enum BudgetStore {
 
 struct BudgetView: View {
     let allTransactions: [TransactionRecord]
-    @Environment(\.dismiss) private var dismiss
     @State private var budgets: [String: Double] = [:]
     @State private var editingCategory: String? = nil
+    @State private var monthSpendByCategory: [String: Double] = [:]
+    @AppStorage("compactMode") private var compactMode = false
 
     private let vm = AppViewModel()
 
@@ -36,20 +37,19 @@ struct BudgetView: View {
         "Rent", "Groceries", "Subscription", "Other",
     ]
 
-    private var currentMonthRows: [TransactionRecord] {
+    private func recomputeMonthSpendByCategory() {
         let cal = Calendar.current
         let now = Date()
         let month = cal.component(.month, from: now)
         let year = cal.component(.year, from: now)
-        return allTransactions.filter { txn in
-            guard txn.type == "debit" && txn.isValid else { return false }
+        var totals: [String: Double] = [:]
+        for txn in allTransactions {
+            guard txn.type == "debit" && txn.isValid else { continue }
             let parts = vm.parseDate(txn.date)
-            return parts.month == month && parts.year == year
+            guard parts.month == month && parts.year == year else { continue }
+            totals[txn.category, default: 0] += txn.amount
         }
-    }
-
-    private func spent(for category: String) -> Double {
-        currentMonthRows.filter { $0.category == category }.reduce(0) { $0 + $1.amount }
+        monthSpendByCategory = totals
     }
 
     var body: some View {
@@ -59,7 +59,7 @@ struct BudgetView: View {
                     Section {
                         VStack(spacing: 8) {
                             Image(systemName: "chart.pie")
-                                .font(.system(size: 32))
+                                .font(.system(size: compactMode ? 24 : 32))
                                 .foregroundStyle(Theme.accentLight)
                             Text("Set monthly spending limits per category. Tap any category below to add a limit.")
                                 .font(.caption)
@@ -67,24 +67,24 @@ struct BudgetView: View {
                                 .multilineTextAlignment(.center)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, compactMode ? 4 : 8)
                         .listRowBackground(Theme.bgPrimary)
                     }
                 } else {
                     Section("This Month") {
                         ForEach(budgets.keys.sorted(), id: \.self) { cat in
                             let limit = budgets[cat] ?? 0
-                            let spentAmt = spent(for: cat)
+                            let spentAmt = monthSpendByCategory[cat] ?? 0
                             let pct = limit > 0 ? min(spentAmt / limit, 1.0) : 0
                             let isOver = spentAmt > limit && limit > 0
 
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: compactMode ? 4 : 6) {
                                 HStack {
                                     Circle()
                                         .fill(Theme.colorForCategory(cat))
-                                        .frame(width: 8, height: 8)
+                                        .frame(width: compactMode ? 7 : 8, height: compactMode ? 7 : 8)
                                     Text(cat)
-                                        .font(.subheadline)
+                                        .font(compactMode ? .callout : .subheadline)
                                         .foregroundStyle(Theme.textPrimary)
                                     Spacer()
                                     Text("₹\(Int(spentAmt)) / ₹\(Int(limit))")
@@ -95,20 +95,20 @@ struct BudgetView: View {
                                     ZStack(alignment: .leading) {
                                         RoundedRectangle(cornerRadius: 3)
                                             .fill(Theme.border)
-                                            .frame(height: 6)
+                                            .frame(height: compactMode ? 5 : 6)
                                         RoundedRectangle(cornerRadius: 3)
                                             .fill(isOver ? Theme.red : Theme.colorForCategory(cat))
-                                            .frame(width: max(4, geo.size.width * CGFloat(pct)), height: 6)
+                                            .frame(width: max(4, geo.size.width * CGFloat(pct)), height: compactMode ? 5 : 6)
                                     }
                                 }
-                                .frame(height: 6)
+                                .frame(height: compactMode ? 5 : 6)
                                 if isOver {
                                     Text("Over budget by ₹\(Int(spentAmt - limit))")
                                         .font(.caption2)
                                         .foregroundStyle(Theme.red)
                                 }
                             }
-                            .padding(.vertical, 2)
+                            .padding(.vertical, compactMode ? 1 : 2)
                             .contentShape(Rectangle())
                             .onTapGesture { editingCategory = cat }
                         }
@@ -120,9 +120,9 @@ struct BudgetView: View {
                         HStack {
                             Circle()
                                 .fill(Theme.colorForCategory(cat))
-                                .frame(width: 10, height: 10)
+                                .frame(width: compactMode ? 8 : 10, height: compactMode ? 8 : 10)
                             Text(cat)
-                                .font(.subheadline)
+                                .font(compactMode ? .callout : .subheadline)
                             Spacer()
                             if let limit = budgets[cat], limit > 0 {
                                 Text("₹\(Int(limit))")
@@ -140,16 +140,11 @@ struct BudgetView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .listSectionSpacing(.compact)
             .scrollContentBackground(.hidden)
             .background(Theme.bgPrimary)
             .navigationTitle("Monthly Budgets")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .foregroundStyle(Theme.accentLight)
-                }
-            }
             .sheet(item: Binding(
                 get: { editingCategory.map { IdentifiableString(value: $0) } },
                 set: { editingCategory = $0?.value }
@@ -157,7 +152,7 @@ struct BudgetView: View {
                 BudgetEditSheet(
                     category: item.value,
                     currentLimit: budgets[item.value] ?? 0,
-                    spent: spent(for: item.value)
+                    spent: monthSpendByCategory[item.value] ?? 0
                 ) { newLimit in
                     if newLimit > 0 {
                         budgets[item.value] = newLimit
@@ -169,7 +164,13 @@ struct BudgetView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear { budgets = BudgetStore.load() }
+        .onAppear {
+            budgets = BudgetStore.load()
+            recomputeMonthSpendByCategory()
+        }
+        .onChange(of: allTransactions.count) { _, _ in
+            recomputeMonthSpendByCategory()
+        }
     }
 }
 
@@ -189,6 +190,7 @@ struct BudgetEditSheet: View {
     let onSave: (Double) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
+    @AppStorage("compactMode") private var compactMode = false
 
     init(category: String, currentLimit: Double, spent: Double, onSave: @escaping (Double) -> Void) {
         self.category = category
@@ -200,7 +202,7 @@ struct BudgetEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
+            VStack(spacing: compactMode ? 16 : 24) {
                 HStack(spacing: 10) {
                     Circle().fill(Theme.colorForCategory(category)).frame(width: 14, height: 14)
                     Text(category).font(.headline).foregroundStyle(Theme.textPrimary)
@@ -219,9 +221,9 @@ struct BudgetEditSheet: View {
                         .foregroundStyle(Theme.textMuted)
                     TextField("e.g. 5000", text: $text)
                         .keyboardType(.numberPad)
-                        .font(.title2)
+                        .font(compactMode ? .title3 : .title2)
                         .foregroundStyle(Theme.textPrimary)
-                        .padding()
+                        .padding(compactMode ? 10 : 14)
                         .background(Theme.cardBg)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }

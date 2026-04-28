@@ -3,21 +3,45 @@ import SwiftData
 
 struct TransactionRow: View {
     let txn: TransactionRecord
+    @AppStorage("compactMode") private var compactMode = false
+
+    private static let dateInputFormatters: [DateFormatter] = {
+        ["yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy"].map { format in
+            let fmt = DateFormatter()
+            fmt.locale = Locale(identifier: "en_US_POSIX")
+            fmt.dateFormat = format
+            return fmt
+        }
+    }()
+
+    private static let dateOutputFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "MMM d"
+        return fmt
+    }()
+
+    private static let currencyFormatter: NumberFormatter = {
+        let fmt = NumberFormatter()
+        fmt.numberStyle = .currency
+        fmt.maximumFractionDigits = 2
+        return fmt
+    }()
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: compactMode ? 8 : 10) {
             // Category icon
             ZStack {
                 Circle()
                     .fill(Theme.colorForCategory(txn.category).opacity(0.15))
-                    .frame(width: 40, height: 40)
+                    .frame(width: compactMode ? 30 : 34, height: compactMode ? 30 : 34)
                 Text(iconFor(txn.category))
-                    .font(.system(size: 18))
+                    .font(.system(size: compactMode ? 13 : 15))
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(txn.merchant)
-                    .font(.subheadline)
+                    .font(compactMode ? .callout : .subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
@@ -44,7 +68,7 @@ struct TransactionRow: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(txn.type == "debit" ? "-" : "+")\(formatCurrency(txn.amount))")
-                    .font(.subheadline)
+                    .font(compactMode ? .callout : .subheadline)
                     .fontWeight(.semibold)
                     .foregroundStyle(txn.type == "debit" ? Theme.red : Theme.green)
                 if !txn.isValid {
@@ -58,13 +82,12 @@ struct TransactionRow: View {
                 }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, compactMode ? 1 : 3)
         .padding(.horizontal, 4)
     }
 
     private func formatCurrency(_ amount: Double) -> String {
-        let fmt = NumberFormatter()
-        fmt.numberStyle = .currency
+        let fmt = Self.currencyFormatter
         fmt.currencyCode = txn.currency
         fmt.currencySymbol = txn.currency == "INR" ? "₹" : nil
         fmt.maximumFractionDigits = amount.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 2
@@ -74,16 +97,13 @@ struct TransactionRow: View {
     private func formatDate(_ date: String) -> String {
         // Convert "2025-04-13" → "Apr 13"
         let trimmed = date.trimmingCharacters(in: .whitespaces)
-        let fmtIn = DateFormatter()
-        for format in ["yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy"] {
-            fmtIn.dateFormat = format
-            if let d = fmtIn.date(from: String(trimmed.prefix(10))) {
-                let fmtOut = DateFormatter()
-                fmtOut.dateFormat = "MMM d"
-                return fmtOut.string(from: d)
+        let core = String(trimmed.prefix(10))
+        for fmtIn in Self.dateInputFormatters {
+            if let d = fmtIn.date(from: core) {
+                return Self.dateOutputFormatter.string(from: d)
             }
         }
-        return String(trimmed.prefix(10))
+        return core
     }
 
     private func iconFor(_ category: String) -> String {

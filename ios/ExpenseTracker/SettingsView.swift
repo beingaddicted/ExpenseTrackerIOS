@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -7,6 +8,7 @@ struct SettingsView: View {
     @Query private var allRows: [TransactionRecord]
     @State private var showDeleteAllAlert = false
     @State private var showExport = false
+    @State private var showImportFile = false
     @State private var showRules = false
     @State private var showCategories = false
     @State private var showErrorLogs = false
@@ -15,9 +17,10 @@ struct SettingsView: View {
     @AppStorage("appTheme") private var appTheme = "dark"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage(ImportStartDateStore.selectedKey) private var hasSelectedImportStartDate = false
-    @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
+    @AppStorage("shortcutName") private var shortcutName = "Sync SMS"
+    @AppStorage("compactMode") private var compactMode = false
 
-    private let shortcutURL = "https://www.icloud.com/shortcuts/47740c818b3642949218c98fe2c12659"
+    private let shortcutURL = "https://www.icloud.com/shortcuts/dca0bcfd90524403bfdf8327c52cb1f0"
 
     var body: some View {
         NavigationStack {
@@ -34,18 +37,25 @@ struct SettingsView: View {
                         ShortcutLauncher.run(named: shortcutName)
                         dismiss()
                     } label: {
-                        Label("Run Shortcut Now", systemImage: "play.circle")
+                        Label("Sync SMS", systemImage: "play.circle")
                     }
                     .foregroundStyle(Theme.green)
 
                     HStack {
                         Label("Shortcut Name", systemImage: "flowchart")
                         Spacer()
-                        TextField("Expense Tracker", text: $shortcutName)
+                        TextField("Sync SMS", text: $shortcutName)
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(Theme.accentLight)
                             .frame(maxWidth: 160)
                     }
+
+                    Button {
+                        showImportFile = true
+                    } label: {
+                        Label("Import from File", systemImage: "tray.and.arrow.down")
+                    }
+                    .foregroundStyle(Theme.accentLight)
 
                     HStack {
                         Label("Import From", systemImage: "calendar.badge.clock")
@@ -107,6 +117,15 @@ struct SettingsView: View {
                 }
 
                 Section("Customisation") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle(isOn: $compactMode) {
+                            Label("Compact Mode", systemImage: "rectangle.compress.vertical")
+                        }
+                        Text("Shows more transactions per screen.")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textMuted)
+                    }
+
                     Button {
                         showRules = true
                     } label: {
@@ -165,12 +184,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .foregroundStyle(Theme.accentLight)
-                }
-            }
             .alert("Delete All Data?", isPresented: $showDeleteAllAlert) {
                 Button("Delete All", role: .destructive) {
                     deleteAll()
@@ -190,6 +203,9 @@ struct SettingsView: View {
                 Text("You'll be asked again from which date to import bank SMS. Existing transactions are not affected.")
             }
             .sheet(isPresented: $showExport) { ExportView() }
+            .fileImporter(isPresented: $showImportFile, allowedContentTypes: [.json, .plainText, .commaSeparatedText]) { result in
+                handleFileImport(result)
+            }
             .sheet(isPresented: $showRules) { RulesView() }
             .sheet(isPresented: $showCategories) { CategoriesView() }
             .sheet(isPresented: $showErrorLogs) { ErrorLogsView() }
@@ -223,5 +239,105 @@ struct SettingsView: View {
         // “couldn’t be opened because it isn’t in the correct format.”
         guard let url = URL(string: shortcutURL) else { return }
         UIApplication.shared.open(url)
+    }
+
+    private func handleFileImport(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            guard url.startAccessingSecurityScopedResource() else {
+                publishGlobalToast("Import failed: Cannot access file")
+                return
+            }
+            defer { url.stopAccessingSecurityScopedResource() }
+
+            do {
+                let text = try String(contentsOf: url, encoding: .utf8)
+                let fileName = url.lastPathComponent
+                let message: String
+                if url.pathExtension.lowercased() == "json" {
+                    let r = try importJSON(text, deltaKey: fileName)
+                    message = "\(r.added) added · \(r.skipped) duplicates · \(r.failed) unparsed"
+                        + (r.deltaSkipped > 0 ? " · \(r.deltaSkipped) skipped by delta" : "")
+                } else {
+                    let r = try ImportCoordinator.importCombinedText(text)
+                    message = "\(r.added) added · \(r.skipped) duplicates · \(r.failed) unparsed"
+                }
+                publishGlobalToast(message)
+            } catch {
+                publishGlobalToast("Import failed: \(error.localizedDescription)")
+            }
+        case .failure(let error):
+            publishGlobalToast("Import cancelled: \(error.localizedDescription)")
+        }
+    }
+
+    private func importJSON(_ text: String, deltaKey: String? = nil) throws -> (added: Int, skipped: Int, deltaSkipped: Int, failed: Int) {
+        guard let data = text.data(using: .utf8) else {
+            let r = try ImportCoordinator.importCombinedText(text)
+            return (r.added, r.skipped, 0, r.failed)
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let messages = json["messages"] as? [[String: Any]] {
+                let r = try importSMSMessages(messages)
+                return (r.added, r.skipped, 0, r.failed)
+            }
+            if let transactions = json["transactions"] as? [[String: Any]] {
+                return try ImportCoordinator.importTransactionObjects(transactions, deltaKey: deltaKey.map { "json-txn:\($0)" })
+            }
+        }
+
+        if let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            let hasSms = arr.contains { $0["message"] != nil || $0["body"] != nil || $0["text"] != nil }
+            if hasSms {
+                let r = try importSMSMessages(arr)
+                return (r.added, r.skipped, 0, r.failed)
+            }
+            return try ImportCoordinator.importTransactionObjects(arr, deltaKey: deltaKey.map { "json-txn:\($0)" })
+        }
+
+        let r = try ImportCoordinator.importCombinedText(text)
+        return (r.added, r.skipped, 0, r.failed)
+    }
+
+    @MainActor
+    private func importSMSMessages(_ messages: [[String: Any]]) throws -> (added: Int, skipped: Int, failed: Int) {
+        let ctx = Persistence.makeContext()
+        let existing = try ctx.fetch(FetchDescriptor<TransactionRecord>())
+        var batch: [ParsedTransaction] = []
+        var added = 0, skipped = 0, failed = 0
+
+        for msg in messages {
+            let smsText = (msg["body"] as? String) ?? (msg["message"] as? String) ?? (msg["text"] as? String) ?? ""
+            let sender = (msg["sender"] as? String) ?? (msg["from"] as? String) ?? ""
+            let dateVal = (msg["date"] as? String) ?? (msg["timestamp"] as? String)
+            let timeVal = (msg["time"] as? String)
+            let ts: String? = if let d = dateVal, let t = timeVal { "\(d) \(t)" } else { dateVal }
+
+            guard let p = SMSBankParser.parse(smsText, sender: sender, timestamp: ts) else {
+                failed += 1
+                continue
+            }
+            if SMSBankParser.isDuplicate(p, existing: existing) || SMSBankParser.isDuplicate(p, batch: batch) {
+                skipped += 1
+                continue
+            }
+            batch.append(p)
+            ctx.insert(TransactionRecord(
+                id: p.id, amount: p.amount, type: p.type, currency: p.currency,
+                date: p.date, bank: p.bank, account: p.account, merchant: p.merchant,
+                category: p.category, mode: p.mode, refNumber: p.refNumber,
+                balance: p.balance, rawSMS: p.rawSMS, sender: p.sender,
+                parsedAt: p.parsedAt, source: p.source
+            ))
+            added += 1
+        }
+        if added > 0 { try ctx.save() }
+        return (added, skipped, failed)
+    }
+
+    private func publishGlobalToast(_ message: String) {
+        UserDefaults.standard.set(message, forKey: "globalToastMessage")
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "globalToastTimestamp")
     }
 }

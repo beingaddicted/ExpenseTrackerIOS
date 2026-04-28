@@ -5,7 +5,7 @@ struct OnboardingView: View {
     @State private var shortcutInstalled = false
     @State private var showSkipConfirm = false
 
-    private let shortcutURL = "https://www.icloud.com/shortcuts/47740c818b3642949218c98fe2c12659"
+    private let shortcutURL = "https://www.icloud.com/shortcuts/dca0bcfd90524403bfdf8327c52cb1f0"
 
     var body: some View {
         ZStack {

@@ -14,6 +14,20 @@ struct TransactionDetailView: View {
     }
 
     @State private var allCategories: [String] = CategoriesStore.all()
+    private static let inputDateFormatters: [DateFormatter] = {
+        ["yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy"].map { format in
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = format
+            return formatter
+        }
+    }()
+    private static let outputDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter
+    }()
 
     var body: some View {
         ScrollView {
@@ -235,13 +249,10 @@ struct TransactionDetailView: View {
 
     private func formatFullDate(_ date: String) -> String {
         let trimmed = date.trimmingCharacters(in: .whitespaces)
-        let fmtIn = DateFormatter()
-        for format in ["yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy"] {
-            fmtIn.dateFormat = format
-            if let d = fmtIn.date(from: String(trimmed.prefix(10))) {
-                let fmtOut = DateFormatter()
-                fmtOut.dateFormat = "d MMM yyyy"
-                return fmtOut.string(from: d)
+        let raw = String(trimmed.prefix(10))
+        for formatter in Self.inputDateFormatters {
+            if let d = formatter.date(from: raw) {
+                return Self.outputDateFormatter.string(from: d)
             }
         }
         return trimmed
