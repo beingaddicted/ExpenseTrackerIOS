@@ -1,5 +1,10 @@
 // BankSMS.js — Scriptable (PROD BUILD) — single script on device
 //
+// ⚠️ FOR THE PWA FLOW ONLY. The iOS native app no longer needs this script
+//    — it uses the App Intents `GetImportStartDateIntent` (INIT) and
+//    `ImportBankSMSBatchIntent` (SAVE) instead, and does NOT create
+//    SmsExtracts.json. See SHORTCUT-SETUP.md → "iOS Native App Flow".
+//
 // Jest extracts the marked block into tests/.generated/ (see scripts/extract-bank-sms-lib-for-jest.js).
 //
 // Called by a 9-action Shortcut (runs manually or via nightly automation):

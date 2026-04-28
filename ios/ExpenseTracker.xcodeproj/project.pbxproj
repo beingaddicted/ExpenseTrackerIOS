@@ -29,6 +29,16 @@
 		C10000000000000000000020 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* OnboardingView.swift */; };
 		C10000000000000000000021 /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* AnalyticsView.swift */; };
 		C10000000000000000000022 /* BudgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* BudgetView.swift */; };
+		C10000000000000000000023 /* ImportStartDateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* ImportStartDateStore.swift */; };
+		C10000000000000000000024 /* ImportStartDateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* ImportStartDateView.swift */; };
+		C10000000000000000000025 /* CategoriesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000025 /* CategoriesStore.swift */; };
+		C10000000000000000000026 /* CategoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000026 /* CategoriesView.swift */; };
+		C10000000000000000000027 /* RulesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000027 /* RulesStore.swift */; };
+		C10000000000000000000028 /* RulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000028 /* RulesView.swift */; };
+		C10000000000000000000029 /* RuleEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000029 /* RuleEditorView.swift */; };
+		C10000000000000000000030 /* ErrorLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000030 /* ErrorLogStore.swift */; };
+		C10000000000000000000031 /* ErrorLogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000031 /* ErrorLogsView.swift */; };
+		C10000000000000000000032 /* GetImportStartDateIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000032 /* GetImportStartDateIntent.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +64,16 @@
 		B10000000000000000000020 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		B10000000000000000000021 /* AnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsView.swift; sourceTree = "<group>"; };
 		B10000000000000000000022 /* BudgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetView.swift; sourceTree = "<group>"; };
+		B10000000000000000000023 /* ImportStartDateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportStartDateStore.swift; sourceTree = "<group>"; };
+		B10000000000000000000024 /* ImportStartDateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportStartDateView.swift; sourceTree = "<group>"; };
+		B10000000000000000000025 /* CategoriesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesStore.swift; sourceTree = "<group>"; };
+		B10000000000000000000026 /* CategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesView.swift; sourceTree = "<group>"; };
+		B10000000000000000000027 /* RulesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RulesStore.swift; sourceTree = "<group>"; };
+		B10000000000000000000028 /* RulesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RulesView.swift; sourceTree = "<group>"; };
+		B10000000000000000000029 /* RuleEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleEditorView.swift; sourceTree = "<group>"; };
+		B10000000000000000000030 /* ErrorLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorLogStore.swift; sourceTree = "<group>"; };
+		B10000000000000000000031 /* ErrorLogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorLogsView.swift; sourceTree = "<group>"; };
+		B10000000000000000000032 /* GetImportStartDateIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GetImportStartDateIntent.swift; sourceTree = "<group>"; };
 		B20000000000000000000001 /* ExpenseTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ExpenseTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -107,6 +127,15 @@
 				B10000000000000000000017 /* ExportView.swift */,
 				B10000000000000000000018 /* SettingsView.swift */,
 				B10000000000000000000019 /* AddTransactionView.swift */,
+				B10000000000000000000023 /* ImportStartDateStore.swift */,
+				B10000000000000000000024 /* ImportStartDateView.swift */,
+				B10000000000000000000025 /* CategoriesStore.swift */,
+				B10000000000000000000026 /* CategoriesView.swift */,
+				B10000000000000000000027 /* RulesStore.swift */,
+				B10000000000000000000028 /* RulesView.swift */,
+				B10000000000000000000029 /* RuleEditorView.swift */,
+				B10000000000000000000030 /* ErrorLogStore.swift */,
+				B10000000000000000000031 /* ErrorLogsView.swift */,
 				1A0000000000000000000004 /* Intents */,
 			);
 			path = ExpenseTracker;
@@ -117,6 +146,7 @@
 			children = (
 				B10000000000000000000009 /* ImportBankSMSIntent.swift */,
 				B10000000000000000000010 /* ExpenseShortcuts.swift */,
+				B10000000000000000000032 /* GetImportStartDateIntent.swift */,
 			);
 			path = Intents;
 			sourceTree = "<group>";
@@ -211,6 +241,16 @@
 				C10000000000000000000020 /* OnboardingView.swift in Sources */,
 				C10000000000000000000021 /* AnalyticsView.swift in Sources */,
 				C10000000000000000000022 /* BudgetView.swift in Sources */,
+				C10000000000000000000023 /* ImportStartDateStore.swift in Sources */,
+				C10000000000000000000024 /* ImportStartDateView.swift in Sources */,
+				C10000000000000000000025 /* CategoriesStore.swift in Sources */,
+				C10000000000000000000026 /* CategoriesView.swift in Sources */,
+				C10000000000000000000027 /* RulesStore.swift in Sources */,
+				C10000000000000000000028 /* RulesView.swift in Sources */,
+				C10000000000000000000029 /* RuleEditorView.swift in Sources */,
+				C10000000000000000000030 /* ErrorLogStore.swift in Sources */,
+				C10000000000000000000031 /* ErrorLogsView.swift in Sources */,
+				C10000000000000000000032 /* GetImportStartDateIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -13,12 +13,7 @@ struct AddTransactionView: View {
     @State private var selectedType = "debit"
     @State private var date: Date
     @State private var notes = ""
-
-    private let allCategories = [
-        "Food", "Shopping", "Transport", "Travel", "Bills",
-        "Entertainment", "Groceries", "Health", "Investment",
-        "Transfer", "Salary", "Other"
-    ]
+    @State private var allCategories: [String] = CategoriesStore.all()
 
     init(defaultDate: String) {
         self.defaultDate = defaultDate
@@ -58,6 +53,7 @@ struct AddTransactionView: View {
                         }
                     }
                 }
+                .onAppear { allCategories = CategoriesStore.all() }
 
                 if !notes.isEmpty || true {
                     Section("Notes (optional)") {

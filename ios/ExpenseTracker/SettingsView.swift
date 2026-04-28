@@ -7,9 +7,14 @@ struct SettingsView: View {
     @Query private var allRows: [TransactionRecord]
     @State private var showDeleteAllAlert = false
     @State private var showExport = false
+    @State private var showRules = false
+    @State private var showCategories = false
+    @State private var showErrorLogs = false
+    @State private var showResetStartDate = false
     @State private var rulesResult: String? = nil
     @AppStorage("appTheme") private var appTheme = "dark"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage(ImportStartDateStore.selectedKey) private var hasSelectedImportStartDate = false
     @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
 
     private let shortcutURL = "https://www.icloud.com/shortcuts/47740c818b3642949218c98fe2c12659"
@@ -34,6 +39,21 @@ struct SettingsView: View {
                             .frame(maxWidth: 160)
                     }
 
+                    HStack {
+                        Label("Import From", systemImage: "calendar.badge.clock")
+                        Spacer()
+                        Text(ImportStartDateStore.loadString())
+                            .foregroundStyle(Theme.textMuted)
+                            .font(.caption)
+                    }
+
+                    Button {
+                        showResetStartDate = true
+                    } label: {
+                        Label("Reset Import Start Date", systemImage: "arrow.uturn.backward.circle")
+                    }
+                    .foregroundStyle(Theme.accentLight)
+
                     Button {
                         hasCompletedOnboarding = false
                         dismiss()
@@ -53,9 +73,12 @@ struct SettingsView: View {
 
                     Button {
                         let vm = AppViewModel()
-                        let count = vm.runRules(allRows, context: modelContext)
-                        rulesResult = count > 0
-                            ? "Updated \(count) transaction\(count == 1 ? "" : "s")"
+                        let mergedCount = vm.runRules(allRows, context: modelContext)
+                        let userRulesCount = RulesEngine.applyToAll(allRows)
+                        try? modelContext.save()
+                        let total = mergedCount + userRulesCount
+                        rulesResult = total > 0
+                            ? "Updated \(total) transaction\(total == 1 ? "" : "s")"
                             : "All transactions already categorised correctly"
                     } label: {
                         Label("Run Rules", systemImage: "wand.and.stars")
@@ -75,16 +98,39 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Categories") {
-                    let cats = uniqueCategories()
-                    ForEach(cats, id: \.self) { cat in
-                        HStack(spacing: 10) {
-                            Circle()
-                                .fill(Theme.colorForCategory(cat))
-                                .frame(width: 10, height: 10)
-                            Text(cat)
+                Section("Customisation") {
+                    Button {
+                        showRules = true
+                    } label: {
+                        HStack {
+                            Label("Classification Rules", systemImage: "ruler")
                             Spacer()
-                            Text("\(allRows.filter { $0.category == cat }.count)")
+                            Text("\(RulesStore.load().count)")
+                                .foregroundStyle(Theme.textMuted)
+                                .font(.caption)
+                        }
+                    }
+                    Button {
+                        showCategories = true
+                    } label: {
+                        HStack {
+                            Label("Manage Categories", systemImage: "tag")
+                            Spacer()
+                            Text("\(CategoriesStore.custom().count) custom")
+                                .foregroundStyle(Theme.textMuted)
+                                .font(.caption)
+                        }
+                    }
+                }
+
+                Section("Diagnostics") {
+                    Button {
+                        showErrorLogs = true
+                    } label: {
+                        HStack {
+                            Label("Error Logs", systemImage: "exclamationmark.triangle")
+                            Spacer()
+                            Text("\(ErrorLogStore.load().count)")
                                 .foregroundStyle(Theme.textMuted)
                                 .font(.caption)
                         }
@@ -123,11 +169,22 @@ struct SettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will permanently remove all \(allRows.count) transactions. Export first if you need a backup.")
+                Text("This will permanently remove all \(allRows.count) transactions. You'll be prompted again for the import start date when you reopen the app.")
             }
-            .sheet(isPresented: $showExport) {
-                ExportView()
+            .alert("Reset Import Start Date?", isPresented: $showResetStartDate) {
+                Button("Reset", role: .destructive) {
+                    ImportStartDateStore.reset()
+                    hasSelectedImportStartDate = false
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("You'll be asked again from which date to import bank SMS. Existing transactions are not affected.")
             }
+            .sheet(isPresented: $showExport) { ExportView() }
+            .sheet(isPresented: $showRules) { RulesView() }
+            .sheet(isPresented: $showCategories) { CategoriesView() }
+            .sheet(isPresented: $showErrorLogs) { ErrorLogsView() }
             .alert("Rules Result", isPresented: Binding(
                 get: { rulesResult != nil },
                 set: { if !$0 { rulesResult = nil } }
@@ -139,15 +196,17 @@ struct SettingsView: View {
         }
     }
 
-    private func uniqueCategories() -> [String] {
-        Array(Set(allRows.map(\.category))).sorted()
-    }
-
     private func deleteAll() {
         for row in allRows {
             modelContext.delete(row)
         }
         try? modelContext.save()
+        // Force re-prompt for import start date and clear any delta tracking,
+        // so a fresh import starts from the user's newly chosen date.
+        ImportStartDateStore.reset()
+        hasSelectedImportStartDate = false
+        UserDefaults.standard.removeObject(forKey: "expense_tracker_ios_delta")
+        dismiss()
     }
 
     private func installShortcut() {
