@@ -8,6 +8,18 @@ struct ImportStartDateView: View {
     @State private var customDate: Date = Calendar.current.date(byAdding: .month, value: -3, to: Date()) ?? Date()
     @State private var selectedPreset: Preset? = .threeMonths
     @State private var showCustom = false
+    private static let displayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter
+    }()
+    private static let defaultStartParser: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 
     enum Preset: String, CaseIterable, Identifiable {
         case oneMonth, threeMonths, sixMonths, oneYear, threeYears, allTime, custom
@@ -48,10 +60,7 @@ struct ImportStartDateView: View {
             case .oneYear:     return cal.date(byAdding: .year, value: -1, to: today) ?? today
             case .threeYears:  return cal.date(byAdding: .year, value: -3, to: today) ?? today
             case .allTime:
-                let f = DateFormatter()
-                f.dateFormat = "yyyy-MM-dd"
-                f.locale = Locale(identifier: "en_US_POSIX")
-                return f.date(from: ImportStartDateStore.defaultStart) ?? today
+                return ImportStartDateView.defaultStartParser.date(from: ImportStartDateStore.defaultStart) ?? today
             case .custom:      return today
             }
         }
@@ -101,7 +110,7 @@ struct ImportStartDateView: View {
                     .padding(.horizontal, 20)
                     .disabled(selectedPreset == nil)
 
-                    Text("You can change this any time from Settings → Import → Reset Import Start Date.")
+                    Text("You can change this any time from Settings.")
                         .font(.caption2)
                         .foregroundStyle(Theme.textMuted)
                         .multilineTextAlignment(.center)
@@ -126,7 +135,7 @@ struct ImportStartDateView: View {
                     .foregroundStyle(Theme.accentLight)
             }
 
-            Text("Import From When?")
+            Text("Import from when?")
                 .font(.system(size: 24, weight: .bold))
                 .foregroundStyle(Theme.textPrimary)
 
@@ -168,6 +177,7 @@ struct ImportStartDateView: View {
                     .stroke(isSelected ? Theme.accentLight.opacity(0.5) : Color.clear, lineWidth: 1)
             )
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Actions
@@ -183,8 +193,6 @@ struct ImportStartDateView: View {
     }
 
     private func formatted(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "d MMM yyyy"
-        return f.string(from: date)
+        Self.displayFormatter.string(from: date)
     }
 }

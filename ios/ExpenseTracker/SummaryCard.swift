@@ -6,6 +6,12 @@ struct SummaryCard: View {
     let currency: String
     let color: Color
     let icon: String
+    private static let currencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -35,12 +41,9 @@ struct SummaryCard: View {
     }
 
     private func formatCurrency(_ amount: Double) -> String {
-        let fmt = NumberFormatter()
-        fmt.numberStyle = .currency
-        fmt.currencyCode = currency
-        fmt.currencySymbol = currency == "INR" ? "₹" : nil
-        fmt.maximumFractionDigits = 0
-        return fmt.string(from: NSNumber(value: amount)) ?? "\(amount)"
+        Self.currencyFormatter.currencyCode = currency
+        Self.currencyFormatter.currencySymbol = currency == "INR" ? "₹" : nil
+        return Self.currencyFormatter.string(from: NSNumber(value: amount)) ?? "\(amount)"
     }
 }
 
@@ -49,6 +52,12 @@ struct CategoryBar: View {
     let amount: Double
     let total: Double
     let currency: String
+    private static let currencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -77,11 +86,8 @@ struct CategoryBar: View {
     }
 
     private func formatCurrency(_ amount: Double) -> String {
-        let fmt = NumberFormatter()
-        fmt.numberStyle = .currency
-        fmt.currencyCode = currency
-        fmt.currencySymbol = currency == "INR" ? "₹" : nil
-        fmt.maximumFractionDigits = 0
-        return fmt.string(from: NSNumber(value: amount)) ?? "\(amount)"
+        Self.currencyFormatter.currencyCode = currency
+        Self.currencyFormatter.currencySymbol = currency == "INR" ? "₹" : nil
+        return Self.currencyFormatter.string(from: NSNumber(value: amount)) ?? "\(amount)"
     }
 }

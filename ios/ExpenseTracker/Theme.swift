@@ -46,6 +46,16 @@ enum Theme {
         dark: UIColor.white.withAlphaComponent(0.08)
     )
 
+    // MARK: - Shared Layout Metrics
+
+    static func horizontalInset(compact: Bool) -> CGFloat {
+        compact ? 10 : 14
+    }
+
+    static func cardInset(compact: Bool) -> CGFloat {
+        compact ? 10 : 14
+    }
+
     static let categoryColors: [String: Color] = [
         "Food & Dining": .orange,
         "Shopping": .pink,

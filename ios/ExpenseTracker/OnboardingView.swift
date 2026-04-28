@@ -107,7 +107,7 @@ struct OnboardingView: View {
                     .padding(.bottom, 24)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("Contact Developer support", systemImage: "envelope")
+                        Label("Contact Developer", systemImage: "envelope")
                             .font(.subheadline)
                             .fontWeight(.semibold)
                             .foregroundStyle(Theme.textPrimary)
@@ -156,7 +156,7 @@ struct OnboardingView: View {
             }
         }
         .confirmationDialog(
-            "Skip Shortcut Setup?",
+            "Skip shortcut setup?",
             isPresented: $showSkipConfirm,
             titleVisibility: .visible
         ) {
@@ -164,7 +164,7 @@ struct OnboardingView: View {
             Button("Set Up Shortcut") { installShortcut() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("You can always add the Shortcut later from Settings → Set Up.")
+            Text("You can always add the Shortcut later from Settings > Set Up.")
         }
     }
 

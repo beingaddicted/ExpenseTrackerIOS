@@ -6,6 +6,7 @@ struct ErrorLogsView: View {
     @State private var showShare = false
     @State private var exportURL: URL? = nil
     @State private var showClearConfirm = false
+    private static let isoFormatter = ISO8601DateFormatter()
 
     private let timeFmt: DateFormatter = {
         let f = DateFormatter()
@@ -108,7 +109,7 @@ struct ErrorLogsView: View {
 
     private func exportLogs() {
         let lines = entries.map { e -> String in
-            let ts = ISO8601DateFormatter().string(from: e.timestamp)
+            let ts = Self.isoFormatter.string(from: e.timestamp)
             return "[\(ts)] \(e.type): \(e.message)\n\(e.details ?? "")"
         }
         let content = lines.joined(separator: "\n---\n")

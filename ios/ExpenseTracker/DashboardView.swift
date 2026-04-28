@@ -62,6 +62,8 @@ struct DashboardView: View {
         f.numberStyle = .decimal
         return f
     }()
+    private var horizontalInset: CGFloat { Theme.horizontalInset(compact: compactMode) }
+    private var cardInset: CGFloat { Theme.cardInset(compact: compactMode) }
 
     private var monthLabel: String {
         var comps = DateComponents()
@@ -104,9 +106,9 @@ struct DashboardView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(
                         top: compactMode ? 1 : 2,
-                        leading: compactMode ? 10 : 14,
+                        leading: horizontalInset,
                         bottom: compactMode ? 2 : 4,
-                        trailing: compactMode ? 10 : 14
+                        trailing: horizontalInset
                     ))
             }
 
@@ -115,18 +117,18 @@ struct DashboardView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(
                         top: compactMode ? 1 : 2,
-                        leading: compactMode ? 10 : 14,
+                        leading: horizontalInset,
                         bottom: compactMode ? 2 : 4,
-                        trailing: compactMode ? 10 : 14
+                        trailing: horizontalInset
                     ))
             }
 
             Section { summaryRow }
                 .listRowInsets(EdgeInsets(
                     top: compactMode ? 1 : 2,
-                    leading: compactMode ? 10 : 14,
+                    leading: horizontalInset,
                     bottom: compactMode ? 0 : 1,
-                    trailing: compactMode ? 10 : 14
+                    trailing: horizontalInset
                 ))
                 .listRowBackground(Color.clear)
 
@@ -134,9 +136,9 @@ struct DashboardView: View {
                 Section { quickStatsRow }
                     .listRowInsets(EdgeInsets(
                         top: 0,
-                        leading: compactMode ? 10 : 14,
+                        leading: horizontalInset,
                         bottom: compactMode ? 1 : 2,
-                        trailing: compactMode ? 10 : 14
+                        trailing: horizontalInset
                     ))
                     .listRowBackground(Color.clear)
             }
@@ -154,9 +156,9 @@ struct DashboardView: View {
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(
                 top: 0,
-                leading: compactMode ? 10 : 14,
+                leading: horizontalInset,
                 bottom: compactMode ? 1 : 2,
-                trailing: compactMode ? 10 : 14
+                trailing: horizontalInset
             ))
 
             Section {
@@ -222,7 +224,7 @@ struct DashboardView: View {
                                     .buttonStyle(.bordered)
                             }
 
-                            Button("Add manually") { showAdd = true }
+                            Button("Add Transaction") { showAdd = true }
                                 .buttonStyle(.bordered)
                         }
                     }
@@ -271,16 +273,16 @@ struct DashboardView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, compactMode ? 10 : 14)
+                    .padding(.horizontal, horizontalInset)
                     .padding(.vertical, compactMode ? 6 : 8)
                     .background(Theme.cardBg)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .padding(.horizontal, compactMode ? 10 : 14)
+                    .padding(.horizontal, horizontalInset)
                     .padding(.top, 2)
                 }
 
                 monthHeaderRow
-                    .padding(.horizontal, compactMode ? 10 : 14)
+                    .padding(.horizontal, horizontalInset)
                     .padding(.vertical, 0)
             }
             .background(Theme.bgPrimary)
@@ -297,7 +299,7 @@ struct DashboardView: View {
         }
         .overlay(alignment: .trailing) {
             actionDrawerOverlay
-                .padding(.trailing, compactMode ? 10 : 14)
+                .padding(.trailing, horizontalInset)
         }
         .sheet(isPresented: $showMonthPicker) {
             MonthPickerSheet(month: $currentMonth, year: $currentYear)
@@ -310,8 +312,8 @@ struct DashboardView: View {
         .navigationDestination(for: TransactionRecord.self) { txn in
             TransactionDetailView(txn: txn)
         }
-        .alert("Run first Sync SMS", isPresented: $showFirstRunHeadsUp) {
-            Button("Open right menu") {
+        .alert("Run Sync SMS first", isPresented: $showFirstRunHeadsUp) {
+            Button("Open actions") {
                 hasSeenFirstRunHeadsUp = true
                 showActionDrawer = true
             }
@@ -319,7 +321,7 @@ struct DashboardView: View {
                 hasSeenFirstRunHeadsUp = true
             }
         } message: {
-            Text("Use the right arrow menu and tap Sync SMS. Sync time depends on how many messages are extracted. If first attempt fails because iOS stops the app, just relaunch and run Sync SMS again — it should complete without issue.")
+            Text("Use the actions button (chevron), then tap Sync SMS. Sync time depends on how many messages are extracted. If the first attempt fails because iOS stops the app, relaunch and run Sync SMS again — it should complete.")
         }
         .alert("iCloud backup found", isPresented: $showICloudRecoveryPrompt) {
             Button("Retrieve from iCloud") {
@@ -658,7 +660,7 @@ struct DashboardView: View {
             }
             Spacer()
         }
-        .padding(compactMode ? 10 : 12)
+        .padding(cardInset)
         .background(LinearGradient(colors: [Theme.accentPrimary, Theme.accentLight],
                                    startPoint: .leading, endPoint: .trailing))
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -670,7 +672,7 @@ struct DashboardView: View {
                 .foregroundStyle(.white)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Set up Shortcut required")
+                Text("Shortcut setup required")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundStyle(.white)
@@ -698,7 +700,7 @@ struct DashboardView: View {
             }
             Spacer()
         }
-        .padding(compactMode ? 10 : 12)
+        .padding(cardInset)
         .background(LinearGradient(colors: [Theme.accentPrimary, Theme.accentLight],
                                    startPoint: .leading, endPoint: .trailing))
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -722,7 +724,7 @@ struct DashboardView: View {
 
     private var emptyStateSubtitle: String {
         if isFiltering { return "Try clearing search or switching the type filter." }
-        if allRows.isEmpty { return "Run your SMS shortcut or add your first transaction manually." }
+        if allRows.isEmpty { return "Run your iOS Shortcut or add your first transaction manually." }
         return "Import more SMS or switch month to view earlier activity."
     }
 

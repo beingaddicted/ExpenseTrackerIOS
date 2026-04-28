@@ -45,6 +45,8 @@ struct AnalyticsView: View {
             return formatter
         }
     }()
+    private var horizontalInset: CGFloat { Theme.horizontalInset(compact: compactMode) }
+    private var cardInset: CGFloat { Theme.cardInset(compact: compactMode) }
 
     private enum AnalyticsScope: String, CaseIterable, Identifiable {
         case month = "Month"
@@ -105,7 +107,7 @@ struct AnalyticsView: View {
                             .font(.caption)
                             .foregroundStyle(Theme.textMuted)
                     }
-                    .padding(.horizontal, compactMode ? 10 : 14)
+                    .padding(.horizontal, horizontalInset)
 
                     collapsibleCard(title: "By Category", isExpanded: $showByCategory) {
                         categoryBreakdownBody
@@ -299,10 +301,10 @@ struct AnalyticsView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: isExpanded.wrappedValue)
-        .padding(compactMode ? 10 : 14)
+        .padding(cardInset)
         .background(Theme.cardBg)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal, compactMode ? 10 : 14)
+        .padding(.horizontal, horizontalInset)
     }
 
     // MARK: - Helpers
@@ -349,11 +351,14 @@ struct AnalyticsView: View {
             byMode[txn.mode, default: 0] += txn.amount
 
             if scope == .month {
-                if let weekday = weekdayFromDateString(txn.date) {
-                    byWeekday[weekday, default: 0] += txn.amount
-                }
-                if let day = dayFromDateString(txn.date), day >= 1, day <= daysInMonth {
-                    byDay[day - 1] += txn.amount
+                if let date = parsedDateFromString(txn.date) {
+                    let components = cal.dateComponents([.weekday, .day], from: date)
+                    if let weekday = components.weekday {
+                        byWeekday[weekday, default: 0] += txn.amount
+                    }
+                    if let day = components.day, day >= 1, day <= daysInMonth {
+                        byDay[day - 1] += txn.amount
+                    }
                 }
             } else if let month = vm.parseDate(txn.date).month, month >= 1, month <= 12 {
                 byMonth[month, default: 0] += txn.amount
@@ -393,21 +398,11 @@ struct AnalyticsView: View {
         }
     }
 
-    private func dayFromDateString(_ s: String) -> Int? {
+    private func parsedDateFromString(_ s: String) -> Date? {
         let trimmed = String(s.trimmingCharacters(in: .whitespaces).prefix(10))
         for formatter in Self.parseDateFormatters {
             if let d = formatter.date(from: trimmed) {
-                return Calendar.current.component(.day, from: d)
-            }
-        }
-        return nil
-    }
-
-    private func weekdayFromDateString(_ s: String) -> Int? {
-        let trimmed = String(s.trimmingCharacters(in: .whitespaces).prefix(10))
-        for formatter in Self.parseDateFormatters {
-            if let d = formatter.date(from: trimmed) {
-                return Calendar.current.component(.weekday, from: d)
+                return d
             }
         }
         return nil

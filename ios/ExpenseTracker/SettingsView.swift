@@ -29,6 +29,7 @@ struct SettingsView: View {
     @AppStorage("iCloudLastSyncAt") private var iCloudLastSyncAt: Double = 0
     @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
     @AppStorage("compactMode") private var compactMode = false
+    private static let iso8601LogFormatter = ISO8601DateFormatter()
 
     var body: some View {
         NavigationStack {
@@ -92,7 +93,7 @@ struct SettingsView: View {
                             ? "Updated \(total) transaction\(total == 1 ? "" : "s")"
                             : "All transactions already categorised correctly"
                     } label: {
-                        Label("Run Rules", systemImage: "wand.and.stars")
+                        Label("Run All Rules", systemImage: "wand.and.stars")
                     }
 
                     Button {
@@ -108,7 +109,7 @@ struct SettingsView: View {
                             .foregroundStyle(Theme.red)
                     }
 
-                    Text("Auto sync exports this device data to iCloud backup.")
+                    Text("Auto Sync exports this device's data to your iCloud backup.")
                         .font(.caption2)
                         .foregroundStyle(Theme.textMuted)
                 }
@@ -244,7 +245,7 @@ struct SettingsView: View {
             } message: {
                 Text("Please configure a Mail account on this device. We'll try opening Gmail instead.")
             }
-            .alert("Rules Result", isPresented: Binding(
+            .alert("Rule Run", isPresented: Binding(
                 get: { rulesResult != nil },
                 set: { if !$0 { rulesResult = nil } }
             )) {
@@ -465,7 +466,7 @@ struct SettingsView: View {
             return Data("No error logs recorded.".utf8)
         }
         let lines = entries.map { entry -> String in
-            let ts = ISO8601DateFormatter().string(from: entry.timestamp)
+            let ts = Self.iso8601LogFormatter.string(from: entry.timestamp)
             return "[\(ts)] \(entry.type): \(entry.message)\n\(entry.details ?? "")"
         }
         return Data(lines.joined(separator: "\n---\n").utf8)

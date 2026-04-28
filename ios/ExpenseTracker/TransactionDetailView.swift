@@ -28,6 +28,11 @@ struct TransactionDetailView: View {
         formatter.dateFormat = "d MMM yyyy"
         return formatter
     }()
+    private static let currencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        return formatter
+    }()
 
     var body: some View {
         ScrollView {
@@ -242,12 +247,10 @@ struct TransactionDetailView: View {
     }
 
     private func formatCurrency(_ amount: Double) -> String {
-        let fmt = NumberFormatter()
-        fmt.numberStyle = .currency
-        fmt.currencyCode = txn.currency
-        fmt.currencySymbol = txn.currency == "INR" ? "₹" : nil
-        fmt.maximumFractionDigits = amount.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 2
-        return fmt.string(from: NSNumber(value: amount)) ?? "\(amount)"
+        Self.currencyFormatter.currencyCode = txn.currency
+        Self.currencyFormatter.currencySymbol = txn.currency == "INR" ? "₹" : nil
+        Self.currencyFormatter.maximumFractionDigits = amount.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 2
+        return Self.currencyFormatter.string(from: NSNumber(value: amount)) ?? "\(amount)"
     }
 
     private func formatFullDate(_ date: String) -> String {
