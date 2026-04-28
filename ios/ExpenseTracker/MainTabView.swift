@@ -10,10 +10,16 @@ import SwiftData
 /// a toolbar button on the dashboard too — neither belongs as a top-level
 /// tab on iOS.
 struct MainTabView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \TransactionRecord.date, order: .reverse) private var allRows: [TransactionRecord]
     @AppStorage("globalToastMessage") private var globalToastMessage = ""
     @AppStorage("globalToastTimestamp") private var globalToastTimestamp: Double = 0
+    @AppStorage("iCloudAutoSyncEnabled") private var iCloudAutoSyncEnabled = false
+    @AppStorage("iCloudSuppressAutoSync") private var iCloudSuppressAutoSync = false
+    @AppStorage("iCloudNeedsRestorePrompt") private var iCloudNeedsRestorePrompt = false
+    @AppStorage("iCloudLastSyncAt") private var iCloudLastSyncAt: Double = 0
     @State private var showGlobalToast = false
+    @State private var isAutoExportingToICloud = false
 
     private var toastTone: (bg: Color, fg: Color, icon: String) {
         let msg = globalToastMessage.lowercased()
@@ -74,6 +80,36 @@ struct MainTabView: View {
             showGlobalToast = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 showGlobalToast = false
+            }
+        }
+        .onAppear {
+            autoExportToICloudIfNeeded()
+        }
+        .onChange(of: allRows.count) { _, _ in
+            autoExportToICloudIfNeeded()
+        }
+        .onChange(of: iCloudAutoSyncEnabled) { _, _ in
+            autoExportToICloudIfNeeded()
+        }
+    }
+
+    private func autoExportToICloudIfNeeded() {
+        guard iCloudAutoSyncEnabled else { return }
+        guard !iCloudSuppressAutoSync else { return }
+        guard !iCloudNeedsRestorePrompt else { return }
+        guard !allRows.isEmpty else { return }
+        guard !isAutoExportingToICloud else { return }
+
+        isAutoExportingToICloud = true
+        Task { @MainActor in
+            defer { isAutoExportingToICloud = false }
+            do {
+                let report = try ICloudSyncService.exportTransactions(context: modelContext)
+                iCloudLastSyncAt = report.syncedAt.timeIntervalSince1970
+            } catch {
+                // Keep auto-sync non-blocking; surface issue via toast.
+                globalToastMessage = "Auto iCloud export failed: \(error.localizedDescription)"
+                globalToastTimestamp = Date().timeIntervalSince1970
             }
         }
     }

@@ -17,11 +17,17 @@ struct SettingsView: View {
     @State private var showContactDeveloperPrompt = false
     @State private var showContactDeveloperMail = false
     @State private var showMailUnavailableAlert = false
+    @State private var isExportingICloud = false
     @State private var supportAttachmentData: Data = Data()
     @AppStorage("appTheme") private var appTheme = "dark"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage(ImportStartDateStore.selectedKey) private var hasSelectedImportStartDate = false
     @AppStorage("hasSeenFirstRunHeadsUp") private var hasSeenFirstRunHeadsUp = false
+    @AppStorage("hasSetupShortcut") private var hasSetupShortcut = false
+    @AppStorage("iCloudAutoSyncEnabled") private var iCloudAutoSyncEnabled = false
+    @AppStorage("iCloudSuppressAutoSync") private var iCloudSuppressAutoSync = false
+    @AppStorage("iCloudNeedsRestorePrompt") private var iCloudNeedsRestorePrompt = false
+    @AppStorage("iCloudLastSyncAt") private var iCloudLastSyncAt: Double = 0
     @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
     @AppStorage("compactMode") private var compactMode = false
 
@@ -65,6 +71,28 @@ struct SettingsView: View {
                 }
 
                 Section("Data") {
+                    Toggle(isOn: $iCloudAutoSyncEnabled) {
+                        Label("Auto Sync to iCloud", systemImage: "icloud")
+                    }
+
+                    Button {
+                        exportNowToICloud()
+                    } label: {
+                        HStack {
+                            Label("Export to iCloud Now", systemImage: "icloud.and.arrow.up")
+                            Spacer()
+                            if isExportingICloud {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else if iCloudLastSyncAt > 0 {
+                                Text(lastICloudSyncLabel)
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                        }
+                    }
+                    .disabled(isExportingICloud)
+
                     Button {
                         showImportFile = true
                     } label: {
@@ -97,6 +125,10 @@ struct SettingsView: View {
                         Label("Delete All Data", systemImage: "trash")
                             .foregroundStyle(Theme.red)
                     }
+
+                    Text("Auto sync exports this device data to iCloud backup.")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textMuted)
                 }
 
                 Section("Customisation") {
@@ -183,12 +215,15 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .alert("Delete All Data?", isPresented: $showDeleteAllAlert) {
-                Button("Delete All", role: .destructive) {
-                    deleteAll()
+                Button("Delete local + iCloud backup", role: .destructive) {
+                    deleteAll(deleteICloudBackup: true)
+                }
+                Button("Delete local only", role: .destructive) {
+                    deleteAll(deleteICloudBackup: false)
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will permanently remove all \(allRows.count) transactions. You'll be prompted again for the import start date when you reopen the app.")
+                Text("This removes all \(allRows.count) local transactions. Choose whether iCloud backup should also be deleted.")
             }
             .sheet(isPresented: $showExport) { ExportView() }
             .fileImporter(isPresented: $showImportFile, allowedContentTypes: [.json, .plainText, .commaSeparatedText]) { result in
@@ -235,10 +270,16 @@ struct SettingsView: View {
             } message: {
                 Text(rulesResult ?? "")
             }
+            .onChange(of: iCloudAutoSyncEnabled) { _, enabled in
+                if enabled, !allRows.isEmpty {
+                    iCloudSuppressAutoSync = false
+                    exportNowToICloud()
+                }
+            }
         }
     }
 
-    private func deleteAll() {
+    private func deleteAll(deleteICloudBackup: Bool) {
         for row in allRows {
             modelContext.delete(row)
         }
@@ -249,6 +290,24 @@ struct SettingsView: View {
         hasSelectedImportStartDate = false
         hasSeenFirstRunHeadsUp = false
         AppGroup.defaults.removeObject(forKey: "expense_tracker_ios_delta")
+
+        if deleteICloudBackup {
+            do {
+                try ICloudSyncService.deleteBackup()
+                iCloudLastSyncAt = 0
+                iCloudSuppressAutoSync = false
+                iCloudNeedsRestorePrompt = false
+                publishGlobalToast("Local and iCloud backup deleted.")
+            } catch {
+                publishGlobalToast("Local data deleted. iCloud delete failed: \(error.localizedDescription)")
+            }
+        } else {
+            // Prevent accidentally exporting empty local data right after delete-all.
+            iCloudSuppressAutoSync = true
+            iCloudNeedsRestorePrompt = true
+            publishGlobalToast("Local data deleted. iCloud backup kept.")
+        }
+
         dismiss()
     }
 
@@ -257,7 +316,11 @@ struct SettingsView: View {
         // that serves a raw .shortcut file; iCloud gallery pages are HTML, which triggers
         // “couldn’t be opened because it isn’t in the correct format.”
         guard let url = URL(string: shortcutURL) else { return }
-        UIApplication.shared.open(url)
+        UIApplication.shared.open(url) { success in
+            if success {
+                hasSetupShortcut = true
+            }
+        }
     }
 
     private func handleFileImport(_ result: Result<URL, Error>) {
@@ -358,6 +421,34 @@ struct SettingsView: View {
     private func publishGlobalToast(_ message: String) {
         UserDefaults.standard.set(message, forKey: "globalToastMessage")
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "globalToastTimestamp")
+    }
+
+    private var lastICloudSyncLabel: String {
+        let date = Date(timeIntervalSince1970: iCloudLastSyncAt)
+        return RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+    }
+
+    private func exportNowToICloud() {
+        guard !isExportingICloud else { return }
+        guard !allRows.isEmpty else {
+            publishGlobalToast("Nothing to export. Add or restore data first.")
+            return
+        }
+        isExportingICloud = true
+
+        Task { @MainActor in
+            defer { isExportingICloud = false }
+
+            do {
+                let report = try ICloudSyncService.exportTransactions(context: modelContext)
+                iCloudLastSyncAt = report.syncedAt.timeIntervalSince1970
+                iCloudSuppressAutoSync = false
+                let message = "iCloud export done: \(report.exportedCount) transactions."
+                publishGlobalToast(message)
+            } catch {
+                publishGlobalToast("iCloud export failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func openSupportEmailComposer() {

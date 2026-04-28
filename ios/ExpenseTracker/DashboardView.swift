@@ -25,6 +25,8 @@ struct DashboardView: View {
     @State private var showFirstRunHeadsUp = false
     @State private var revealIncome = false
     @State private var showActionDrawer = false
+    @State private var showICloudRecoveryPrompt = false
+    @State private var isResolvingICloudRecovery = false
     @State private var monthRowsCache: [TransactionRecord] = []
     @State private var validMonthDebitsCache: [TransactionRecord] = []
     @State private var filteredRowsCache: [TransactionRecord] = []
@@ -40,10 +42,15 @@ struct DashboardView: View {
 
     @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
     @AppStorage("hasSeenFirstRunHeadsUp") private var hasSeenFirstRunHeadsUp = false
+    @AppStorage("hasSetupShortcut") private var hasSetupShortcut = false
     @AppStorage("pendingBannerSnoozedAt") private var pendingBannerSnoozedAt: Double = 0
     @AppStorage("compactMode") private var compactMode = false
     @AppStorage("selectedMonth") private var selectedMonth = Calendar.current.component(.month, from: Date())
     @AppStorage("selectedYear") private var selectedYear = Calendar.current.component(.year, from: Date())
+    @AppStorage("iCloudNeedsRestorePrompt") private var iCloudNeedsRestorePrompt = false
+    @AppStorage("iCloudSuppressAutoSync") private var iCloudSuppressAutoSync = false
+    @AppStorage("iCloudLastSyncAt") private var iCloudLastSyncAt: Double = 0
+    private let shortcutURL = "https://www.icloud.com/shortcuts/dca0bcfd90524403bfdf8327c52cb1f0"
 
     private static let monthLabelFormatter: DateFormatter = {
         let fmt = DateFormatter()
@@ -92,6 +99,17 @@ struct DashboardView: View {
 
     var body: some View {
         List {
+            if !hasSetupShortcut {
+                Section { setupShortcutBannerRow }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(
+                        top: compactMode ? 1 : 2,
+                        leading: compactMode ? 10 : 14,
+                        bottom: compactMode ? 2 : 4,
+                        trailing: compactMode ? 10 : 14
+                    ))
+            }
+
             if showPendingBanner {
                 Section { pendingBannerRow }
                     .listRowBackground(Color.clear)
@@ -303,11 +321,22 @@ struct DashboardView: View {
         } message: {
             Text("Use the right arrow menu and tap Sync SMS. Sync time depends on how many messages are extracted. If first attempt fails because iOS stops the app, just relaunch and run Sync SMS again — it should complete without issue.")
         }
+        .alert("iCloud backup found", isPresented: $showICloudRecoveryPrompt) {
+            Button("Retrieve from iCloud") {
+                restoreFromICloudBackup()
+            }
+            Button("Start fresh", role: .destructive) {
+                startFreshAndDeleteICloudBackup()
+            }
+            Button("Later", role: .cancel) {}
+        } message: {
+            Text("Local data is empty, but an iCloud backup exists. Retrieve it now, or start fresh and delete that iCloud backup.")
+        }
         .onAppear {
             currentMonth = selectedMonth
             currentYear = selectedYear
             evaluatePendingImport()
-            evaluateFirstRunHeadsUp()
+            evaluateICloudRecoveryPromptIfNeeded()
             recomputeDashboardData()
         }
         .onDisappear {
@@ -333,7 +362,17 @@ struct DashboardView: View {
                 }
             }
         }
-        .onChange(of: allRows.count) { _, _ in recomputeDashboardData() }
+        .onChange(of: hasSetupShortcut) { _, newValue in
+            if newValue {
+                evaluateFirstRunHeadsUp()
+            }
+        }
+        .onChange(of: allRows.count) { _, newCount in
+            recomputeDashboardData()
+            if newCount == 0 {
+                evaluateICloudRecoveryPromptIfNeeded()
+            }
+        }
     }
 
     // MARK: - Rows
@@ -625,6 +664,46 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    private var setupShortcutBannerRow: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "iphone.gen3")
+                .foregroundStyle(.white)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Set up Shortcut required")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                Text("iOS cannot give direct SMS access to apps. Please set up the Shortcut to import your bank SMS.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.92))
+                Button("Set Up Shortcut") {
+                    guard let url = URL(string: shortcutURL) else { return }
+                    UIApplication.shared.open(url) { success in
+                        if success {
+                            hasSetupShortcut = true
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.white)
+                .foregroundStyle(Theme.accentPrimary)
+                .padding(.top, 2)
+
+                Button("I already set it up") {
+                    hasSetupShortcut = true
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.95))
+            }
+            Spacer()
+        }
+        .padding(compactMode ? 10 : 12)
+        .background(LinearGradient(colors: [Theme.accentPrimary, Theme.accentLight],
+                                   startPoint: .leading, endPoint: .trailing))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Helpers
 
     private var transactionsSectionTitle: String {
@@ -752,6 +831,9 @@ struct DashboardView: View {
     }
 
     private func evaluateFirstRunHeadsUp() {
+        guard !iCloudNeedsRestorePrompt else { return }
+        guard !showICloudRecoveryPrompt else { return }
+        guard hasSetupShortcut else { return }
         guard !hasSeenFirstRunHeadsUp else { return }
         if !allRows.isEmpty {
             hasSeenFirstRunHeadsUp = true
@@ -760,6 +842,79 @@ struct DashboardView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             showFirstRunHeadsUp = true
         }
+    }
+
+    private func evaluateICloudRecoveryPromptIfNeeded() {
+        guard iCloudNeedsRestorePrompt else {
+            evaluateFirstRunHeadsUp()
+            return
+        }
+        guard allRows.isEmpty else {
+            iCloudNeedsRestorePrompt = false
+            iCloudSuppressAutoSync = false
+            evaluateFirstRunHeadsUp()
+            return
+        }
+
+        Task { @MainActor in
+            do {
+                let backupExists = try ICloudSyncService.hasBackup()
+                if backupExists {
+                    showICloudRecoveryPrompt = true
+                } else {
+                    iCloudNeedsRestorePrompt = false
+                    iCloudSuppressAutoSync = false
+                    evaluateFirstRunHeadsUp()
+                }
+            } catch {
+                iCloudNeedsRestorePrompt = false
+                iCloudSuppressAutoSync = false
+                publishGlobalToast("iCloud check failed: \(error.localizedDescription)")
+                evaluateFirstRunHeadsUp()
+            }
+        }
+    }
+
+    private func restoreFromICloudBackup() {
+        guard !isResolvingICloudRecovery else { return }
+        isResolvingICloudRecovery = true
+        Task { @MainActor in
+            defer { isResolvingICloudRecovery = false }
+            do {
+                let report = try ICloudSyncService.importTransactions(context: modelContext)
+                iCloudLastSyncAt = report.importedAt.timeIntervalSince1970
+                iCloudNeedsRestorePrompt = false
+                iCloudSuppressAutoSync = false
+                publishGlobalToast("Restored \(report.insertedFromICloud + report.updatedFromICloud) transactions from iCloud.")
+                recomputeDashboardData()
+                evaluateFirstRunHeadsUp()
+            } catch {
+                publishGlobalToast("Restore failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func startFreshAndDeleteICloudBackup() {
+        guard !isResolvingICloudRecovery else { return }
+        isResolvingICloudRecovery = true
+        Task { @MainActor in
+            defer { isResolvingICloudRecovery = false }
+            do {
+                try ICloudSyncService.deleteBackup()
+                iCloudLastSyncAt = 0
+                iCloudNeedsRestorePrompt = false
+                iCloudSuppressAutoSync = false
+                publishGlobalToast("iCloud backup deleted. You can start fresh now.")
+                evaluateFirstRunHeadsUp()
+            } catch {
+                publishGlobalToast("Could not delete iCloud backup: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func publishGlobalToast(_ message: String) {
+        UserDefaults.standard.set(message, forKey: "globalToastMessage")
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "globalToastTimestamp")
     }
 }
 
