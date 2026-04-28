@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import MessageUI
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -14,6 +15,10 @@ struct SettingsView: View {
     @State private var showErrorLogs = false
     @State private var showResetStartDate = false
     @State private var rulesResult: String? = nil
+    @State private var showContactDeveloperPrompt = false
+    @State private var showContactDeveloperMail = false
+    @State private var showMailUnavailableAlert = false
+    @State private var supportAttachmentData: Data = Data()
     @AppStorage("appTheme") private var appTheme = "dark"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage(ImportStartDateStore.selectedKey) private var hasSelectedImportStartDate = false
@@ -171,6 +176,12 @@ struct SettingsView: View {
                                 .font(.caption)
                         }
                     }
+
+                    Button {
+                        showContactDeveloperPrompt = true
+                    } label: {
+                        Label("Contact Developer", systemImage: "envelope")
+                    }
                 }
 
                 Section("About") {
@@ -218,6 +229,38 @@ struct SettingsView: View {
             .sheet(isPresented: $showRules) { RulesView() }
             .sheet(isPresented: $showCategories) { CategoriesView() }
             .sheet(isPresented: $showErrorLogs) { ErrorLogsView() }
+            .sheet(isPresented: $showContactDeveloperMail) {
+                MailComposerView(
+                    toRecipients: ["support@ojaslive.com"],
+                    subject: "Expense Tracker Support Request",
+                    body: "Hi Support,\n\nPlease help with:\n\n",
+                    attachmentData: supportAttachmentData,
+                    attachmentMimeType: "text/plain",
+                    attachmentFileName: "error-logs.txt"
+                )
+            }
+            .confirmationDialog(
+                "Contact Developer",
+                isPresented: $showContactDeveloperPrompt,
+                titleVisibility: .visible
+            ) {
+                Button("Open Email") {
+                    openSupportEmailComposer()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will open an email to support@ojaslive.com and attach your error logs.")
+            }
+            .alert("Mail Not Available", isPresented: $showMailUnavailableAlert) {
+                Button("Open Mail App") {
+                    if let url = URL(string: "mailto:support@ojaslive.com") {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Please configure a Mail account on this device to send email with attached logs.")
+            }
             .alert("Rules Result", isPresented: Binding(
                 get: { rulesResult != nil },
                 set: { if !$0 { rulesResult = nil } }
@@ -348,5 +391,73 @@ struct SettingsView: View {
     private func publishGlobalToast(_ message: String) {
         UserDefaults.standard.set(message, forKey: "globalToastMessage")
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "globalToastTimestamp")
+    }
+
+    private func openSupportEmailComposer() {
+        guard MFMailComposeViewController.canSendMail() else {
+            showMailUnavailableAlert = true
+            return
+        }
+        supportAttachmentData = buildErrorLogAttachment()
+        showContactDeveloperMail = true
+    }
+
+    private func buildErrorLogAttachment() -> Data {
+        let entries = ErrorLogStore.load()
+        if entries.isEmpty {
+            return Data("No error logs recorded.".utf8)
+        }
+        let lines = entries.map { entry -> String in
+            let ts = ISO8601DateFormatter().string(from: entry.timestamp)
+            return "[\(ts)] \(entry.type): \(entry.message)\n\(entry.details ?? "")"
+        }
+        return Data(lines.joined(separator: "\n---\n").utf8)
+    }
+}
+
+private struct MailComposerView: UIViewControllerRepresentable {
+    let toRecipients: [String]
+    let subject: String
+    let body: String
+    let attachmentData: Data
+    let attachmentMimeType: String
+    let attachmentFileName: String
+
+    @Environment(\.dismiss) private var dismiss
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(dismiss: dismiss)
+    }
+
+    func makeUIViewController(context: Context) -> MFMailComposeViewController {
+        let controller = MFMailComposeViewController()
+        controller.mailComposeDelegate = context.coordinator
+        controller.setToRecipients(toRecipients)
+        controller.setSubject(subject)
+        controller.setMessageBody(body, isHTML: false)
+        controller.addAttachmentData(
+            attachmentData,
+            mimeType: attachmentMimeType,
+            fileName: attachmentFileName
+        )
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: MFMailComposeViewController, context: Context) {}
+
+    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        private let dismiss: DismissAction
+
+        init(dismiss: DismissAction) {
+            self.dismiss = dismiss
+        }
+
+        func mailComposeController(
+            _ controller: MFMailComposeViewController,
+            didFinishWith result: MFMailComposeResult,
+            error: Error?
+        ) {
+            dismiss()
+        }
     }
 }

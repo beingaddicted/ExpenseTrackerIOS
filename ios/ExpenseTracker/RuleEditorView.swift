@@ -73,10 +73,12 @@ struct RuleEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .foregroundStyle(Theme.accentLight)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
                         .fontWeight(.semibold)
+                        .foregroundStyle(Theme.accentLight)
                         .disabled(!canSave)
                 }
             }

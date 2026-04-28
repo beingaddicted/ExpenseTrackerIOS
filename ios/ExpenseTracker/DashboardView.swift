@@ -854,6 +854,7 @@ private struct MonthPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .foregroundStyle(Theme.accentLight)
                 }
             }
             .onAppear { pickerYear = year }
