@@ -12,7 +12,11 @@ struct ContentView: View {
     @State private var showAnalytics = false
     @State private var showBudget = false
     @State private var syncToast: String? = nil
+    @State private var showPendingBanner = false
+    @State private var showFirstRunHeadsUp = false
     @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
+    @AppStorage("hasSeenFirstRunHeadsUp") private var hasSeenFirstRunHeadsUp = false
+    @AppStorage("pendingBannerSnoozedAt") private var pendingBannerSnoozedAt: Double = 0
 
     private var filtered: [TransactionRecord] {
         vm.filterTransactions(allRows)
@@ -32,6 +36,19 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 // Fixed header
                 VStack(spacing: 0) {
+                    if showPendingBanner {
+                        PendingImportBanner(
+                            onRunShortcut: {
+                                ShortcutLauncher.run(named: shortcutName)
+                                showPendingBanner = false
+                            },
+                            onDismiss: {
+                                pendingBannerSnoozedAt = Date().timeIntervalSince1970
+                                showPendingBanner = false
+                            }
+                        )
+                        .padding(.top, 6)
+                    }
                     monthNav
                     summarySection
                     categoryChips
@@ -189,16 +206,57 @@ struct ContentView: View {
             }
         }
         .animation(.spring(duration: 0.4), value: syncToast)
-        .onAppear(perform: checkSyncResult)
+        .animation(.easeInOut(duration: 0.25), value: showPendingBanner)
+        .onAppear {
+            checkSyncResult()
+            evaluatePendingImport()
+            evaluateFirstRunHeadsUp()
+        }
+        .alert("Importing your bank SMS…", isPresented: $showFirstRunHeadsUp) {
+            Button("Run Shortcut Now") {
+                hasSeenFirstRunHeadsUp = true
+                ShortcutLauncher.run(named: shortcutName)
+            }
+            Button("Later", role: .cancel) {
+                hasSeenFirstRunHeadsUp = true
+            }
+        } message: {
+            Text("This first run can take a few minutes if you picked a wide date range — iOS reads each day's SMS one at a time.\n\nIf anything goes wrong, just reopen this app — we remember where it stopped and finish automatically.")
+        }
     }
 
     // MARK: - Sync
 
     private func triggerShortcut() {
-        guard let encoded = shortcutName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "shortcuts://run-shortcut?name=\(encoded)")
-        else { return }
-        UIApplication.shared.open(url)
+        ShortcutLauncher.run(named: shortcutName)
+    }
+
+    /// Decide whether the "Resume import" banner should appear. Triggered on
+    /// every appear. Honors a 1-hour snooze if the user dismissed it via "Later".
+    private func evaluatePendingImport() {
+        let snoozeWindow: TimeInterval = 60 * 60
+        if pendingBannerSnoozedAt > 0,
+           Date().timeIntervalSince1970 - pendingBannerSnoozedAt < snoozeWindow {
+            showPendingBanner = false
+            return
+        }
+        showPendingBanner = ImportStartDateStore.hasPendingImport()
+    }
+
+    /// First-time only: warn that initial import can take a while and that
+    /// relaunching the app safely resumes a failed run.
+    private func evaluateFirstRunHeadsUp() {
+        guard !hasSeenFirstRunHeadsUp else { return }
+        // Only show on a "fresh" install — if the user already has data,
+        // they've clearly seen this flow before.
+        if !allRows.isEmpty {
+            hasSeenFirstRunHeadsUp = true
+            return
+        }
+        // Defer slightly so the dashboard renders first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            showFirstRunHeadsUp = true
+        }
     }
 
     private func checkSyncResult() {
