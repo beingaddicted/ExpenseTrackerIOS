@@ -30,6 +30,14 @@ struct SettingsView: View {
                     }
                     .foregroundStyle(Theme.accentLight)
 
+                    Button {
+                        ShortcutLauncher.run(named: shortcutName)
+                        dismiss()
+                    } label: {
+                        Label("Run Shortcut Now", systemImage: "play.circle")
+                    }
+                    .foregroundStyle(Theme.green)
+
                     HStack {
                         Label("Shortcut Name", systemImage: "flowchart")
                         Spacer()

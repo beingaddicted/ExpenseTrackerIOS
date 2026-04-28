@@ -38,25 +38,41 @@ private enum DeltaTracker {
 // MARK: - ImportCoordinator
 
 enum ImportCoordinator {
+    struct ImportResult {
+        var added: Int
+        var skipped: Int
+        var failed: Int
+        /// Latest message-date covered by this import (any parsed transaction,
+        /// added or duplicate-skipped). Lets the caller advance lastCompleted
+        /// conservatively if the shortcut delivered only part of the range.
+        var latestImportedDay: Date?
+    }
+
     @MainActor
-    static func importCombinedText(_ text: String) throws -> (added: Int, skipped: Int, failed: Int) {
+    static func importCombinedText(_ text: String) throws -> ImportResult {
         let ctx = Persistence.makeContext()
         let existing = try ctx.fetch(FetchDescriptor<TransactionRecord>())
-        let bodies = BankSMSChunker.splitCombinedText(text)
+        let chunks = BankSMSChunker.splitCombinedText(text)
         let rules = RulesStore.load()
         let startDate = ImportStartDateStore.load()
         var parsedBatch: [ParsedTransaction] = []
         var added = 0, skipped = 0, failed = 0
+        var latest: Date? = nil
 
-        for body in bodies {
-            guard var p = SMSBankParser.parse(body, sender: "", timestamp: nil) else {
+        for chunk in chunks {
+            guard var p = SMSBankParser.parse(chunk.body, sender: chunk.sender, timestamp: nil) else {
                 failed += 1
                 ErrorLogStore.log(
                     type: "sms_parse_failure",
                     message: "Could not parse SMS",
-                    details: String(body.prefix(200))
+                    details: "[\(chunk.sender)] \(String(chunk.body.prefix(200)))"
                 )
                 continue
+            }
+            // Track the latest message-date we saw, regardless of whether it
+            // was added or skipped — this is our coverage ceiling.
+            if let day = parseDay(p.date) {
+                if latest == nil || day > latest! { latest = day }
             }
             // Skip messages older than the user's chosen import start date so
             // re-running the Shortcut doesn't re-introduce historical noise.
@@ -76,7 +92,7 @@ enum ImportCoordinator {
             added += 1
         }
         if added > 0 { try ctx.save() }
-        return (added, skipped, failed)
+        return ImportResult(added: added, skipped: skipped, failed: failed, latestImportedDay: latest)
     }
 
     /// Import JSON transaction objects with delta tracking to skip already-seen records efficiently.
@@ -166,17 +182,22 @@ enum ImportCoordinator {
     /// Date string comparison without instantiating an AppViewModel — supports
     /// the same ISO and DD/MM/YYYY formats the parser emits.
     private static func isBefore(dateString: String, cutoff: Date) -> Bool {
+        guard let d = parseDay(dateString) else { return false }
+        return d < cutoff
+    }
+
+    private static func parseDay(_ dateString: String) -> Date? {
         let trimmed = dateString.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return false }
+        guard !trimmed.isEmpty else { return nil }
         let formats = ["yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy", "yyyy/MM/dd"]
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         for format in formats {
             f.dateFormat = format
             if let d = f.date(from: String(trimmed.prefix(10))) {
-                return Calendar.current.startOfDay(for: d) < cutoff
+                return Calendar.current.startOfDay(for: d)
             }
         }
-        return false
+        return nil
     }
 }

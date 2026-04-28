@@ -13,7 +13,7 @@ struct ExpenseTrackerApp: App {
             } else if !hasSelectedImportStartDate {
                 ImportStartDateView()
             } else {
-                ContentView()
+                MainTabView()
             }
         }
         .modelContainer(Persistence.shared)
