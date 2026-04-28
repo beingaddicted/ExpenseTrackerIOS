@@ -116,7 +116,7 @@ struct ContentView: View {
                             Image(systemName: "plus.circle")
                                 .foregroundStyle(Theme.accentLight)
                         }
-                        Button(action: triggerShortcut) label: {
+                        Button(action: triggerShortcut) {
                             Image(systemName: "arrow.trianglehead.2.clockwise")
                                 .foregroundStyle(Theme.green)
                         }

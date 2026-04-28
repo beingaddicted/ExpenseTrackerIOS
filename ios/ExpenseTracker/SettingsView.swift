@@ -12,7 +12,7 @@ struct SettingsView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
 
-    private let shortcutURL = "https://www.icloud.com/shortcuts/ed1fab0bcf0746239c1b17389b9b3f0a"
+    private let shortcutURL = "https://www.icloud.com/shortcuts/47740c818b3642949218c98fe2c12659"
 
     var body: some View {
         NavigationStack {
@@ -151,9 +151,10 @@ struct SettingsView: View {
     }
 
     private func installShortcut() {
-        guard let encoded = shortcutURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "shortcuts://import-shortcut?url=\(encoded)")
-        else { return }
+        // Open the gallery link directly. `shortcuts://import-shortcut?url=` expects a URL
+        // that serves a raw .shortcut file; iCloud gallery pages are HTML, which triggers
+        // “couldn’t be opened because it isn’t in the correct format.”
+        guard let url = URL(string: shortcutURL) else { return }
         UIApplication.shared.open(url)
     }
 }

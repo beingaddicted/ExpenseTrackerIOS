@@ -5,7 +5,7 @@ struct OnboardingView: View {
     @State private var shortcutInstalled = false
     @State private var showSkipConfirm = false
 
-    private let shortcutURL = "https://www.icloud.com/shortcuts/ed1fab0bcf0746239c1b17389b9b3f0a"
+    private let shortcutURL = "https://www.icloud.com/shortcuts/47740c818b3642949218c98fe2c12659"
 
     var body: some View {
         ZStack {
@@ -110,10 +110,7 @@ struct OnboardingView: View {
     // MARK: - Actions
 
     private func installShortcut() {
-        guard let encoded = shortcutURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "shortcuts://import-shortcut?url=\(encoded)")
-        else { return }
-
+        guard let url = URL(string: shortcutURL) else { return }
         UIApplication.shared.open(url) { success in
             if success {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

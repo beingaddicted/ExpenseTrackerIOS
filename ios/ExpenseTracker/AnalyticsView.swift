@@ -18,7 +18,10 @@ struct AnalyticsView: View {
     private var categoryBreakdown: [(category: String, amount: Double)] {
         var dict: [String: Double] = [:]
         for txn in validExpenses { dict[txn.category, default: 0] += txn.amount }
-        return dict.map { ($0.key, $0.value) }.sorted { $0.amount > $1.amount }.prefix(8).map { $0 }
+        return dict.map { (category: $0.key, amount: $0.value) }
+            .sorted { $0.amount > $1.amount }
+            .prefix(8)
+            .map { $0 }
     }
 
     private var monthlyTrend: [(month: String, amount: Double)] {
@@ -41,13 +44,19 @@ struct AnalyticsView: View {
     private var topMerchants: [(merchant: String, amount: Double)] {
         var dict: [String: Double] = [:]
         for txn in validExpenses { dict[txn.merchant, default: 0] += txn.amount }
-        return dict.map { ($0.key, $0.value) }.sorted { $0.amount > $1.amount }.prefix(5).map { $0 }
+        return dict.map { (merchant: $0.key, amount: $0.value) }
+            .sorted { $0.amount > $1.amount }
+            .prefix(5)
+            .map { $0 }
     }
 
     private var topModes: [(mode: String, amount: Double)] {
         var dict: [String: Double] = [:]
         for txn in validExpenses { dict[txn.mode, default: 0] += txn.amount }
-        return dict.map { ($0.key, $0.value) }.sorted { $0.amount > $1.amount }.prefix(5).map { $0 }
+        return dict.map { (mode: $0.key, amount: $0.value) }
+            .sorted { $0.amount > $1.amount }
+            .prefix(5)
+            .map { $0 }
     }
 
     var body: some View {

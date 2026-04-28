@@ -518,7 +518,7 @@ enum SMSBankParser {
         }
 
         if let parsed = ISO8601DateFormatter().date(from: dateStr)
-            ?? DateFormatter().with(format: "yyyy-MM-dd").date(from: dateStr)
+            ?? DateFormatter.with(format: "yyyy-MM-dd").date(from: dateStr)
         {
             return formatYMD(parsed, cal: cal)
         }
@@ -572,8 +572,8 @@ enum SMSBankParser {
             return t
         }
         let cal = Calendar.current
-        if let d = ISO8601DateFormatter().date(from: t) ?? DateFormatter().with(format: "yyyy-MM-dd HH:mm:ss").date(from: t)
-            ?? DateFormatter().with(format: "dd-MM-yyyy HH:mm:ss").date(from: t)
+        if let d = ISO8601DateFormatter().date(from: t) ?? DateFormatter.with(format: "yyyy-MM-dd HH:mm:ss").date(from: t)
+            ?? DateFormatter.with(format: "dd-MM-yyyy HH:mm:ss").date(from: t)
         {
             return formatYMD(d, cal: cal)
         }
