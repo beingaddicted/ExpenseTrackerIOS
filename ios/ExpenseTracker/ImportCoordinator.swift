@@ -43,39 +43,36 @@ enum ImportCoordinator {
         let ctx = Persistence.makeContext()
         let existing = try ctx.fetch(FetchDescriptor<TransactionRecord>())
         let bodies = BankSMSChunker.splitCombinedText(text)
+        let rules = RulesStore.load()
+        let startDate = ImportStartDateStore.load()
         var parsedBatch: [ParsedTransaction] = []
         var added = 0, skipped = 0, failed = 0
 
         for body in bodies {
-            guard let p = SMSBankParser.parse(body, sender: "", timestamp: nil) else {
+            guard var p = SMSBankParser.parse(body, sender: "", timestamp: nil) else {
                 failed += 1
+                ErrorLogStore.log(
+                    type: "sms_parse_failure",
+                    message: "Could not parse SMS",
+                    details: String(body.prefix(200))
+                )
                 continue
+            }
+            // Skip messages older than the user's chosen import start date so
+            // re-running the Shortcut doesn't re-introduce historical noise.
+            if let cutoff = startDate, isBefore(dateString: p.date, cutoff: cutoff) {
+                skipped += 1
+                continue
+            }
+            if !rules.isEmpty {
+                p = RulesEngine.apply(to: p, rules: rules)
             }
             if SMSBankParser.isDuplicate(p, existing: existing) || SMSBankParser.isDuplicate(p, batch: parsedBatch) {
                 skipped += 1
                 continue
             }
             parsedBatch.append(p)
-            ctx.insert(
-                TransactionRecord(
-                    id: p.id,
-                    amount: p.amount,
-                    type: p.type,
-                    currency: p.currency,
-                    date: p.date,
-                    bank: p.bank,
-                    account: p.account,
-                    merchant: p.merchant,
-                    category: p.category,
-                    mode: p.mode,
-                    refNumber: p.refNumber,
-                    balance: p.balance,
-                    rawSMS: p.rawSMS,
-                    sender: p.sender,
-                    parsedAt: p.parsedAt,
-                    source: p.source
-                )
-            )
+            ctx.insert(makeRecord(from: p))
             added += 1
         }
         if added > 0 { try ctx.save() }
@@ -141,5 +138,45 @@ enum ImportCoordinator {
         }
         if added > 0 { try ctx.save() }
         return (added, skipped, deltaSkipped, failed)
+    }
+
+    // MARK: - Helpers
+
+    private static func makeRecord(from p: ParsedTransaction) -> TransactionRecord {
+        TransactionRecord(
+            id: p.id,
+            amount: p.amount,
+            type: p.type,
+            currency: p.currency,
+            date: p.date,
+            bank: p.bank,
+            account: p.account,
+            merchant: p.merchant,
+            category: p.category,
+            mode: p.mode,
+            refNumber: p.refNumber,
+            balance: p.balance,
+            rawSMS: p.rawSMS,
+            sender: p.sender,
+            parsedAt: p.parsedAt,
+            source: p.source
+        )
+    }
+
+    /// Date string comparison without instantiating an AppViewModel — supports
+    /// the same ISO and DD/MM/YYYY formats the parser emits.
+    private static func isBefore(dateString: String, cutoff: Date) -> Bool {
+        let trimmed = dateString.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        let formats = ["yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy", "yyyy/MM/dd"]
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        for format in formats {
+            f.dateFormat = format
+            if let d = f.date(from: String(trimmed.prefix(10))) {
+                return Calendar.current.startOfDay(for: d) < cutoff
+            }
+        }
+        return false
     }
 }

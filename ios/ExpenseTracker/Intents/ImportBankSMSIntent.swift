@@ -4,7 +4,7 @@ import SwiftData
 struct ImportBankSMSBatchIntent: AppIntent {
     static var title: LocalizedStringResource = "Import bank SMS batch"
     static var description = IntentDescription(
-        "Pass combined bank SMS text (joined with ===SMS=== between each message). Run from Shortcuts after Find Messages."
+        "Pass combined bank SMS text (joined with ===SMS=== between each message). Run from Shortcuts after Find Messages — the Shortcut INIT step uses GetImportStartDateIntent to know how far back to fetch."
     )
 
     @Parameter(title: "Combined SMS text")
@@ -23,6 +23,10 @@ struct ImportBankSMSBatchIntent: AppIntent {
         defaults.set(r.added, forKey: "lastSyncAdded")
         defaults.set(r.skipped, forKey: "lastSyncSkipped")
         defaults.set(r.failed, forKey: "lastSyncFailed")
+
+        // Advance the import start date so subsequent runs only fetch new days,
+        // matching the lastCompleted bookkeeping the old Scriptable file did.
+        ImportStartDateStore.markCompletedToday()
 
         let dialog: String
         if r.added > 0 {

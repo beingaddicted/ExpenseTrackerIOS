@@ -6,19 +6,14 @@ struct TransactionDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showDeleteAlert = false
     @State private var selectedCategory: String
+    @State private var showRuleEditor = false
 
     init(txn: TransactionRecord) {
         self.txn = txn
         _selectedCategory = State(initialValue: txn.category)
     }
 
-    private let allCategories = [
-        "Food & Dining", "Shopping", "Transport", "Travel", "Bills & Utilities",
-        "Entertainment", "Health", "Education", "Insurance", "Investment",
-        "EMI & Loans", "Rent", "Groceries", "Salary", "Transfer",
-        "ATM", "Subscription", "Cashback & Rewards", "Refund", "Tax",
-        "Credit Card Payment", "Savings", "Other",
-    ]
+    @State private var allCategories: [String] = CategoriesStore.all()
 
     var body: some View {
         ScrollView {
@@ -65,6 +60,7 @@ struct TransactionDetailView: View {
                         txn.category = newCat
                         try? modelContext.save()
                     }
+                    .onAppear { allCategories = CategoriesStore.all() }
                 }
                 .padding(.horizontal)
                 .padding()
@@ -114,6 +110,22 @@ struct TransactionDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal)
 
+                // Create Rule
+                Button {
+                    showRuleEditor = true
+                } label: {
+                    HStack {
+                        Image(systemName: "ruler")
+                        Text("Create Rule from this Transaction")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Theme.accentPrimary.opacity(0.12))
+                    .foregroundStyle(Theme.accentLight)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.horizontal)
+
                 // Delete
                 Button(role: .destructive) {
                     showDeleteAlert = true
@@ -142,6 +154,38 @@ struct TransactionDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .sheet(isPresented: $showRuleEditor) {
+            RuleEditorView(rule: ruleSeed()) { newRule in
+                RulesStore.upsert(newRule)
+            }
+        }
+    }
+
+    /// Build a starter rule from this transaction — picks the merchant name as
+    /// the keyword if it appears in the SMS, mirroring `createRuleFromTransaction`
+    /// in [js/app.js](../../../js/app.js).
+    private func ruleSeed() -> ClassificationRule? {
+        let sms = txn.rawSMS.lowercased()
+        var keywords: [String] = []
+        let merchant = txn.merchant.lowercased()
+        if !merchant.isEmpty, merchant != "unknown", sms.contains(merchant) {
+            keywords.append(merchant)
+        }
+        let bank = txn.bank.lowercased()
+        if keywords.count < 2, !bank.isEmpty, bank != "unknown", sms.contains(bank) {
+            keywords.append(bank)
+        }
+        if keywords.isEmpty, !merchant.isEmpty, merchant != "unknown" {
+            keywords.append(merchant)
+        }
+        return ClassificationRule(
+            name: txn.merchant.isEmpty ? "New Rule" : txn.merchant,
+            keywords: keywords,
+            amountExact: nil,
+            setCategory: txn.category,
+            setType: txn.type,
+            setInvalid: !txn.isValid
+        )
     }
 
     private func typeButton(_ label: String, type: String) -> some View {
