@@ -12,7 +12,7 @@ private enum DeltaTracker {
     static let key = "expense_tracker_ios_delta"
 
     static func load() -> [String: DeltaEntry] {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        guard let data = AppGroup.defaults.data(forKey: key),
               let dict = try? JSONDecoder().decode([String: DeltaEntry].self, from: data)
         else { return [:] }
         return dict
@@ -20,7 +20,7 @@ private enum DeltaTracker {
 
     static func save(_ dict: [String: DeltaEntry]) {
         if let data = try? JSONEncoder().encode(dict) {
-            UserDefaults.standard.set(data, forKey: key)
+            AppGroup.defaults.set(data, forKey: key)
         }
     }
 

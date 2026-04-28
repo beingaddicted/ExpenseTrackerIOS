@@ -31,7 +31,7 @@ struct ImportBankSMSBatchIntent: AppIntent {
         let result = try ImportCoordinator.importCombinedText(combinedText)
 
         // Persist last sync timestamp and result for the UI to read
-        let defaults = UserDefaults.standard
+        let defaults = AppGroup.defaults
         defaults.set(Date(), forKey: ImportStartDateStore.lastSyncDateKey)
         defaults.set(result.added, forKey: "lastSyncAdded")
         defaults.set(result.skipped, forKey: "lastSyncSkipped")

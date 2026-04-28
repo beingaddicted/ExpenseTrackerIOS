@@ -33,7 +33,7 @@ enum ImportStartDateStore {
     }()
 
     static func load() -> Date? {
-        let defaults = UserDefaults.standard
+        let defaults = AppGroup.defaults
         guard let str = defaults.string(forKey: dateKey),
               let date = isoFormatter.date(from: str)
         else { return nil }
@@ -41,30 +41,30 @@ enum ImportStartDateStore {
     }
 
     static func loadString() -> String {
-        UserDefaults.standard.string(forKey: dateKey) ?? defaultStart
+        AppGroup.defaults.string(forKey: dateKey) ?? defaultStart
     }
 
     static func save(_ date: Date) {
         let day = calendar.startOfDay(for: date)
         let str = isoFormatter.string(from: day)
-        let defaults = UserDefaults.standard
+        let defaults = AppGroup.defaults
         defaults.set(str, forKey: dateKey)
         defaults.set(true, forKey: selectedKey)
     }
 
     static func saveString(_ ymd: String) {
-        let defaults = UserDefaults.standard
+        let defaults = AppGroup.defaults
         defaults.set(ymd, forKey: dateKey)
         defaults.set(true, forKey: selectedKey)
     }
 
     static func hasSelected() -> Bool {
-        UserDefaults.standard.bool(forKey: selectedKey)
+        AppGroup.defaults.bool(forKey: selectedKey)
     }
 
     /// Reset on "Delete All Data" so the user is prompted again on next launch.
     static func reset() {
-        let defaults = UserDefaults.standard
+        let defaults = AppGroup.defaults
         defaults.removeObject(forKey: dateKey)
         defaults.set(false, forKey: selectedKey)
         defaults.removeObject(forKey: pendingKey)
@@ -91,7 +91,7 @@ enum ImportStartDateStore {
     /// startOfDay so timezone drift can't push it back.
     static func markCompletedToday() {
         save(calendar.startOfDay(for: Date()))
-        let defaults = UserDefaults.standard
+        let defaults = AppGroup.defaults
         defaults.set(false, forKey: pendingKey)
         defaults.set("ok", forKey: lastResultKey)
     }
@@ -111,7 +111,7 @@ enum ImportStartDateStore {
             target = today
         }
         save(target)
-        let defaults = UserDefaults.standard
+        let defaults = AppGroup.defaults
         // If we didn't quite reach today, leave the pending flag on so the app
         // banner offers a Resume next time.
         if target < today {
@@ -129,13 +129,13 @@ enum ImportStartDateStore {
     /// import intent when it completes. If still set on next app launch and
     /// the start date is more than a day behind today, we surface a banner.
     static func markShortcutLaunched() {
-        let defaults = UserDefaults.standard
+        let defaults = AppGroup.defaults
         defaults.set(true, forKey: pendingKey)
         defaults.set(Date(), forKey: lastShortcutLaunchKey)
     }
 
     static func recordIntentRun() {
-        UserDefaults.standard.set(Date(), forKey: lastIntentRunKey)
+        AppGroup.defaults.set(Date(), forKey: lastIntentRunKey)
     }
 
     /// Returns true when the app should suggest resuming an import:
@@ -145,7 +145,7 @@ enum ImportStartDateStore {
     /// loop while the user is mid-run).
     static func hasPendingImport() -> Bool {
         guard hasSelected() else { return false }
-        let defaults = UserDefaults.standard
+        let defaults = AppGroup.defaults
         if let lastLaunch = defaults.object(forKey: lastShortcutLaunchKey) as? Date,
            Date().timeIntervalSince(lastLaunch) < 90 {
             return false
