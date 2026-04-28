@@ -116,15 +116,45 @@ struct DashboardView: View {
 
             Section(transactionsSectionTitle) {
                 if filtered.isEmpty {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 6) {
-                            Image(systemName: "tray").font(.title3).foregroundStyle(Theme.textMuted)
-                            Text("No transactions").font(.subheadline).foregroundStyle(Theme.textMuted)
+                    VStack(spacing: 12) {
+                        Image(systemName: isFiltering ? "line.3.horizontal.decrease.circle" : "tray")
+                            .font(.title3)
+                            .foregroundStyle(Theme.textMuted)
+
+                        VStack(spacing: 4) {
+                            Text(emptyStateTitle)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Theme.textPrimary)
+                            Text(emptyStateSubtitle)
+                                .font(.caption)
+                                .foregroundStyle(Theme.textMuted)
+                                .multilineTextAlignment(.center)
                         }
-                        Spacer()
+
+                        HStack(spacing: 8) {
+                            if isFiltering {
+                                Button("Clear filters") {
+                                    search = ""
+                                    typeFilter = .all
+                                }
+                                .buttonStyle(.bordered)
+                            } else if allRows.isEmpty {
+                                Button("Run Shortcut") {
+                                    ShortcutLauncher.run(named: shortcutName)
+                                }
+                                .buttonStyle(.borderedProminent)
+                            } else {
+                                Button("Import SMS") { showImport = true }
+                                    .buttonStyle(.bordered)
+                            }
+
+                            Button("Add manually") { showAdd = true }
+                                .buttonStyle(.bordered)
+                        }
                     }
                     .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
                 } else {
                     ForEach(filtered) { txn in
                         NavigationLink(value: txn) {
@@ -156,6 +186,7 @@ struct DashboardView: View {
                 Button { showMonthPicker = true } label: {
                     Image(systemName: "calendar")
                 }
+                .accessibilityLabel("Choose month")
             }
             ToolbarItem(placement: .principal) {
                 Button { showMonthPicker = true } label: {
@@ -180,7 +211,9 @@ struct DashboardView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("More actions")
                 Button { showAdd = true } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Add transaction")
             }
         }
         .sheet(isPresented: $showMonthPicker) {
@@ -422,6 +455,22 @@ struct DashboardView: View {
 
     private var transactionsSectionTitle: String {
         "\(filtered.count) \(filtered.count == 1 ? "transaction" : "transactions")"
+    }
+
+    private var isFiltering: Bool {
+        !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || typeFilter != .all
+    }
+
+    private var emptyStateTitle: String {
+        if isFiltering { return "No matching transactions" }
+        if allRows.isEmpty { return "No transactions yet" }
+        return "Nothing to show for this month"
+    }
+
+    private var emptyStateSubtitle: String {
+        if isFiltering { return "Try clearing search or switching the type filter." }
+        if allRows.isEmpty { return "Run your SMS shortcut or add your first transaction manually." }
+        return "Import more SMS or switch month to view earlier activity."
     }
 
     private var isCurrentMonth: Bool {

@@ -42,18 +42,38 @@ struct ImportView: View {
                         Text("Paste SMS Text")
                             .font(.caption)
                             .foregroundStyle(Theme.textMuted)
-                        TextEditor(text: $pasteText)
-                            .frame(minHeight: 150)
-                            .scrollContentBackground(.hidden)
+                        ZStack(alignment: .topLeading) {
+                            TextEditor(text: $pasteText)
+                                .frame(minHeight: 150)
+                                .scrollContentBackground(.hidden)
+                                .font(.caption)
+                                .foregroundStyle(Theme.textPrimary)
+                                .padding(8)
+                                .background(Theme.bgSecondary)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Theme.border, lineWidth: 1)
+                                )
+
+                            if pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text("Paste combined SMS text here…\nUse ===SMS=== between messages.")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.textMuted)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 16)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+
+                        if !pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button("Clear pasted text") {
+                                pasteText = ""
+                                resultMessage = ""
+                            }
                             .font(.caption)
-                            .foregroundStyle(Theme.textPrimary)
-                            .padding(8)
-                            .background(Theme.bgSecondary)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Theme.border, lineWidth: 1)
-                            )
+                            .foregroundStyle(Theme.accentLight)
+                        }
                     }
                     .padding(.horizontal)
 

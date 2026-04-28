@@ -176,7 +176,7 @@
 			<key>INIntentType</key>
 			<string>Custom</string>
 			<key>INIntentVerb</key>
-			<string>Get</string>
+			<string>Do</string>
 		</dict>
 	</array>
 	<key>INTypes</key>

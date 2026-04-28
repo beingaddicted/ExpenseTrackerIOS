@@ -25,6 +25,12 @@ struct AddTransactionView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Text("Quick add a transaction when SMS import misses something.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                }
+
                 Section("Amount") {
                     HStack {
                         Text("₹")
@@ -55,12 +61,10 @@ struct AddTransactionView: View {
                 }
                 .onAppear { allCategories = CategoriesStore.all() }
 
-                if !notes.isEmpty || true {
-                    Section("Notes (optional)") {
-                        TextField("Notes", text: $notes, axis: .vertical)
-                            .lineLimit(3)
-                            .foregroundStyle(Theme.textPrimary)
-                    }
+                Section("Notes (optional)") {
+                    TextField("Notes", text: $notes, axis: .vertical)
+                        .lineLimit(3)
+                        .foregroundStyle(Theme.textPrimary)
                 }
             }
             .scrollContentBackground(.hidden)
