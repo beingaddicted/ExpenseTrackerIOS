@@ -38,7 +38,7 @@ struct DashboardView: View {
     @State private var budgetSpendByCategory: [String: Double] = [:]
     @State private var searchDebounceTask: Task<Void, Never>? = nil
 
-    @AppStorage("shortcutName") private var shortcutName = "Sync SMS"
+    @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
     @AppStorage("hasSeenFirstRunHeadsUp") private var hasSeenFirstRunHeadsUp = false
     @AppStorage("pendingBannerSnoozedAt") private var pendingBannerSnoozedAt: Double = 0
     @AppStorage("compactMode") private var compactMode = false

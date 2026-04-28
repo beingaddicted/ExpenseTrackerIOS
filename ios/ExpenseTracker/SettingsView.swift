@@ -17,7 +17,7 @@ struct SettingsView: View {
     @AppStorage("appTheme") private var appTheme = "dark"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage(ImportStartDateStore.selectedKey) private var hasSelectedImportStartDate = false
-    @AppStorage("shortcutName") private var shortcutName = "Sync SMS"
+    @AppStorage("shortcutName") private var shortcutName = "Expense Tracker"
     @AppStorage("compactMode") private var compactMode = false
 
     private let shortcutURL = "https://www.icloud.com/shortcuts/dca0bcfd90524403bfdf8327c52cb1f0"
@@ -44,7 +44,7 @@ struct SettingsView: View {
                     HStack {
                         Label("Shortcut Name", systemImage: "flowchart")
                         Spacer()
-                        TextField("Sync SMS", text: $shortcutName)
+                        TextField("Expense Tracker", text: $shortcutName)
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(Theme.accentLight)
                             .frame(maxWidth: 160)
