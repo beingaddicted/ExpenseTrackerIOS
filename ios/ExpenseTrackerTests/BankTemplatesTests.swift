@@ -98,6 +98,35 @@ final class BankTemplatesTests: XCTestCase {
         XCTAssertEqual(p.bank, "J&K Bank")
     }
 
+    /// Real saurabhgupta canonical sample: balance with a dash separator.
+    /// The v1 regex required `:` or `is` or whitespace and silently dropped
+    /// the balance for "Avl Bal- INR 2343.23". This regression test locks
+    /// in the fix.
+    func testIndiaBalanceDashSeparator() {
+        guard let p = parse(
+            "INR 2000 debited from A/c no. XX3423 on 05-02-19 07:27:11 IST at ECS PAY. Avl Bal- INR 2343.23.",
+            regionCode: "IN"
+        ) else {
+            XCTFail("debit-with-dash-balance SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.amount, 2000, accuracy: 0.001)
+        XCTAssertEqual(p.balance ?? -1, 2343.23, accuracy: 0.001, "balance must parse despite dash separator")
+    }
+
+    /// Paytm wallet attribution — generic-path SMS should be tagged as
+    /// "Paytm" rather than "Unknown Bank".
+    func testIndiaPaytmWalletAttribution() {
+        guard let p = parse(
+            "Rs.250 debited from Paytm wallet. Available bal Rs.750",
+            regionCode: "IN"
+        ) else {
+            XCTFail("Paytm wallet SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.bank, "Paytm")
+    }
+
     func testIndiaIPPBAttribution() {
         guard let p = parse(
             "IPPB: Rs.100.00 debited from a/c XX0001. Avl bal Rs.500.",

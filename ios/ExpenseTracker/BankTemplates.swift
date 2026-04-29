@@ -135,6 +135,61 @@ enum BankTemplateHelpers {
         guard (2000...2050).contains(y), (1...31).contains(d) else { return nil }
         return String(format: "%04d-%02d-%02d", y, mo, d)
     }
+
+    /// `DD.MM.YYYY` (or `DD.MM.YY`) → `yyyy-mm-dd`. Used by RU / CZ / BY /
+    /// PL / DE — replaced 8 inline copies of the same code.
+    static func parseDottedDayFirst(_ s: String) -> String? {
+        let parts = s.split(separator: ".").map(String.init)
+        guard parts.count == 3,
+              let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2])
+        else { return nil }
+        if y < 100 { y += 2000 }
+        guard (2000...2050).contains(y), (1...12).contains(mo), (1...31).contains(d) else { return nil }
+        return String(format: "%04d-%02d-%02d", y, mo, d)
+    }
+
+    /// `YYYY.MM.DD` → `yyyy-mm-dd`. Used by HU.
+    static func parseDottedYearFirst(_ s: String) -> String? {
+        let parts = s.split(separator: ".").map(String.init)
+        guard parts.count == 3,
+              let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2])
+        else { return nil }
+        guard (2000...2050).contains(y), (1...12).contains(mo), (1...31).contains(d) else { return nil }
+        return String(format: "%04d-%02d-%02d", y, mo, d)
+    }
+
+    // MARK: - Capture helpers
+    //
+    // Almost every parse closure has to check `m.numberOfRanges >= N` and
+    // `m.range(at: i).location != NSNotFound` before pulling an optional
+    // group. Centralising these keeps callers terse and avoids the
+    // off-by-one bugs that come from copy-pasting the gate.
+
+    /// Returns the captured string at `index`, or nil if the group was
+    /// optional and didn't match (or `index` is out of range).
+    static func optionalString(_ m: NSTextCheckingResult, _ ns: NSString, at index: Int) -> String? {
+        guard m.numberOfRanges > index else { return nil }
+        let r = m.range(at: index)
+        guard r.location != NSNotFound, r.length > 0 else { return nil }
+        return ns.substring(with: r)
+    }
+
+    /// `optionalString` + the `XX` prefix used everywhere for masked
+    /// account numbers.
+    static func optionalAccount(_ m: NSTextCheckingResult, _ ns: NSString, at index: Int) -> String? {
+        optionalString(m, ns, at: index).map { "XX" + $0 }
+    }
+
+    /// `optionalString` followed by a date parser. Returns nil if either
+    /// the group was missing or the parser rejected the captured string.
+    static func optionalDate(
+        _ m: NSTextCheckingResult,
+        _ ns: NSString,
+        at index: Int,
+        with parser: (String) -> String?
+    ) -> String? {
+        optionalString(m, ns, at: index).flatMap(parser)
+    }
 }
 
 // MARK: - Registry
@@ -156,13 +211,34 @@ enum BankTemplates {
         + NzTemplates.all + IlTemplates.all + PlTemplates.all + RoTemplates.all + HuTemplates.all
         + GrTemplates.all + GccTemplates.all + UgTemplates.all + GhTemplates.all
 
-    /// Active region's templates, then everything else (sender/format match
-    /// can still hit a foreign-region template — useful for travellers and
-    /// users who hold cross-border accounts like Niyo).
+    /// Templates indexed by region. Computed once on first access; the
+    /// parser hits this for every SMS, so paying the partition cost
+    /// repeatedly inside `ordered(for:)` (as the v1 implementation did)
+    /// added up — every batch import was O(2N × messages). Now O(N) once,
+    /// O(1) per lookup.
+    private static let byRegion: [String: [BankTemplate]] = {
+        Dictionary(grouping: all, by: \.region)
+    }()
+
+    /// Cached "non-active" prefix per region, computed lazily and held in
+    /// a serial cache keyed by region code. Each entry is the full set of
+    /// templates that don't match `region`, in registry order — used as
+    /// the fallback for travelers / cross-border accounts.
+    private static let cacheLock = NSLock()
+    private static var orderedCache: [String: [BankTemplate]] = [:]
+
+    /// Active region's templates first, then everything else (sender/format
+    /// match can still hit a foreign-region template — useful for travellers
+    /// and users with cross-border accounts like Niyo).
     static func ordered(for region: Region) -> [BankTemplate] {
-        let primary = all.filter { $0.region == region.code }
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if let cached = orderedCache[region.code] { return cached }
+        let primary = byRegion[region.code, default: []]
         let secondary = all.filter { $0.region != region.code }
-        return primary + secondary
+        let combined = primary + secondary
+        orderedCache[region.code] = combined
+        return combined
     }
 
     /// Tries every applicable template against `text`. Returns the first
@@ -249,10 +325,7 @@ private enum InTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 3)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseSlashDayFirst)
             let ref: String? = {
                 guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
                 return ns.substring(with: m.range(at: 4))
@@ -283,10 +356,7 @@ private enum InTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "INR",
                 bank: "OneCard",
@@ -313,10 +383,7 @@ private enum InTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 3)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "INR",
                 bank: "LazyPay",
@@ -343,14 +410,8 @@ private enum InTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 3)))
-            }()
-            let acct: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 4))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseEnglishMonthDate)
+            let acct = H.optionalAccount(m, ns, at: 4)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "INR",
                 bank: "Slice",
@@ -377,10 +438,7 @@ private enum InTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 3)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "INR",
                 bank: "Cred",
@@ -456,10 +514,7 @@ private enum UsTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashMonthFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "USD",
                 bank: "Chase",
@@ -485,14 +540,8 @@ private enum UsTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 3)))
-            }()
-            let acct: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 4))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseSlashMonthFirst)
+            let acct = H.optionalAccount(m, ns, at: 4)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "USD",
                 bank: "Bank of America",
@@ -518,10 +567,7 @@ private enum UsTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "USD",
                 bank: "Capital One",
@@ -572,10 +618,7 @@ private enum UsTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashMonthFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "USD",
                 bank: "Wells Fargo",
@@ -627,10 +670,7 @@ private enum UsTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 3)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseSlashMonthFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "USD",
                 bank: "Discover",
@@ -657,14 +697,8 @@ private enum UsTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 3)))
-            }()
-            let acct: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 4))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseSlashMonthFirst)
+            let acct = H.optionalAccount(m, ns, at: 4)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "USD",
                 bank: "Charles Schwab",
@@ -690,14 +724,8 @@ private enum UsTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashMonthFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "USD",
                 bank: "Navy Federal",
@@ -723,14 +751,8 @@ private enum UsTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashMonthFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "USD",
                 bank: "Huntington Bank",
@@ -771,10 +793,7 @@ private enum GbTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "GBP",
                 bank: "Barclays",
@@ -800,10 +819,7 @@ private enum GbTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "GBP",
                 bank: "HSBC UK",
@@ -829,14 +845,8 @@ private enum GbTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 3)))
-            }()
-            let acct: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 4))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseEnglishMonthDate)
+            let acct = H.optionalAccount(m, ns, at: 4)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "GBP",
                 bank: "NatWest",
@@ -862,10 +872,7 @@ private enum GbTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 3))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "GBP",
                 bank: "Lloyds Bank",
@@ -904,14 +911,8 @@ private enum AeTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 3)))
-            }()
-            let acct: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 4))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseSlashDayFirst)
+            let acct = H.optionalAccount(m, ns, at: 4)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AED",
                 bank: "Emirates NBD",
@@ -937,10 +938,7 @@ private enum AeTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AED",
                 bank: "ADCB",
@@ -966,10 +964,7 @@ private enum AeTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AED",
                 bank: "First Abu Dhabi Bank",
@@ -995,10 +990,7 @@ private enum AeTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AED",
                 bank: "Mashreq",
@@ -1024,14 +1016,8 @@ private enum AeTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AED",
                 bank: "Liv Bank",
@@ -1057,14 +1043,8 @@ private enum AeTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AED",
                 bank: "RAKBank",
@@ -1090,14 +1070,8 @@ private enum AeTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AED",
                 bank: "ADIB",
@@ -1134,10 +1108,7 @@ private enum SgTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 2))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "SGD",
                 bank: "DBS Bank",
@@ -1163,10 +1134,7 @@ private enum SgTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "SGD",
                 bank: "OCBC Bank",
@@ -1192,14 +1160,8 @@ private enum SgTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "SGD",
                 bank: "UOB",
@@ -1265,10 +1227,7 @@ private enum ThTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 2))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "THB",
                 bank: "Siam Commercial Bank",
@@ -1294,10 +1253,7 @@ private enum ThTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "THB",
                 bank: "Bangkok Bank",
@@ -1323,10 +1279,7 @@ private enum ThTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "THB",
                 bank: "Krung Thai Bank",
@@ -1352,10 +1305,7 @@ private enum ThTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "THB",
                 bank: "Krungsri",
@@ -1381,10 +1331,7 @@ private enum ThTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "THB",
                 bank: "TTB",
@@ -1410,14 +1357,8 @@ private enum ThTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "THB",
                 bank: "CIMB Thai",
@@ -1458,14 +1399,8 @@ private enum IdTemplates {
                 .replacingOccurrences(of: ",", with: ".")
                 .replacingOccurrences(of: ".", with: "")
             guard let amt = Double(raw), amt > 0 else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 3)))
-            }()
-            let acct: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 4))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseSlashDayFirst)
+            let acct = H.optionalAccount(m, ns, at: 4)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "IDR",
                 bank: "Bank Central Asia",
@@ -1493,14 +1428,8 @@ private enum IdTemplates {
                 .replacingOccurrences(of: ",", with: ".")
                 .replacingOccurrences(of: ".", with: "")
             guard let amt = Double(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "IDR",
                 bank: "Bank Mandiri",
@@ -1528,14 +1457,8 @@ private enum IdTemplates {
                 .replacingOccurrences(of: ",", with: ".")
                 .replacingOccurrences(of: ".", with: "")
             guard let amt = Double(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "IDR",
                 bank: "Bank Negara Indonesia",
@@ -1572,14 +1495,8 @@ private enum PhTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "PHP",
                 bank: "BDO Unibank",
@@ -1605,10 +1522,7 @@ private enum PhTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "PHP",
                 bank: "Bank of the Philippine Islands",
@@ -1634,14 +1548,8 @@ private enum PhTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "PHP",
                 bank: "Metrobank",
@@ -1678,10 +1586,7 @@ private enum MyTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "MYR",
                 bank: "Maybank",
@@ -1707,10 +1612,7 @@ private enum MyTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "MYR",
                 bank: "CIMB Bank",
@@ -1736,14 +1638,8 @@ private enum MyTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "MYR",
                 bank: "Public Bank",
@@ -1780,10 +1676,7 @@ private enum NpTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NPR",
                 bank: "NIC Asia Bank",
@@ -1809,10 +1702,7 @@ private enum NpTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NPR",
                 bank: "Nabil Bank",
@@ -1838,10 +1728,7 @@ private enum NpTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NPR",
                 bank: "Siddhartha Bank",
@@ -1867,10 +1754,7 @@ private enum NpTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NPR",
                 bank: "Everest Bank",
@@ -1896,10 +1780,7 @@ private enum NpTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NPR",
                 bank: "NMB Bank Nepal",
@@ -1925,10 +1806,7 @@ private enum NpTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NPR",
                 bank: "Laxmi Bank",
@@ -1965,10 +1843,7 @@ private enum PkTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "PKR",
                 bank: "Habib Bank",
@@ -1994,14 +1869,8 @@ private enum PkTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "PKR",
                 bank: "United Bank Limited",
@@ -2027,10 +1896,7 @@ private enum PkTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "PKR",
                 bank: "MCB Bank",
@@ -2162,10 +2028,7 @@ private enum KeTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 2))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "KES",
                 bank: "M-Pesa",
@@ -2223,10 +2086,7 @@ private enum KeTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "KES",
                 bank: "Equity Bank",
@@ -2252,10 +2112,7 @@ private enum KeTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "KES",
                 bank: "KCB",
@@ -2325,10 +2182,7 @@ private enum NgTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NGN",
                 bank: "Access Bank",
@@ -2354,10 +2208,7 @@ private enum NgTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NGN",
                 bank: "First Bank",
@@ -2396,10 +2247,7 @@ private enum ZaTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 2))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "ZAR",
                 bank: "FNB",
@@ -2425,10 +2273,7 @@ private enum ZaTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "ZAR",
                 bank: "Capitec Bank",
@@ -2454,10 +2299,7 @@ private enum ZaTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "ZAR",
                 bank: "Standard Bank",
@@ -2495,10 +2337,7 @@ private enum SaTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "SAR",
                 bank: "Al Rajhi Bank",
@@ -2524,10 +2363,7 @@ private enum SaTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "SAR",
                 bank: "SAB",
@@ -2553,14 +2389,8 @@ private enum SaTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "SAR",
                 bank: "Saudi National Bank",
@@ -2586,10 +2416,7 @@ private enum SaTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "SAR",
                 bank: "Alinma Bank",
@@ -2615,14 +2442,8 @@ private enum SaTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "SAR",
                 bank: "STC Bank",
@@ -2660,10 +2481,7 @@ private enum EgTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "EGP",
                 bank: "National Bank of Egypt",
@@ -2689,10 +2507,7 @@ private enum EgTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "EGP",
                 bank: "Commercial International Bank",
@@ -2732,14 +2547,8 @@ private enum BrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 3)))
-            }()
-            let acct: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 4))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseSlashDayFirst)
+            let acct = H.optionalAccount(m, ns, at: 4)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "BRL",
                 bank: "Itaú",
@@ -2765,14 +2574,8 @@ private enum BrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "BRL",
                 bank: "Nubank",
@@ -2798,14 +2601,8 @@ private enum BrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "BRL",
                 bank: "Bradesco",
@@ -2844,10 +2641,7 @@ private enum MxTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "MXN",
                 bank: "BBVA México",
@@ -2873,14 +2667,8 @@ private enum MxTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "MXN",
                 bank: "Banorte",
@@ -2906,14 +2694,8 @@ private enum MxTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "MXN",
                 bank: "Santander México",
@@ -2953,10 +2735,7 @@ private enum ArTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "ARS",
                 bank: "Banco Galicia",
@@ -2982,14 +2761,8 @@ private enum ArTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "ARS",
                 bank: "Santander Argentina",
@@ -3029,10 +2802,7 @@ private enum KrTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "KRW",
                 bank: "KB Kookmin Bank",
@@ -3058,10 +2828,7 @@ private enum KrTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "KRW",
                 bank: "Shinhan Bank",
@@ -3087,10 +2854,7 @@ private enum KrTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "KRW",
                 bank: "Woori Bank",
@@ -3116,10 +2880,7 @@ private enum KrTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "KRW",
                 bank: "NongHyup Bank",
@@ -3145,10 +2906,7 @@ private enum KrTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "KRW",
                 bank: "IBK",
@@ -3266,17 +3024,8 @@ private enum EuTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "EUR",
                 bank: "Deutsche Bank",
@@ -3302,14 +3051,8 @@ private enum EuTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "EUR",
                 bank: "BNP Paribas",
@@ -3335,14 +3078,8 @@ private enum EuTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "EUR",
                 bank: "Santander",
@@ -3368,14 +3105,8 @@ private enum EuTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "EUR",
                 bank: "ING",
@@ -3403,14 +3134,8 @@ private enum EuTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "EUR",
                 bank: "Revolut",
@@ -3449,14 +3174,8 @@ private enum AuTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AUD",
                 bank: "CommBank",
@@ -3482,14 +3201,8 @@ private enum AuTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AUD",
                 bank: "Westpac",
@@ -3515,14 +3228,8 @@ private enum AuTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "AUD",
                 bank: "ANZ",
@@ -3560,14 +3267,8 @@ private enum CaTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "CAD",
                 bank: "RBC",
@@ -3593,14 +3294,8 @@ private enum CaTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "CAD",
                 bank: "TD",
@@ -3626,14 +3321,8 @@ private enum CaTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseEnglishMonthDate)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "CAD",
                 bank: "Scotiabank",
@@ -3671,14 +3360,8 @@ private enum HkTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "HKD",
                 bank: "HSBC Hong Kong",
@@ -3704,14 +3387,8 @@ private enum HkTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "HKD",
                 bank: "Hang Seng Bank",
@@ -3737,14 +3414,8 @@ private enum HkTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "HKD",
                 bank: "Bank of China (Hong Kong)",
@@ -3783,14 +3454,8 @@ private enum VnTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "VND",
                 bank: "Vietcombank",
@@ -3816,14 +3481,8 @@ private enum VnTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "VND",
                 bank: "Techcombank",
@@ -3849,14 +3508,8 @@ private enum VnTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "VND",
                 bank: "BIDV",
@@ -3895,14 +3548,8 @@ private enum TrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "TRY",
                 bank: "Garanti BBVA",
@@ -3928,14 +3575,8 @@ private enum TrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "TRY",
                 bank: "Akbank",
@@ -3977,10 +3618,7 @@ private enum BdTemplates {
                 guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
                 return ns.substring(with: m.range(at: 3))
             }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "BDT",
                 bank: "bKash",
@@ -4010,10 +3648,7 @@ private enum BdTemplates {
                 guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
                 return ns.substring(with: m.range(at: 3))
             }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "credit", currency: "BDT",
                 bank: "bKash",
@@ -4039,14 +3674,8 @@ private enum BdTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "BDT",
                 bank: "BRAC Bank",
@@ -4085,14 +3714,8 @@ private enum LkTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "LKR",
                 bank: "Commercial Bank of Ceylon",
@@ -4118,14 +3741,8 @@ private enum LkTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "LKR",
                 bank: "Sampath Bank",
@@ -4214,10 +3831,7 @@ private enum TzTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "TZS",
                 bank: "CRDB Bank",
@@ -4281,10 +3895,7 @@ private enum EtTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "ETB",
                 bank: "Commercial Bank of Ethiopia",
@@ -4310,10 +3921,7 @@ private enum EtTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 3)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 3, with: H.parseSlashDayFirst)
             let ref: String? = {
                 guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
                 return ns.substring(with: m.range(at: 4))
@@ -4343,10 +3951,7 @@ private enum EtTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "ETB",
                 bank: "Dashen Bank",
@@ -4388,17 +3993,8 @@ private enum RuTemplates {
             let raw = ns.substring(with: m.range(at: 1))
                 .replacingOccurrences(of: " ", with: "")
             guard let amt = H.cleanEuroAmount(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "RUB",
                 bank: "Sberbank",
@@ -4425,17 +4021,8 @@ private enum RuTemplates {
             let raw = ns.substring(with: m.range(at: 1))
                 .replacingOccurrences(of: " ", with: "")
             guard let amt = H.cleanEuroAmount(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "RUB",
                 bank: "Tinkoff",
@@ -4462,17 +4049,8 @@ private enum RuTemplates {
             let raw = ns.substring(with: m.range(at: 1))
                 .replacingOccurrences(of: " ", with: "")
             guard let amt = H.cleanEuroAmount(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "RUB",
                 bank: "VTB",
@@ -4514,10 +4092,7 @@ private enum CoTemplates {
                 .replacingOccurrences(of: ".", with: "")
                 .replacingOccurrences(of: ",", with: ".")
             guard let amt = Double(raw), amt > 0 else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "COP",
                 bank: "Bancolombia",
@@ -4545,14 +4120,8 @@ private enum CoTemplates {
                 .replacingOccurrences(of: ".", with: "")
                 .replacingOccurrences(of: ",", with: ".")
             guard let amt = Double(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "COP",
                 bank: "Davivienda",
@@ -4590,17 +4159,8 @@ private enum CzTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "CZK",
                 bank: "ČSOB",
@@ -4626,17 +4186,8 @@ private enum CzTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "CZK",
                 bank: "Komerční banka",
@@ -4675,17 +4226,8 @@ private enum ByTemplates {
             let raw = ns.substring(with: m.range(at: 1))
                 .replacingOccurrences(of: " ", with: "")
             guard let amt = H.cleanEuroAmount(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "BYN",
                 bank: "Belarusbank",
@@ -4712,17 +4254,8 @@ private enum ByTemplates {
             let raw = ns.substring(with: m.range(at: 1))
                 .replacingOccurrences(of: " ", with: "")
             guard let amt = H.cleanEuroAmount(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "BYN",
                 bank: "BPS-Sberbank",
@@ -4763,14 +4296,8 @@ private enum IrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "IRR",
                 bank: "Bank Mellat",
@@ -4796,14 +4323,8 @@ private enum IrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "IRR",
                 bank: "Bank Saderat",
@@ -4829,14 +4350,8 @@ private enum IrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "IRR",
                 bank: "Bank Melli Iran",
@@ -4862,14 +4377,8 @@ private enum IrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "IRR",
                 bank: "Bank Parsian",
@@ -4909,10 +4418,7 @@ private enum TwTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "TWD",
                 bank: "Cathay United Bank",
@@ -4938,10 +4444,7 @@ private enum TwTemplates {
             guard m.numberOfRanges >= 4,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "TWD",
                 bank: "CTBC Bank",
@@ -4978,14 +4481,8 @@ private enum NzTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NZD",
                 bank: "ANZ NZ",
@@ -5010,14 +4507,8 @@ private enum NzTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NZD",
                 bank: "BNZ",
@@ -5042,14 +4533,8 @@ private enum NzTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "NZD",
                 bank: "ASB Bank",
@@ -5087,14 +4572,8 @@ private enum IlTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "ILS",
                 bank: "Bank Hapoalim",
@@ -5119,14 +4598,8 @@ private enum IlTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "ILS",
                 bank: "Bank Leumi",
@@ -5163,17 +4636,8 @@ private enum PlTemplates {
             guard m.numberOfRanges >= 3 else { return nil }
             let raw = ns.substring(with: m.range(at: 1)).replacingOccurrences(of: " ", with: "")
             guard let amt = H.cleanEuroAmount(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "PLN",
                 bank: "PKO BP",
@@ -5198,17 +4662,8 @@ private enum PlTemplates {
             guard m.numberOfRanges >= 3 else { return nil }
             let raw = ns.substring(with: m.range(at: 1)).replacingOccurrences(of: " ", with: "")
             guard let amt = H.cleanEuroAmount(raw), amt > 0 else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let d = Int(parts[0]), let mo = Int(parts[1]), var y = Int(parts[2]) else { return nil }
-                if y < 100 { y += 2000 }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "PLN",
                 bank: "mBank",
@@ -5245,14 +4700,8 @@ private enum RoTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "RON",
                 bank: "BCR",
@@ -5285,16 +4734,8 @@ private enum HuTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                let parts = ns.substring(with: m.range(at: 4)).split(separator: ".").map(String.init)
-                guard parts.count == 3, let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]) else { return nil }
-                return String(format: "%04d-%02d-%02d", y, mo, d)
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseDottedYearFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "HUF",
                 bank: "OTP Bank",
@@ -5327,14 +4768,8 @@ private enum GrTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "EUR",
                 bank: "National Bank of Greece",
@@ -5372,14 +4807,8 @@ private enum GccTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "KWD",
                 bank: "NBK",
@@ -5405,14 +4834,8 @@ private enum GccTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "QAR",
                 bank: "QNB",
@@ -5438,14 +4861,8 @@ private enum GccTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "OMR",
                 bank: "Bank Muscat",
@@ -5471,14 +4888,8 @@ private enum GccTemplates {
             guard m.numberOfRanges >= 3,
                   let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
             else { return nil }
-            let acct: String? = {
-                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
-                return "XX" + ns.substring(with: m.range(at: 3))
-            }()
-            let dateStr: String? = {
-                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
-                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
-            }()
+            let acct = H.optionalAccount(m, ns, at: 3)
+            let dateStr = H.optionalDate(m, ns, at: 4, with: H.parseSlashDayFirst)
             return SMSMiniTemplates.Match(
                 amount: amt, type: "debit", currency: "JOD",
                 bank: "Arab Bank",

@@ -329,6 +329,15 @@ enum SMSBankParser {
         ("Jio Payments Bank", [rx(#"Jio\s*Payments\s*Bank"#), rx(#"JioBank"#)]),
         ("Airtel Payments Bank", [rx(#"Airtel\s*Payments\s*Bank"#), rx(#"AirtelBank"#)]),
         ("Jupiter", [rx(#"Jupiter\s*Money"#), rx(#"jupiter\.money"#)]),
+        // ── India: wallets / BNPL (these get attributed correctly even
+        //    when the SMS only mentions the wallet name, not a bank) ──
+        ("Paytm", [rx(#"\bPaytm\b"#), rx(#"paytm\s*wallet"#)]),
+        ("Amazon Pay", [rx(#"Amazon\s*Pay"#), rx(#"\bAPay\b"#)]),
+        ("PhonePe", [rx(#"PhonePe"#), rx(#"phonepe"#)]),
+        ("Google Pay", [rx(#"Google\s*Pay"#), rx(#"\bGPay\b"#)]),
+        ("Mobikwik", [rx(#"Mobikwik"#)]),
+        ("Freecharge", [rx(#"Freecharge"#)]),
+        ("Pluxee", [rx(#"\bPluxee\b"#), rx(#"\bSodexo\b"#)]),
         // ── International ──
         ("Chase", [rx(#"\bChase\b"#), rx(#"JPMorgan"#)]),
         ("Bank of America", [rx(#"Bank of America"#), rx(#"\bBofA\b"#)]),
@@ -741,8 +750,15 @@ enum SMSBankParser {
     }
 
     private static func extractBalance(_ text: String) -> Double? {
+        // Real-world separators between "Bal" and the currency token vary
+        // wildly: `Bal: INR X`, `Avl Bal- Rs.X`, `Bal Rs.X`, `Available
+        // balance is INR X`. The character class `[\s\-:.]*` covers all of
+        // them; the previous regex required either `:` / `is` / pure
+        // whitespace and silently dropped balances when the bank used a
+        // dash (e.g. saurabhgupta's canonical sample
+        // "Avl Bal- INR 2343.23").
         let p = rx(
-            #"(?:avl?\s*bal|available\s*balance|balance|bal)\s*(?:is|:)?\s*(?:Rs\.?|INR|₹|USD|\$)\s*([\d,]+\.?\d*)"#
+            #"(?:avl?\s*bal|available\s*balance|balance|bal)[\s\-:.]*(?:Rs\.?|INR|₹|USD|\$|EUR|GBP|AED|SGD|AUD|CAD|HKD)\s*([\d,]+\.?\d*)"#
         )
         let ns = text as NSString
         guard let m = p.firstMatch(in: text, options: [], range: NSRange(location: 0, length: ns.length)),
