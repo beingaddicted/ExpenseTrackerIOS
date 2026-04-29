@@ -716,12 +716,30 @@ enum SMSBankParser {
     /// the SMS body (so a Niyo-style USD spend on an Indian bank's SMS still
     /// reads as USD); only when the body has no clear currency token do we
     /// fall back to the active region's default.
+    /// Currency for a parsed transaction. We prefer explicit symbols/codes in
+    /// the SMS body (so a Niyo-style USD spend on an Indian bank's SMS still
+    /// reads as USD); only when the body has no clear currency token do we
+    /// fall back to the active region's default.
+    ///
+    /// `Rs`/`Rs.` is intentionally NOT treated as INR-only here — it's also
+    /// used by Pakistani and Nepalese banks. We disambiguate by region in
+    /// that case (see the trailing fallback).
     private static func detectCurrency(_ text: String, region: Region) -> String {
-        if text.range(of: #"₹|\bINR\b|\bRs\.?\b"#, options: .regularExpression) != nil { return "INR" }
+        if text.range(of: #"₹|\bINR\b"#, options: .regularExpression) != nil { return "INR" }
         if text.range(of: #"£|\bGBP\b"#, options: .regularExpression) != nil { return "GBP" }
         if text.range(of: #"€|\bEUR\b"#, options: .regularExpression) != nil { return "EUR" }
         if text.range(of: #"\bAED\b|\bDhs\.?\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return "AED" }
         if text.range(of: #"\bSGD\b|S\$"#, options: [.regularExpression, .caseInsensitive]) != nil { return "SGD" }
+        if text.range(of: #"฿|\bTHB\b|\bBaht\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return "THB" }
+        if text.range(of: #"\bIDR\b|\bRp\b"#, options: .regularExpression) != nil { return "IDR" }
+        if text.range(of: #"₱|\bPHP\b"#, options: .regularExpression) != nil { return "PHP" }
+        if text.range(of: #"\bMYR\b|\bRM\b"#, options: .regularExpression) != nil { return "MYR" }
+        if text.range(of: #"\bNPR\b|\bNRs\.?\b"#, options: .regularExpression) != nil { return "NPR" }
+        if text.range(of: #"\bPKR\b"#, options: .regularExpression) != nil { return "PKR" }
+        if text.range(of: #"\bRs\.?\b"#, options: .regularExpression) != nil {
+            // Multiple South Asian currencies use "Rs" — defer to the region.
+            return region.currency
+        }
         if text.range(of: #"\$|\bUSD\b"#, options: .regularExpression) != nil { return "USD" }
         return region.currency
     }

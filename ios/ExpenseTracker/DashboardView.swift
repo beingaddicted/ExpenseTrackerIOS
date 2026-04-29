@@ -23,6 +23,7 @@ struct DashboardView: View {
     @State private var showParseSMS = false
     @State private var showPendingBanner = false
     @State private var showFirstRunHeadsUp = false
+    @State private var regionSuggestion: Region? = nil
     @State private var revealIncome = false
     @State private var showActionDrawer = false
     @State private var showICloudRecoveryPrompt = false
@@ -114,6 +115,17 @@ struct DashboardView: View {
 
             if showPendingBanner {
                 Section { pendingBannerRow }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(
+                        top: compactMode ? 1 : 2,
+                        leading: horizontalInset,
+                        bottom: compactMode ? 2 : 4,
+                        trailing: horizontalInset
+                    ))
+            }
+
+            if let suggestion = regionSuggestion {
+                Section { regionMismatchBannerRow(suggestion) }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(
                         top: compactMode ? 1 : 2,
@@ -338,6 +350,7 @@ struct DashboardView: View {
             currentMonth = selectedMonth
             currentYear = selectedYear
             evaluatePendingImport()
+            evaluateRegionMismatch()
             evaluateICloudRecoveryPromptIfNeeded()
             recomputeDashboardData()
         }
@@ -371,6 +384,7 @@ struct DashboardView: View {
         }
         .onChange(of: allRows.count) { _, newCount in
             recomputeDashboardData()
+            evaluateRegionMismatch()
             if newCount == 0 {
                 evaluateICloudRecoveryPromptIfNeeded()
             }
@@ -706,6 +720,46 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    private func regionMismatchBannerRow(_ suggested: Region) -> some View {
+        let active = RegionStore.current
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "globe")
+                .foregroundStyle(.white)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Switch region to \(suggested.flag) \(suggested.name)?")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                Text("Most of your recent SMS look like \(suggested.currency) (\(suggested.name)) — currently set to \(active.flag) \(active.name).")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.92))
+                HStack(spacing: 8) {
+                    Button("Switch") {
+                        RegionStore.set(suggested)
+                        RegionMismatchDetector.clearSnooze()
+                        regionSuggestion = nil
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.white)
+                    .foregroundStyle(Theme.accentPrimary)
+
+                    Button("Not now") {
+                        RegionMismatchDetector.snooze()
+                        regionSuggestion = nil
+                    }
+                    .foregroundStyle(.white.opacity(0.85))
+                }
+                .padding(.top, 2)
+            }
+            Spacer()
+        }
+        .padding(cardInset)
+        .background(LinearGradient(colors: [Theme.accentPrimary, Theme.accentLight],
+                                   startPoint: .leading, endPoint: .trailing))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Helpers
 
     private var transactionsSectionTitle: String {
@@ -830,6 +884,14 @@ struct DashboardView: View {
             return
         }
         showPendingBanner = ImportStartDateStore.hasPendingImport()
+    }
+
+    /// Refresh the "looks like you're in a different country" suggestion. We
+    /// pull a small window of the most recent transactions (the @Query is
+    /// already date-desc) and ask the detector. Cheap enough to do on the
+    /// same triggers as the pending-import check.
+    private func evaluateRegionMismatch() {
+        regionSuggestion = RegionMismatchDetector.suggestion(from: allRows)
     }
 
     private func evaluateFirstRunHeadsUp() {

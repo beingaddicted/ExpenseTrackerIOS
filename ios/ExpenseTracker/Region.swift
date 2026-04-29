@@ -95,9 +95,84 @@ enum Regions {
         localeCodes: ["sg"]
     )
 
+    static let thailand = Region(
+        code: "TH",
+        name: "Thailand",
+        flag: "🇹🇭",
+        currency: "THB",
+        currencySymbol: "฿",
+        currencyTokens: ["THB", "฿", "Baht", "บาท", "บ"],
+        timeZones: ["Asia/Bangkok"],
+        mcc: ["520"],
+        localeCodes: ["th"]
+    )
+
+    static let indonesia = Region(
+        code: "ID",
+        name: "Indonesia",
+        flag: "🇮🇩",
+        currency: "IDR",
+        currencySymbol: "Rp",
+        currencyTokens: ["IDR", "Rp"],
+        timeZones: ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"],
+        mcc: ["510"],
+        localeCodes: ["id"]
+    )
+
+    static let philippines = Region(
+        code: "PH",
+        name: "Philippines",
+        flag: "🇵🇭",
+        currency: "PHP",
+        currencySymbol: "₱",
+        currencyTokens: ["PHP", "₱", "PhP"],
+        timeZones: ["Asia/Manila"],
+        mcc: ["515"],
+        localeCodes: ["ph"]
+    )
+
+    static let malaysia = Region(
+        code: "MY",
+        name: "Malaysia",
+        flag: "🇲🇾",
+        currency: "MYR",
+        currencySymbol: "RM",
+        currencyTokens: ["MYR", "RM"],
+        timeZones: ["Asia/Kuala_Lumpur", "Asia/Kuching"],
+        mcc: ["502"],
+        localeCodes: ["my"]
+    )
+
+    static let nepal = Region(
+        code: "NP",
+        name: "Nepal",
+        flag: "🇳🇵",
+        currency: "NPR",
+        currencySymbol: "Rs",
+        currencyTokens: ["NPR", "NRs.", "NRs", "Rs."],
+        timeZones: ["Asia/Kathmandu"],
+        mcc: ["429"],
+        localeCodes: ["np"]
+    )
+
+    static let pakistan = Region(
+        code: "PK",
+        name: "Pakistan",
+        flag: "🇵🇰",
+        currency: "PKR",
+        currencySymbol: "Rs",
+        currencyTokens: ["PKR", "Rs.", "Rupees"],
+        timeZones: ["Asia/Karachi"],
+        mcc: ["410"],
+        localeCodes: ["pk"]
+    )
+
     /// Order users see in the picker — the recently-detected one is pinned to
     /// the top by the picker view, this is just the underlying catalog.
-    static let all: [Region] = [india, usa, uk, uae, singapore]
+    static let all: [Region] = [
+        india, usa, uk, uae, singapore,
+        thailand, indonesia, philippines, malaysia, nepal, pakistan,
+    ]
 
     static func byCode(_ code: String) -> Region? {
         let upper = code.uppercased()
@@ -248,5 +323,60 @@ enum RegionDetector {
         }
         #endif
         return nil
+    }
+}
+
+// MARK: - Adaptive region nudge
+
+/// Looks at recently parsed transactions to spot "active region looks wrong"
+/// situations — e.g. user is set to IN but the last 20 imports are all USD
+/// from US senders. We never auto-switch; we just surface a one-tap banner.
+enum RegionMismatchDetector {
+    /// Snooze key — once dismissed, don't pester for 7 days.
+    private static let snoozeKey = "regionMismatchSnoozedUntil"
+    private static let snoozeWindow: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Returns the suggested region if recent transactions strongly imply a
+    /// different one than the active region, else nil. The caller should
+    /// show a banner that lets the user accept or dismiss the suggestion.
+    ///
+    /// Heuristic: of the last `windowSize` non-INR-default-Rs transactions,
+    /// at least 70 % must point to a single non-active region (by currency).
+    static func suggestion(from transactions: [TransactionRecord], windowSize: Int = 20) -> Region? {
+        guard !isSnoozed() else { return nil }
+        guard transactions.count >= 5 else { return nil }
+
+        let active = RegionStore.current
+        let recent = Array(transactions.prefix(windowSize))
+
+        // Count by currency.
+        var counts: [String: Int] = [:]
+        for t in recent { counts[t.currency, default: 0] += 1 }
+
+        // If the active region's own currency dominates, no nudge.
+        let activeCount = counts[active.currency] ?? 0
+        if activeCount * 2 > recent.count { return nil }
+
+        // Find the dominant currency that maps to a different region.
+        let topCurrency = counts.max { $0.value < $1.value }?.key
+        guard let cur = topCurrency, cur != active.currency else { return nil }
+        guard let topCount = counts[cur], topCount * 10 >= recent.count * 7 else { return nil }
+        guard let target = Regions.all.first(where: { $0.currency == cur }), target.code != active.code else { return nil }
+
+        return target
+    }
+
+    static func snooze() {
+        AppGroup.defaults.set(Date().timeIntervalSince1970 + snoozeWindow, forKey: snoozeKey)
+    }
+
+    static func clearSnooze() {
+        AppGroup.defaults.removeObject(forKey: snoozeKey)
+    }
+
+    private static func isSnoozed() -> Bool {
+        let until = AppGroup.defaults.double(forKey: snoozeKey)
+        guard until > 0 else { return false }
+        return Date().timeIntervalSince1970 < until
     }
 }
