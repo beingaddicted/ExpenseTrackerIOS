@@ -293,6 +293,7 @@ enum SMSBankParser {
     ]
 
     private static let bankRules: [(String, [NSRegularExpression])] = [
+        // ── India: majors (already covered by full templates) ──
         ("HDFC Bank", [rx(#"HDFC"#), rx(#"hdfcbank"#)]),
         ("ICICI Bank", [rx(#"ICICI"#), rx(#"icicibank"#)]),
         ("SBI", [rx(#"\bSBI\b"#), rx(#"State Bank"#), rx(#"sbi\.co"#)]),
@@ -311,6 +312,24 @@ enum SMSBankParser {
         ("RBL Bank", [rx(#"\bRBL\b"#), rx(#"rblbank"#)]),
         ("Bandhan Bank", [rx(#"Bandhan"#), rx(#"bandhanbank"#)]),
         ("AU Small Finance", [rx(#"\bAU\b.*bank"#), rx(#"aubank"#)]),
+        // ── India: long-tail (added so attribution works even though we
+        //    don't yet have a dedicated template for them) ──
+        ("IDBI Bank", [rx(#"\bIDBI\b"#), rx(#"idbibank"#)]),
+        ("Saraswat Bank", [rx(#"Saraswat"#), rx(#"saraswatbank"#)]),
+        ("Karnataka Bank", [rx(#"Karnataka\s*Bank"#), rx(#"ktkbank"#)]),
+        ("South Indian Bank", [rx(#"South\s*Indian\s*Bank"#), rx(#"southindianbank"#), rx(#"\bSIB\b.*bank"#)]),
+        ("Indian Overseas Bank", [rx(#"Indian\s*Overseas"#), rx(#"\bIOB\b"#), rx(#"iob\.in"#)]),
+        ("City Union Bank", [rx(#"City\s*Union"#), rx(#"\bCUB\b"#), rx(#"cityunionbank"#)]),
+        ("Dhanlaxmi Bank", [rx(#"Dhanlaxmi"#), rx(#"dhanbank"#)]),
+        ("Equitas SFB", [rx(#"Equitas"#), rx(#"equitasbank"#)]),
+        ("J&K Bank", [rx(#"\bJ&K\s*Bank"#), rx(#"\bJKBank\b"#), rx(#"jkbank"#)]),
+        ("Punjab & Sind Bank", [rx(#"Punjab\s*&\s*Sind"#), rx(#"\bPSB\b.*bank"#)]),
+        ("Central Bank of India", [rx(#"Central\s*Bank\s*of\s*India"#), rx(#"\bCBI\b.*bank"#)]),
+        ("IPPB", [rx(#"\bIPPB\b"#), rx(#"India\s*Post\s*Payments"#)]),
+        ("Jio Payments Bank", [rx(#"Jio\s*Payments\s*Bank"#), rx(#"JioBank"#)]),
+        ("Airtel Payments Bank", [rx(#"Airtel\s*Payments\s*Bank"#), rx(#"AirtelBank"#)]),
+        ("Jupiter", [rx(#"Jupiter\s*Money"#), rx(#"jupiter\.money"#)]),
+        // ── International ──
         ("Chase", [rx(#"\bChase\b"#), rx(#"JPMorgan"#)]),
         ("Bank of America", [rx(#"Bank of America"#), rx(#"\bBofA\b"#)]),
         ("Wells Fargo", [rx(#"Wells\s*Fargo"#)]),
@@ -318,19 +337,40 @@ enum SMSBankParser {
         ("Citibank", [rx(#"\bCiti\b"#), rx(#"Citibank"#)]),
         ("American Express", [rx(#"\bAMEX\b"#), rx(#"American\s*Express"#)]),
         ("Discover", [rx(#"\bDiscover\b"#)]),
+        ("Charles Schwab", [rx(#"Schwab"#)]),
+        ("Navy Federal", [rx(#"Navy\s*Federal"#), rx(#"\bNFCU\b"#)]),
+        ("Huntington Bank", [rx(#"Huntington"#)]),
         ("HSBC", [rx(#"\bHSBC\b"#)]),
         ("Standard Chartered", [rx(#"Standard\s*Chartered"#), rx(#"\bSCB\b"#)]),
         ("DBS Bank", [rx(#"\bDBS\b"#), rx(#"DBS\s*Bank"#)]),
     ]
 
     private static let senderBankMap: [String: String] = [
+        // ── India majors ──
         "HDFCBK": "HDFC Bank", "HDFCBNK": "HDFC Bank", "ICICIB": "ICICI Bank", "ICICIO": "ICICI Bank",
         "AXISBK": "Axis Bank", "AXISMS": "Axis Bank", "SBIINB": "SBI", "SBMSBI": "SBI",
+        "ATMSBI": "SBI", "SBIUPI": "SBI", "SBICRD": "SBI", "SBICARDS": "SBI",
         "KOTAKB": "Kotak Mahindra", "KKBKBL": "Kotak Mahindra", "FEDBNK": "Federal Bank",
         "IDFCFB": "IDFC First", "IDFCFBK": "IDFC First", "BOBSMS": "Bank of Baroda", "BARODA": "Bank of Baroda",
         "PNBSMS": "PNB", "YESBK": "Yes Bank", "INDBNK": "IndusInd Bank", "DBSBNK": "DBS Bank",
         "RBLBNK": "RBL Bank", "AUBANK": "AU Small Finance", "BANDHN": "Bandhan Bank", "BANDHAN": "Bandhan Bank",
         "CANBNK": "Canara Bank", "CNRBCH": "Canara Bank",
+        // ── India long-tail (DLT codes; some are guesses based on standard naming) ──
+        "IDBIBK": "IDBI Bank", "IDBINF": "IDBI Bank",
+        "SRSWAT": "Saraswat Bank", "SARASW": "Saraswat Bank",
+        "KTKBNK": "Karnataka Bank", "KARBNK": "Karnataka Bank",
+        "SOUTHB": "South Indian Bank", "SIBKER": "South Indian Bank",
+        "IOBANK": "Indian Overseas Bank", "IOBINB": "Indian Overseas Bank",
+        "CITYUN": "City Union Bank", "CUBNKL": "City Union Bank",
+        "DHNLXM": "Dhanlaxmi Bank", "DHANB": "Dhanlaxmi Bank",
+        "EQTSFB": "Equitas SFB", "EQUTAS": "Equitas SFB",
+        "JKBANK": "J&K Bank", "JNK": "J&K Bank",
+        "PSBNKL": "Punjab & Sind Bank", "PSBANK": "Punjab & Sind Bank",
+        "CENTBK": "Central Bank of India", "CBINIB": "Central Bank of India",
+        "IPPB": "IPPB", "IPPBLK": "IPPB",
+        "JIOPAY": "Jio Payments Bank", "JIOBNK": "Jio Payments Bank",
+        "AIRTBK": "Airtel Payments Bank", "AIRTLB": "Airtel Payments Bank",
+        "JUPITR": "Jupiter", "JPTRMN": "Jupiter",
     ]
 
     // MARK: - Public API

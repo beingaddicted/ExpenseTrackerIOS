@@ -197,7 +197,202 @@ private enum InTemplates {
         }
     )
 
-    static let all: [BankTemplate] = [hdfcUpiSent, hdfcUpiReceived]
+    /// JioPay / Jio Wallet — common Jio Money / JioPay form.
+    /// `JioPay: Rs.X paid to MERCHANT on DD/MM/YYYY. Ref XXXXXX`
+    static let jioPay = BankTemplate(
+        id: "in_jiopay_paid",
+        region: "IN",
+        bank: "JioPay",
+        regex: H.rx(
+            #"JioPay\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:paid|sent|debited)\s+to\s+(.+?)(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?(?:[\s.,]+Ref\s*(?:no\.?\s*)?([A-Za-z0-9]+))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 3)))
+            }()
+            let ref: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return ns.substring(with: m.range(at: 4))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "INR",
+                bank: "JioPay",
+                account: nil,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Wallet",
+                date: dateStr,
+                refNumber: ref,
+                templateId: "in_jiopay_paid"
+            )
+        }
+    )
+
+    /// OneCard (FPL Tech / IDFC partnership):
+    /// `OneCard: Rs.X spent on OneCard XXXX at MERCHANT on DD-MMM-YYYY`
+    static let oneCard = BankTemplate(
+        id: "in_onecard_spent",
+        region: "IN",
+        bank: "OneCard",
+        regex: H.rx(
+            #"OneCard\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+spent\s+on\s+OneCard\s+(?:X+)?(\d{4})\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}[-\s]\w{3}[-\s]?\d{0,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 4,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "INR",
+                bank: "OneCard",
+                account: "XX" + ns.substring(with: m.range(at: 2)),
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 3))),
+                mode: "Credit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "in_onecard_spent"
+            )
+        }
+    )
+
+    /// LazyPay BNPL:
+    /// `LazyPay: Rs.X spent at MERCHANT on DD-MMM-YYYY. Total dues: Rs.Y`
+    static let lazyPay = BankTemplate(
+        id: "in_lazypay_spent",
+        region: "IN",
+        bank: "LazyPay",
+        regex: H.rx(
+            #"LazyPay\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:spent|charged|paid|debited)\s+(?:at|to)\s+(.+?)(?:\s+on\s+(\d{1,2}[-\s]\w{3}[-\s]?\d{0,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 3)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "INR",
+                bank: "LazyPay",
+                account: nil,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Wallet",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "in_lazypay_spent"
+            )
+        }
+    )
+
+    /// Slice (CC / BNPL):
+    /// `Slice: Rs.X spent at MERCHANT on DD-MMM-YYYY using Slice Card XXXX`
+    static let slice = BankTemplate(
+        id: "in_slice_spent",
+        region: "IN",
+        bank: "Slice",
+        regex: H.rx(
+            #"\bSlice\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:spent|charged|paid)\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}[-\s]\w{3}[-\s]?\d{0,4}))?[^\n]*?(?:Card\s+(\d{4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return H.parseEnglishMonthDate(ns.substring(with: m.range(at: 3)))
+            }()
+            let acct: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return "XX" + ns.substring(with: m.range(at: 4))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "INR",
+                bank: "Slice",
+                account: acct,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Credit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "in_slice_spent"
+            )
+        }
+    )
+
+    /// Cred (rewards / CC bill payments):
+    /// `Cred: Rs.X paid towards your HDFC Credit Card bill on DD/MM/YYYY`
+    static let cred = BankTemplate(
+        id: "in_cred_payment",
+        region: "IN",
+        bank: "Cred",
+        regex: H.rx(
+            #"\bCred\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:paid|payment)\s+(?:towards|for|to)\s+(.+?)(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 3)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "INR",
+                bank: "Cred",
+                account: nil,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Credit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "in_cred_payment"
+            )
+        }
+    )
+
+    /// Juspay (payment infra; merchant-side notification with bank-card):
+    /// `Juspay: Payment of Rs.X via Card XXXX at MERCHANT was successful. Txn ID: ABCD123`
+    static let juspay = BankTemplate(
+        id: "in_juspay_payment",
+        region: "IN",
+        bank: "Juspay",
+        regex: H.rx(
+            #"Juspay\b[^\n]*?Payment\s+of\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+via\s+(?:Card|UPI)\s*(?:X+)?(\d{4})?\s+(?:at|to)\s+(.+?)(?:\s+(?:was\s+successful|successful))?(?:[\s.,]+Txn\s*(?:ID|no\.?)\s*:?\s*([A-Za-z0-9]+))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 4,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let acct: String? = {
+                guard m.range(at: 2).location != NSNotFound else { return nil }
+                return "XX" + ns.substring(with: m.range(at: 2))
+            }()
+            let ref: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return ns.substring(with: m.range(at: 4))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "INR",
+                bank: "Juspay",
+                account: acct,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 3))),
+                mode: "Other",
+                date: nil,
+                refNumber: ref,
+                templateId: "in_juspay_payment"
+            )
+        }
+    )
+
+    static let all: [BankTemplate] = [
+        hdfcUpiSent, hdfcUpiReceived,
+        jioPay, oneCard, lazyPay, slice, cred, juspay,
+    ]
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -71,6 +71,101 @@ final class BankTemplatesTests: XCTestCase {
         )
     }
 
+    // MARK: - India long-tail (sender attribution via bankRules)
+
+    func testIndiaIDBIBankAttribution() {
+        // Generic-path SMS — verifies that IDBI is recognised as the bank
+        // even though it has no dedicated template (bankRules expansion).
+        guard let p = parse(
+            "IDBI Bank: Rs.250.00 debited from a/c XX1234 on 29-04-2026 at MERCHANT.",
+            regionCode: "IN"
+        ) else {
+            XCTFail("IDBI generic SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.bank, "IDBI Bank")
+        XCTAssertEqual(p.amount, 250, accuracy: 0.001)
+    }
+
+    func testIndiaJKBankAttribution() {
+        guard let p = parse(
+            "JKBank: Rs.450.00 debited from a/c XX5678 on 29-04-2026.",
+            regionCode: "IN"
+        ) else {
+            XCTFail("J&K Bank generic SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.bank, "J&K Bank")
+    }
+
+    func testIndiaIPPBAttribution() {
+        guard let p = parse(
+            "IPPB: Rs.100.00 debited from a/c XX0001. Avl bal Rs.500.",
+            regionCode: "IN"
+        ) else {
+            XCTFail("IPPB SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.bank, "IPPB")
+    }
+
+    // MARK: - India wallets / BNPL (first-class templates)
+
+    func testIndiaJioPay() {
+        assertTxn(
+            "JioPay: Rs.149.00 paid to JIO RECHARGE on 29/04/2026. Ref ABC12345",
+            region: "IN",
+            amount: 149,
+            currency: "INR",
+            bank: "JioPay",
+            templateId: "in_jiopay_paid"
+        )
+    }
+
+    func testIndiaOneCard() {
+        assertTxn(
+            "OneCard: Rs.799.00 spent on OneCard XXXX1234 at AMAZON on 29-Apr-2026",
+            region: "IN",
+            amount: 799,
+            currency: "INR",
+            bank: "OneCard",
+            templateId: "in_onecard_spent"
+        )
+    }
+
+    func testIndiaLazyPay() {
+        assertTxn(
+            "LazyPay: Rs.450.00 spent at SWIGGY on 29-Apr-2026. Total dues: Rs.1200",
+            region: "IN",
+            amount: 450,
+            currency: "INR",
+            bank: "LazyPay",
+            templateId: "in_lazypay_spent"
+        )
+    }
+
+    func testIndiaSlice() {
+        assertTxn(
+            "Slice: Rs.299.00 spent at ZOMATO on 29-Apr-2026 using Slice Card 1234",
+            region: "IN",
+            amount: 299,
+            currency: "INR",
+            bank: "Slice",
+            templateId: "in_slice_spent"
+        )
+    }
+
+    func testIndiaCred() {
+        assertTxn(
+            "Cred: Rs.5000.00 paid towards your HDFC Credit Card bill on 29/04/2026",
+            region: "IN",
+            amount: 5000,
+            currency: "INR",
+            bank: "Cred",
+            templateId: "in_cred_payment"
+        )
+    }
+
     // MARK: - United States
 
     func testUsChasePurchase() {
