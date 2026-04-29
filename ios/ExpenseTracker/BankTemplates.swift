@@ -575,7 +575,140 @@ private enum UsTemplates {
         }
     )
 
-    static let all: [BankTemplate] = [chase, bankOfAmerica, capitalOne, amex, wellsFargo, citi]
+    /// Discover Card.
+    /// Sample form: `Discover Card: Trans of $X.XX at MERCHANT was approved on MM/DD.`
+    static let discover = BankTemplate(
+        id: "us_discover_purchase",
+        region: "US",
+        bank: "Discover",
+        regex: H.rx(
+            #"Discover\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:at|@)\s+(.+?)(?:\s+(?:on|was\s+approved\s+on)\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 3)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "USD",
+                bank: "Discover",
+                account: nil,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Credit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "us_discover_purchase"
+            )
+        }
+    )
+
+    /// Charles Schwab debit card.
+    /// `Schwab: $X.XX debit at MERCHANT on MM/DD card 1234`
+    static let schwab = BankTemplate(
+        id: "us_schwab_debit",
+        region: "US",
+        bank: "Charles Schwab",
+        regex: H.rx(
+            #"Schwab\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:debit|spent|charged|purchase)\s+at\s+(.+?)(?:[\s,]+on\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?(?:[\s,]+card\s+(\d{4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 3)))
+            }()
+            let acct: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return "XX" + ns.substring(with: m.range(at: 4))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "USD",
+                bank: "Charles Schwab",
+                account: acct,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Debit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "us_schwab_debit"
+            )
+        }
+    )
+
+    /// Navy Federal Credit Union.
+    static let navyFederal = BankTemplate(
+        id: "us_nfcu_purchase",
+        region: "US",
+        bank: "Navy Federal",
+        regex: H.rx(
+            #"(?:Navy\s*Federal|NFCU)\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:purchase|debit|spent|charged)\s+at\s+(.+?)(?:[\s,]+(?:card\s+)?(\d{4}))?(?:[\s,]+on\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let acct: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return "XX" + ns.substring(with: m.range(at: 3))
+            }()
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "USD",
+                bank: "Navy Federal",
+                account: acct,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Debit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "us_nfcu_purchase"
+            )
+        }
+    )
+
+    /// Huntington Bank.
+    static let huntington = BankTemplate(
+        id: "us_huntington_purchase",
+        region: "US",
+        bank: "Huntington Bank",
+        regex: H.rx(
+            #"Huntington\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:purchase|debit|spent|charged)\s+at\s+(.+?)(?:[\s,]+card\s+(\d{4}))?(?:[\s,]+on\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let acct: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return "XX" + ns.substring(with: m.range(at: 3))
+            }()
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashMonthFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "USD",
+                bank: "Huntington Bank",
+                account: acct,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Debit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "us_huntington_purchase"
+            )
+        }
+    )
+
+    static let all: [BankTemplate] = [
+        chase, bankOfAmerica, capitalOne, amex, wellsFargo, citi,
+        discover, schwab, navyFederal, huntington,
+    ]
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -840,7 +973,106 @@ private enum AeTemplates {
         }
     )
 
-    static let all: [BankTemplate] = [enbd, adcb, fab, mashreq]
+    /// Liv Bank (Emirates NBD digital).
+    static let liv = BankTemplate(
+        id: "ae_liv_purchase",
+        region: "AE",
+        bank: "Liv Bank",
+        regex: H.rx(
+            #"\bLiv\b[^\n]*?AED\s*([\d,]+\.?\d*)\s+(?:spent|charged|debited|paid)\s+at\s+(.+?)(?:[,.\s]+Card\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let acct: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return "XX" + ns.substring(with: m.range(at: 3))
+            }()
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "AED",
+                bank: "Liv Bank",
+                account: acct,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Debit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "ae_liv_purchase"
+            )
+        }
+    )
+
+    /// RAKBank.
+    static let rakbank = BankTemplate(
+        id: "ae_rakbank_purchase",
+        region: "AE",
+        bank: "RAKBank",
+        regex: H.rx(
+            #"RAKBank\b[^\n]*?AED\s*([\d,]+\.?\d*)\s+(?:spent|charged|debited|paid)\s+at\s+(.+?)(?:[,.\s]+Card\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let acct: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return "XX" + ns.substring(with: m.range(at: 3))
+            }()
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "AED",
+                bank: "RAKBank",
+                account: acct,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Credit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "ae_rakbank_purchase"
+            )
+        }
+    )
+
+    /// ADIB (Abu Dhabi Islamic Bank).
+    static let adib = BankTemplate(
+        id: "ae_adib_purchase",
+        region: "AE",
+        bank: "ADIB",
+        regex: H.rx(
+            #"ADIB\b[^\n]*?AED\s*([\d,]+\.?\d*)\s+(?:spent|charged|debited|paid)\s+at\s+(.+?)(?:[,.\s]+Card\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let acct: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return "XX" + ns.substring(with: m.range(at: 3))
+            }()
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "AED",
+                bank: "ADIB",
+                account: acct,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Credit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "ae_adib_purchase"
+            )
+        }
+    )
+
+    static let all: [BankTemplate] = [enbd, adcb, fab, mashreq, liv, rakbank, adib]
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1098,7 +1330,69 @@ private enum ThTemplates {
         }
     )
 
-    static let all: [BankTemplate] = [kbank, scb, bbl, ktb, krungsri]
+    /// TTB (formerly TMB / Thanachart): `TTB: THB X.XX at MERCHANT on Card XXXX, DD/MM/YY`
+    static let ttb = BankTemplate(
+        id: "th_ttb_purchase",
+        region: "TH",
+        bank: "TTB",
+        regex: H.rx(
+            #"\bTTB\b[^\n]*?(?:THB|฿|baht)\s*([\d,]+\.?\d*)\s+(?:at|@)\s+(.+?)\s+on\s+Card\s+(\d{4})(?:[, ]+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 4,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "THB",
+                bank: "TTB",
+                account: "XX" + ns.substring(with: m.range(at: 3)),
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Debit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "th_ttb_purchase"
+            )
+        }
+    )
+
+    /// CIMB Thai: `CIMB: THB X.XX charged at MERCHANT, Card XXXX, DD/MM/YY`
+    static let cimbThai = BankTemplate(
+        id: "th_cimb_purchase",
+        region: "TH",
+        bank: "CIMB Thai",
+        regex: H.rx(
+            #"CIMB\b[^\n]*?(?:THB|฿|baht)\s*([\d,]+\.?\d*)\s+(?:charged|spent|debited)\s+at\s+(.+?)(?:[,.\s]+Card\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let acct: String? = {
+                guard m.numberOfRanges >= 4, m.range(at: 3).location != NSNotFound else { return nil }
+                return "XX" + ns.substring(with: m.range(at: 3))
+            }()
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "THB",
+                bank: "CIMB Thai",
+                account: acct,
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 2))),
+                mode: "Credit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "th_cimb_purchase"
+            )
+        }
+    )
+
+    static let all: [BankTemplate] = [kbank, scb, bbl, ktb, krungsri, ttb, cimbThai]
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1493,7 +1787,123 @@ private enum NpTemplates {
         }
     )
 
-    static let all: [BankTemplate] = [nicAsia, nabil]
+    /// Siddhartha Bank.
+    static let siddhartha = BankTemplate(
+        id: "np_siddhartha_debit",
+        region: "NP",
+        bank: "Siddhartha Bank",
+        regex: H.rx(
+            #"Siddhartha\b[^\n]*?(?:NPR|NRs\.?|Rs\.?)\s*([\d,]+\.?\d*)\s+(?:debited|spent|charged|paid)\s+from\s+(?:a\/c|account)\s+(?:X+)?(\d{4})\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 4,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "NPR",
+                bank: "Siddhartha Bank",
+                account: "XX" + ns.substring(with: m.range(at: 2)),
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 3))),
+                mode: "Debit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "np_siddhartha_debit"
+            )
+        }
+    )
+
+    /// Everest Bank.
+    static let everest = BankTemplate(
+        id: "np_everest_debit",
+        region: "NP",
+        bank: "Everest Bank",
+        regex: H.rx(
+            #"Everest\b[^\n]*?(?:NPR|NRs\.?|Rs\.?)\s*([\d,]+\.?\d*)\s+(?:debited|spent|charged|paid)\s+from\s+(?:a\/c|account)\s+(?:X+)?(\d{4})\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 4,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "NPR",
+                bank: "Everest Bank",
+                account: "XX" + ns.substring(with: m.range(at: 2)),
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 3))),
+                mode: "Debit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "np_everest_debit"
+            )
+        }
+    )
+
+    /// NMB Bank Nepal.
+    static let nmb = BankTemplate(
+        id: "np_nmb_debit",
+        region: "NP",
+        bank: "NMB Bank Nepal",
+        regex: H.rx(
+            #"\bNMB\b[^\n]*?(?:NPR|NRs\.?|Rs\.?)\s*([\d,]+\.?\d*)\s+(?:debited|spent|charged|paid)\s+from\s+(?:a\/c|account)\s+(?:X+)?(\d{4})\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 4,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "NPR",
+                bank: "NMB Bank Nepal",
+                account: "XX" + ns.substring(with: m.range(at: 2)),
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 3))),
+                mode: "Debit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "np_nmb_debit"
+            )
+        }
+    )
+
+    /// Laxmi Bank.
+    static let laxmi = BankTemplate(
+        id: "np_laxmi_debit",
+        region: "NP",
+        bank: "Laxmi Bank",
+        regex: H.rx(
+            #"Laxmi\b[^\n]*?(?:NPR|NRs\.?|Rs\.?)\s*([\d,]+\.?\d*)\s+(?:debited|spent|charged|paid)\s+from\s+(?:a\/c|account)\s+(?:X+)?(\d{4})\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}))?"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 4,
+                  let amt = H.cleanAmount(ns.substring(with: m.range(at: 1))), amt > 0
+            else { return nil }
+            let dateStr: String? = {
+                guard m.numberOfRanges >= 5, m.range(at: 4).location != NSNotFound else { return nil }
+                return H.parseSlashDayFirst(ns.substring(with: m.range(at: 4)))
+            }()
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "NPR",
+                bank: "Laxmi Bank",
+                account: "XX" + ns.substring(with: m.range(at: 2)),
+                merchant: H.cleanMerchant(ns.substring(with: m.range(at: 3))),
+                mode: "Debit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "np_laxmi_debit"
+            )
+        }
+    )
+
+    static let all: [BankTemplate] = [nicAsia, nabil, siddhartha, everest, nmb, laxmi]
 }
 
 // ─────────────────────────────────────────────────────────────────────────

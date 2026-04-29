@@ -179,6 +179,80 @@ final class BankTemplatesTests: XCTestCase {
         )
     }
 
+    // MARK: - More US banks (R7)
+
+    func testUsDiscover() {
+        assertTxn(
+            "Discover Card: Trans of $42.00 at WALMART was approved on 04/29.",
+            region: "US",
+            amount: 42,
+            currency: "USD",
+            bank: "Discover",
+            templateId: "us_discover_purchase"
+        )
+    }
+
+    func testUsCharlesSchwab() {
+        assertTxn(
+            "Schwab: $25.00 debit at PEET'S COFFEE on 04/29 card 1234",
+            region: "US",
+            amount: 25,
+            currency: "USD",
+            bank: "Charles Schwab",
+            templateId: "us_schwab_debit"
+        )
+    }
+
+    func testUsNavyFederal() {
+        assertTxn(
+            "NFCU: $60.00 purchase at COSTCO card 1234 on 04/29",
+            region: "US",
+            amount: 60,
+            currency: "USD",
+            bank: "Navy Federal",
+            templateId: "us_nfcu_purchase"
+        )
+    }
+
+    // MARK: - More AE banks (R7)
+
+    func testUaeLivBank() {
+        assertTxn(
+            "Liv: AED 75.00 spent at NOON on Card 1234, 29/04/2026",
+            region: "AE",
+            amount: 75,
+            currency: "AED",
+            bank: "Liv Bank",
+            templateId: "ae_liv_purchase"
+        )
+    }
+
+    // MARK: - More TH banks (R7)
+
+    func testThailandTTB() {
+        assertTxn(
+            "TTB: THB 250.00 at TOPS DAILY on Card 1234, 29/04/26",
+            region: "TH",
+            amount: 250,
+            currency: "THB",
+            bank: "TTB",
+            templateId: "th_ttb_purchase"
+        )
+    }
+
+    // MARK: - More NP banks (R7)
+
+    func testNepalSiddhartha() {
+        assertTxn(
+            "Siddhartha: NPR 850.00 debited from a/c XXXX1234 at SAJHA on 29-04-2026",
+            region: "NP",
+            amount: 850,
+            currency: "NPR",
+            bank: "Siddhartha Bank",
+            templateId: "np_siddhartha_debit"
+        )
+    }
+
     // MARK: - United Kingdom
 
     func testUkBarclays() {
