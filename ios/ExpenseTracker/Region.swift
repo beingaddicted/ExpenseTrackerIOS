@@ -528,6 +528,127 @@ enum Regions {
         localeCodes: ["tw"]
     )
 
+    static let newZealand = Region(
+        code: "NZ",
+        name: "New Zealand",
+        flag: "🇳🇿",
+        currency: "NZD",
+        currencySymbol: "NZ$",
+        currencyTokens: ["NZD", "NZ$"],
+        timeZones: ["Pacific/Auckland", "Pacific/Chatham"],
+        mcc: ["530"],
+        localeCodes: ["nz"]
+    )
+
+    static let israel = Region(
+        code: "IL",
+        name: "Israel",
+        flag: "🇮🇱",
+        currency: "ILS",
+        currencySymbol: "₪",
+        currencyTokens: ["ILS", "₪", "NIS", "שח"],
+        timeZones: ["Asia/Jerusalem", "Asia/Tel_Aviv"],
+        mcc: ["425"],
+        localeCodes: ["il"]
+    )
+
+    static let poland = Region(
+        code: "PL",
+        name: "Poland",
+        flag: "🇵🇱",
+        currency: "PLN",
+        currencySymbol: "zł",
+        currencyTokens: ["PLN", "zł", "zl"],
+        timeZones: ["Europe/Warsaw"],
+        mcc: ["260"],
+        localeCodes: ["pl"]
+    )
+
+    static let romania = Region(
+        code: "RO",
+        name: "Romania",
+        flag: "🇷🇴",
+        currency: "RON",
+        currencySymbol: "lei",
+        currencyTokens: ["RON", "lei", "Lei"],
+        timeZones: ["Europe/Bucharest"],
+        mcc: ["226"],
+        localeCodes: ["ro"]
+    )
+
+    static let hungary = Region(
+        code: "HU",
+        name: "Hungary",
+        flag: "🇭🇺",
+        currency: "HUF",
+        currencySymbol: "Ft",
+        currencyTokens: ["HUF", "Ft"],
+        timeZones: ["Europe/Budapest"],
+        mcc: ["216"],
+        localeCodes: ["hu"]
+    )
+
+    /// Greece — though Greece uses EUR, Greek bank SMS often arrives with
+    /// Greek script and bank names that don't match the Eurozone pack
+    /// templates. Treat it as its own region with a separate pack.
+    static let greece = Region(
+        code: "GR",
+        name: "Greece",
+        flag: "🇬🇷",
+        currency: "EUR",
+        currencySymbol: "€",
+        currencyTokens: ["EUR", "€"],
+        timeZones: ["Europe/Athens"],
+        mcc: ["202"],
+        localeCodes: ["gr"]
+    )
+
+    /// GCC umbrella region — Kuwait/Qatar/Oman/Bahrain/Jordan/Lebanon. We
+    /// pick a single bundle to avoid 6 separate near-empty regions; bank
+    /// templates inside the pack carry the right per-country currency
+    /// (KWD/QAR/OMR/BHD/JOD/LBP) and the active-region default falls back
+    /// to KWD for the picker. Users in multiple GCC markets share one pack.
+    static let gcc = Region(
+        code: "GCC",
+        name: "Gulf (KW/QA/OM/BH/JO/LB)",
+        flag: "🌍",
+        currency: "KWD",
+        currencySymbol: "KD",
+        currencyTokens: ["KWD", "KD", "QAR", "QR", "OMR", "BHD", "BD", "JOD", "JD", "LBP", "LL"],
+        timeZones: [
+            "Asia/Kuwait", "Asia/Qatar", "Asia/Muscat", "Asia/Bahrain",
+            "Asia/Amman", "Asia/Beirut",
+        ],
+        mcc: ["419", "427", "422", "426", "416", "415"],
+        localeCodes: ["kw", "qa", "om", "bh", "jo", "lb"]
+    )
+
+    /// Uganda — MTN MoMo Uganda is the dominant payment channel.
+    static let uganda = Region(
+        code: "UG",
+        name: "Uganda",
+        flag: "🇺🇬",
+        currency: "UGX",
+        currencySymbol: "USh",
+        currencyTokens: ["UGX", "USh", "Sh"],
+        timeZones: ["Africa/Kampala"],
+        mcc: ["641"],
+        localeCodes: ["ug"]
+    )
+
+    /// Ghana — MTN MoMo Ghana, plus retail banks.
+    static let ghana = Region(
+        code: "GH",
+        name: "Ghana",
+        flag: "🇬🇭",
+        currency: "GHS",
+        currencySymbol: "GH₵",
+        currencyTokens: ["GHS", "GH₵", "GHC", "GH"],
+        timeZones: ["Africa/Accra"],
+        mcc: ["620"],
+        localeCodes: ["gh"]
+    )
+
     /// Order users see in the picker — the recently-detected one is pinned to
     /// the top by the picker view, this is just the underlying catalog.
     static let all: [Region] = [
@@ -538,8 +659,10 @@ enum Regions {
         tanzania, ethiopia,
         brazil, mexico, argentina, colombia,
         korea, japan, hongKong, taiwan,
-        australia, canada,
+        australia, newZealand, canada,
         russia, belarus, czechia, iran,
+        israel, poland, romania, hungary, greece, gcc,
+        uganda, ghana,
     ]
 
     static func byCode(_ code: String) -> Region? {

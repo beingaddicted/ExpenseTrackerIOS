@@ -757,10 +757,23 @@ enum SMSBankParser {
         if text.range(of: #"₩|\bKRW\b|원"#, options: .regularExpression) != nil { return "KRW" }
         if text.range(of: #"¥|\bJPY\b|円"#, options: .regularExpression) != nil { return "JPY" }
         if text.range(of: #"NT\$|\bTWD\b"#, options: .regularExpression) != nil { return "TWD" }
+        if text.range(of: #"NZ\$|\bNZD\b"#, options: .regularExpression) != nil { return "NZD" }
         if text.range(of: #"₽|\bRUB\b"#, options: .regularExpression) != nil { return "RUB" }
         if text.range(of: #"Kč|\bCZK\b"#, options: .regularExpression) != nil { return "CZK" }
         if text.range(of: #"\bBYN\b|\bBYR\b"#, options: .regularExpression) != nil { return "BYN" }
         if text.range(of: #"﷼|\bIRR\b|ریال|\bRial\b"#, options: .regularExpression) != nil { return "IRR" }
+        if text.range(of: #"₪|\bILS\b|\bNIS\b"#, options: .regularExpression) != nil { return "ILS" }
+        if text.range(of: #"\bPLN\b|\bzł\b|\bzl\b"#, options: .regularExpression) != nil { return "PLN" }
+        if text.range(of: #"\bRON\b|\blei\b|\bLei\b"#, options: .regularExpression) != nil { return "RON" }
+        if text.range(of: #"\bHUF\b|\bFt\b"#, options: .regularExpression) != nil { return "HUF" }
+        if text.range(of: #"\bKWD\b|\bKD\b"#, options: .regularExpression) != nil { return "KWD" }
+        if text.range(of: #"\bQAR\b|\bQR\b"#, options: .regularExpression) != nil { return "QAR" }
+        if text.range(of: #"\bOMR\b"#, options: .regularExpression) != nil { return "OMR" }
+        if text.range(of: #"\bBHD\b"#, options: .regularExpression) != nil { return "BHD" }
+        if text.range(of: #"\bJOD\b|\bJD\b"#, options: .regularExpression) != nil { return "JOD" }
+        if text.range(of: #"\bLBP\b|\bLL\b"#, options: .regularExpression) != nil { return "LBP" }
+        if text.range(of: #"\bUGX\b|\bUSh\b"#, options: .regularExpression) != nil { return "UGX" }
+        if text.range(of: #"GH₵|\bGHS\b|\bGHC\b"#, options: .regularExpression) != nil { return "GHS" }
         if text.range(of: #"\bRs\.?\b"#, options: .regularExpression) != nil {
             // Multiple South Asian currencies use "Rs" — defer to the region.
             return region.currency

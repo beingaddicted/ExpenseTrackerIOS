@@ -186,25 +186,67 @@ final class BankTemplatesTests: XCTestCase {
 
     // MARK: - Kenya
 
+    /// Real-world M-Pesa sample (verbatim from Safaricom).
     func testKenyaMpesaSent() {
         assertTxn(
-            "QXR12ABC34 Confirmed. Ksh1,000.00 sent to JOHN DOE 0712345678 on 29/04/26 at 14:30. New M-PESA balance is Ksh5,000.00.",
+            "DZ12GX874 Confirmed. Ksh2,100.00 sent to BRIAN MBUGUA 0723447655 on 17/9/13 at 3:16 PM New M-PESA balance is Ksh106.00.",
             region: "KE",
-            amount: 1000,
+            amount: 2100,
             currency: "KES",
             bank: "M-Pesa",
             templateId: "ke_mpesa_sent"
         )
     }
 
+    /// Real-world M-Pesa paybill sample. Critical that the merchant capture
+    /// is "KCB Paybill AC" — not the leaky "KCB Paybill AC for account"
+    /// that the v1 regex produced.
+    func testKenyaMpesaSentPaybill() {
+        guard let p = parse(
+            "DY28XV679 Confirmed. Ksh4,000.00 sent to KCB Paybill AC for account 1137238445 on 9/9/13 at 11:31 PM",
+            regionCode: "KE"
+        ) else {
+            XCTFail("paybill SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.amount, 4000, accuracy: 0.001)
+        XCTAssertEqual(p.merchant, "Kcb Paybill Ac", "paybill capture must stop before \"for account\"")
+        XCTAssertEqual(p.templateId, "ke_mpesa_sent")
+    }
+
+    /// Real-world M-Pesa buy-goods sample (note period before "on").
     func testKenyaMpesaPaid() {
         assertTxn(
-            "QXR12ABC34 Confirmed. Ksh500.00 paid to JAVA HOUSE on 29/04/26 at 13:00.",
+            "TJK6H7T3GA Confirmed. Ksh70.00 paid to JAVA HOUSE. on 20/10/24",
             region: "KE",
-            amount: 500,
+            amount: 70,
             currency: "KES",
             bank: "M-Pesa",
             templateId: "ke_mpesa_paid"
+        )
+    }
+
+    /// Real-world M-Shwari savings transfer.
+    func testKenyaMpesaTransferred() {
+        assertTxn(
+            "EB97SA431 Confirmed. Ksh50.00 transferred to M-Shwari account on 13/10/13 at 2:13 AM.",
+            region: "KE",
+            amount: 50,
+            currency: "KES",
+            bank: "M-Pesa",
+            templateId: "ke_mpesa_transferred"
+        )
+    }
+
+    /// Real-world receive with the optional transaction-cost trailer.
+    func testKenyaMpesaReceivedWithCost() {
+        assertTxn(
+            "ABCDE12345 Confirmed. You have received Ksh150.00 from JOHN DOE 0722000000 on 23/6/23 at 3:41 PM. New M-PESA balance is Ksh1,205.10. Transaction cost, Ksh6.00.",
+            region: "KE",
+            amount: 150,
+            currency: "KES",
+            bank: "M-Pesa",
+            templateId: "ke_mpesa_received"
         )
     }
 
@@ -561,6 +603,110 @@ final class BankTemplatesTests: XCTestCase {
         )
     }
 
+    // MARK: - R6 long-tail
+
+    func testNewZealandANZ() {
+        assertTxn(
+            "ANZ: NZ$45.00 debit at NEW WORLD card 1234, 29/04/26",
+            region: "NZ",
+            amount: 45,
+            currency: "NZD",
+            bank: "ANZ NZ"
+        )
+    }
+
+    func testIsraelHapoalim() {
+        assertTxn(
+            "Hapoalim: ILS 250.00 charged at SHUFERSAL, Card 1234, 29/04/2026",
+            region: "IL",
+            amount: 250,
+            currency: "ILS",
+            bank: "Bank Hapoalim"
+        )
+    }
+
+    func testPolandPKO() {
+        assertTxn(
+            "PKO: Płatność 12,34 zł BIEDRONKA karta 1234, 29.04.2026",
+            region: "PL",
+            amount: 12.34,
+            currency: "PLN",
+            bank: "PKO BP"
+        )
+    }
+
+    func testRomaniaBCR() {
+        assertTxn(
+            "BCR: Plata 123,45 lei KAUFLAND cardul 1234, 29/04/2026",
+            region: "RO",
+            amount: 123.45,
+            currency: "RON",
+            bank: "BCR"
+        )
+    }
+
+    func testHungaryOTP() {
+        assertTxn(
+            "OTP: Vásárlás 1.234,56 Ft TESCO kártya 1234, 2026.04.29",
+            region: "HU",
+            amount: 1234.56,
+            currency: "HUF",
+            bank: "OTP Bank"
+        )
+    }
+
+    func testGCCKuwaitNBK() {
+        assertTxn(
+            "NBK: KWD 25.500 charged at SULTAN CENTRE, Card 1234, 29/04/2026",
+            region: "GCC",
+            amount: 25.5,
+            currency: "KWD",
+            bank: "NBK"
+        )
+    }
+
+    // MARK: - Phase 4 expansions
+
+    func testKoreaWooriBank() {
+        assertTxn(
+            "Woori: ₩15,000 결제 STARBUCKS 카드 1234 04/29",
+            region: "KR",
+            amount: 15_000,
+            currency: "KRW",
+            bank: "Woori Bank"
+        )
+    }
+
+    func testThailandKrungsri() {
+        assertTxn(
+            "Krungsri: THB 250.00 at MK SUKI on Card 1234, 29/04/26",
+            region: "TH",
+            amount: 250,
+            currency: "THB",
+            bank: "Krungsri"
+        )
+    }
+
+    func testEthiopiaDashen() {
+        assertTxn(
+            "Dashen: ETB 5,000 debited from a/c XXXX1234 at SHOPPING CENTRE on 29/04/2026",
+            region: "ET",
+            amount: 5000,
+            currency: "ETB",
+            bank: "Dashen Bank"
+        )
+    }
+
+    func testSaudiAlinma() {
+        assertTxn(
+            "Alinma: SAR 350.00 charged at HYPERPANDA on Card 1234, 29/04/26",
+            region: "SA",
+            amount: 350,
+            currency: "SAR",
+            bank: "Alinma Bank"
+        )
+    }
+
     // MARK: - Cross-cutting
 
     func testRegistryHasAllRegions() {
@@ -573,6 +719,7 @@ final class BankTemplatesTests: XCTestCase {
             "EU", "AU", "CA", "HK", "VN",
             "TR", "BD", "LK", "TZ", "ET",
             "RU", "CO", "CZ", "BY", "IR", "TW",
+            "NZ", "IL", "PL", "RO", "HU", "GR", "GCC", "UG", "GH",
         ]
         XCTAssertEqual(codes, expected, "Every region in Regions.all should have at least one template")
     }
