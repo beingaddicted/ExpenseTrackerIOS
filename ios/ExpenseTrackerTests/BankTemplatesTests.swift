@@ -760,6 +760,33 @@ final class BankTemplatesTests: XCTestCase {
         )
     }
 
+    /// Persian-Arabic digit normalization: an SMS that uses `۱۵۰۰۰۰۰` and
+    /// `۱۲۳۴` instead of `1500000` and `1234` should still parse cleanly,
+    /// because `BankTemplates.tryMatch` applies `normaliseDigits` before
+    /// running templates.
+    func testIranMellatPersianDigits() {
+        // Same SMS as testIranMellat, but with Persian digits in the
+        // amount, card number, and date.
+        assertTxn(
+            "Mellat: IRR ۱,۵۰۰,۰۰۰ spent at DIGIKALA, Card ۱۲۳۴, ۲۹/۰۴/۲۰۲۶",
+            region: "IR",
+            amount: 1_500_000,
+            currency: "IRR",
+            bank: "Bank Mellat"
+        )
+    }
+
+    /// Arabic-Indic digits (used by some MENA bank SMS) — same fix path.
+    func testIranMellatArabicIndicDigits() {
+        assertTxn(
+            "Mellat: IRR ١,٥٠٠,٠٠٠ spent at DIGIKALA, Card ١٢٣٤, ٢٩/٠٤/٢٠٢٦",
+            region: "IR",
+            amount: 1_500_000,
+            currency: "IRR",
+            bank: "Bank Mellat"
+        )
+    }
+
     // MARK: - Taiwan
 
     func testTaiwanCathay() {

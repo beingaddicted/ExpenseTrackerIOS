@@ -87,6 +87,39 @@ enum BankTemplateHelpers {
         return String(format: "%04d-%02d-%02d", y, mo, d)
     }
 
+    /// Map Persian-Arabic (`۰-۹`) and Arabic-Indic (`٠-٩`) digits to ASCII
+    /// `0-9` so amount/date regexes don't need separate non-Latin variants.
+    /// Other characters pass through untouched. Cheap (single pass over the
+    /// scalar view) and safe to apply to every SMS — Latin SMS comes back
+    /// unchanged.
+    static func normaliseDigits(_ s: String) -> String {
+        // Fast-path: skip the work if every codepoint is already ASCII-y.
+        // The template loop runs against this string for every region pack,
+        // so the extra check pays for itself even on the common case.
+        var needsWork = false
+        for u in s.unicodeScalars where u.value >= 0x0660 && u.value <= 0x06F9 {
+            needsWork = true
+            break
+        }
+        guard needsWork else { return s }
+
+        var out = String.UnicodeScalarView()
+        out.reserveCapacity(s.unicodeScalars.count)
+        for u in s.unicodeScalars {
+            switch u.value {
+            // Arabic-Indic digits ٠-٩ (U+0660-0669)
+            case 0x0660...0x0669:
+                out.append(Unicode.Scalar(u.value - 0x0660 + 0x0030)!)
+            // Persian / Extended Arabic-Indic digits ۰-۹ (U+06F0-06F9)
+            case 0x06F0...0x06F9:
+                out.append(Unicode.Scalar(u.value - 0x06F0 + 0x0030)!)
+            default:
+                out.append(u)
+            }
+        }
+        return String(out)
+    }
+
     /// dd Mon yyyy or dd-Mon-yy → yyyy-mm-dd
     static func parseEnglishMonthDate(_ s: String) -> String? {
         let cleaned = s.replacingOccurrences(of: ",", with: " ")
@@ -134,9 +167,15 @@ enum BankTemplates {
 
     /// Tries every applicable template against `text`. Returns the first
     /// match, or nil if none of them produced a structured result.
+    ///
+    /// We pre-normalise non-Latin digits so templates can keep regexes in
+    /// ASCII (much more readable). Today this matters for Persian/Arabic
+    /// digits in Iranian SMS (`۰۱۲۳۴۵۶۷۸۹`) and Arabic-Indic digits in some
+    /// MENA bank SMS (`٠١٢٣٤٥٦٧٨٩`); both map cleanly to `0-9`.
     static func tryMatch(_ text: String, region: Region) -> SMSMiniTemplates.Match? {
+        let normalised = BankTemplateHelpers.normaliseDigits(text)
         for tpl in ordered(for: region) {
-            if let m = tpl.tryMatch(text) { return m }
+            if let m = tpl.tryMatch(normalised) { return m }
         }
         return nil
     }
