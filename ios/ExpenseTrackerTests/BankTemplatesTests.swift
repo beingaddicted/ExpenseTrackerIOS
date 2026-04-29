@@ -98,6 +98,88 @@ final class BankTemplatesTests: XCTestCase {
         XCTAssertEqual(p.bank, "J&K Bank")
     }
 
+    // MARK: - Mental-enumeration coverage gaps
+
+    /// `to UPI/MERCHANT_NAME` slash-separated form. The standard
+    /// `(?:paid to|sent to|...)` patterns require the verb prefix and the
+    /// merchant character class excludes `/`, so v1 captured the merchant
+    /// as just "UPI" or as "Unknown".
+    func testIndiaToUPISlashMerchant() {
+        guard let p = parse(
+            "Rs.250.00 debited from a/c XX1234 to UPI/JOHN_DOE/REFNO123 on 29-04-2026",
+            regionCode: "IN"
+        ) else {
+            XCTFail("to-UPI/NAME SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.amount, 250, accuracy: 0.001)
+        XCTAssertNotEqual(p.merchant, "Unknown", "merchant capture must follow `to UPI/`")
+        XCTAssertNotEqual(p.merchant, "Upi", "merchant must not stop at the first slash")
+    }
+
+    /// Generic amount extraction across non-INR/USD/EUR/GBP currencies.
+    /// Without the broadened amountPatterns, a fallback path on a body
+    /// like `THB 150 spent at MERCHANT` couldn't pull the amount.
+    func testThailandGenericAmountFallback() {
+        // Use a TH region body that no template matches — generic path
+        // must still extract the amount.
+        guard let p = parse(
+            "THB 150 charge for unknown merchant",
+            regionCode: "TH"
+        ) else {
+            XCTFail("generic THB amount did not parse")
+            return
+        }
+        XCTAssertEqual(p.amount, 150, accuracy: 0.001)
+        XCTAssertEqual(p.currency, "THB")
+    }
+
+    /// Amount with the currency code AFTER the number — `100 USD spent...`
+    /// previously not handled.
+    func testAmountSuffixCurrency() {
+        guard let p = parse(
+            "USD: A purchase of 100.00 USD was made at MERCHANT on 04/29",
+            regionCode: "US"
+        ) else {
+            XCTFail("amount-suffix USD did not parse")
+            return
+        }
+        XCTAssertEqual(p.amount, 100, accuracy: 0.001)
+    }
+
+    /// Failed-transaction filter — `Rs.X transaction failed` should NOT
+    /// produce a transaction record. v1 happily parsed it as a real debit.
+    func testFailedTransactionFiltered() {
+        let p = parse(
+            "Your Rs.500 transaction at MERCHANT was unsuccessful. Please retry.",
+            regionCode: "IN"
+        )
+        XCTAssertNil(p, "failed-transaction SMS must not parse as a transaction")
+    }
+
+    func testDeclinedTransactionFiltered() {
+        let p = parse(
+            "Rs.1500 payment was declined due to insufficient funds.",
+            regionCode: "IN"
+        )
+        XCTAssertNil(p, "declined-payment SMS must not parse")
+    }
+
+    /// Indian DLT sender prefix — `VK-HDFCBK-S` is the real sender shape
+    /// after the operator tag is added. The direct senderBankMap lookup
+    /// misses it (key "HDFCBK" vs sid "VKHDFCBKS"); substring matching
+    /// in detectBank now catches it.
+    func testIndiaDLTSenderPrefix() {
+        // Use a body that doesn't itself mention the bank name — so
+        // attribution must come from the sender alone.
+        let p = SMSBankParser.parse(
+            "Rs.250 debited from a/c XX5678 on 29-04-2026 at MERCHANT.",
+            sender: "VK-HDFCBK-S",
+            timestamp: nil
+        )
+        XCTAssertEqual(p?.bank, "HDFC Bank", "DLT-prefixed sender must resolve to HDFC Bank")
+    }
+
     /// MabudAlam canonical fixture: balance abbreviated as "Avbl bal" (b
     /// before l). The v1 `avl?\s*bal` regex only matched "Av" / "Avl",
     /// silently dropping the balance for the "Avbl" variant. Fix makes

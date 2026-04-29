@@ -27,10 +27,33 @@ enum SMSBankParser {
         try! NSRegularExpression(pattern: pattern, options: options)
     }
 
+    /// Token group used in amount-extraction regexes. Lists every ISO
+    /// currency code we know about, plus the major symbols. Kept in one
+    /// place so the four amount-pattern regexes stay in sync; previously
+    /// each regex only listed Rs/INR/₹/USD/EUR/GBP/AED/SGD which silently
+    /// dropped amounts in any other currency the generic path saw.
+    private static let currencyTokens: String =
+        #"Rs\.?|INR|₹|USD|EUR|GBP|AED|SGD|AUD|CAD|HKD|NZD|"#
+        + #"THB|฿|IDR|Rp|PHP|₱|MYR|RM|VND|₫|BDT|৳|"#
+        + #"LKR|NPR|PKR|KES|KSh|TZS|TSh|UGX|USh|GHS|GH₵|"#
+        + #"NGN|₦|ZAR|SAR|EGP|TRY|₺|TL|"#
+        + #"RUB|₽|BRL|R\$|MXN|ARS|COP|"#
+        + #"CZK|Kč|BYN|IRR|ریال|TWD|NT\$|"#
+        + #"ILS|₪|PLN|zł|RON|lei|HUF|Ft|"#
+        + #"KWD|KD|QAR|QR|OMR|BHD|JOD|JD|LBP|LL|"#
+        + #"ETB|Br|KRW|₩|JPY|¥|円|"#
+        + #"\$|€|£"#
+
     private static let amountPatterns: [NSRegularExpression] = [
         rx(#"(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)"#),
-        rx(#"(?:USD|EUR|GBP|AED|SGD|\$|€|£)\s*([\d,]+\.?\d*)"#),
+        // Currency-prefix form across every supported currency token —
+        // covers a Thai user whose body has "THB 150" etc. when no
+        // template matched and we fell back to the generic extractor.
+        rx(#"(?:"# + currencyTokens + #")\s*([\d,]+\.?\d*)"#),
         rx(#"([\d,]+\.?\d*)\s*(?:Rs\.?|INR|₹)"#),
+        // Amount-suffix form for the same broad currency set, so "150
+        // THB" / "100 USD" extract correctly.
+        rx(#"([\d,]+\.?\d*)\s*(?:"# + currencyTokens + #")"#),
         rx(#"(?:amount|amt|for)\s*(?:of\s*)?(?:Rs\.?|INR|₹|USD|\$)?\s*([\d,]+\.?\d*)"#),
         rx(#"(?:debited|credited|charged|paid|spent|received|withdrawn|deposited)\s*(?:with\s*)?(?:Rs\.?|INR|₹|USD|\$)?\s*([\d,]+\.?\d*)"#),
         rx(#"\$([\d,]+\.?\d*)"#),
@@ -80,6 +103,12 @@ enum SMSBankParser {
         // on 04-11-25`. saurabhgupta's canonical fixture #6 fails
         // without this.
         rx(#"\bto\s+([a-zA-Z0-9._\-]+@[a-zA-Z]+)\b"#),
+        // "to UPI/MERCHANT_NAME" slash-separated form — common when
+        // Indian banks compress UPI metadata, e.g. `Rs.X debited from
+        // a/c XX1234 to UPI/JOHN_DOE/REFNO on dd/mm`. The standard
+        // `(?:paid to|sent to|...)` patterns don't match bare "to "
+        // and the plain merchant character class excludes `/`.
+        rx(#"\bto\s+UPI\/([A-Za-z][\w\s\-&'.]{1,40}?)(?:\s*\/|\s+on|\s+ref|\s*\.|$)"#),
         rx(#"(?:merchant|payee|beneficiary)\s*:?\s*([^\n.]+)"#),
     ]
 
@@ -92,7 +121,7 @@ enum SMSBankParser {
     ]
 
     private static let nonTransactionStrong = rx(
-        #"\bOTP\s+(?:is|:|for)\b|\bPIN\s+(?:on|for|could)\b|\bblocked\b.*\bcard\b|\bcard\b.*\bblocked\b|\bset\s+(?:the\s+)?UPI\s+PIN\b|\bverify\s+your\s+mobile\b|\bIPIN\s*\(|\bregistered\s+your\s+new\s+device\b|\bpassbook\s+balance\b|\bstatement\s+for\b.*\bCard\b.*\b(?:generated|due)\b|\bStatement\s+is\s+sent\b|\bcreated\s+your\s+one\s+time\s+payment\s+mandate\b|\bpre.?approved\b|\bcredit\s+facility\b|\bloan\s+on\s+credit\s+card\b|\bZype\b.*(?:\blakh\b|acl\.cc)|\bGrab\s+\d+X\s+Reward\s+Points\b|\bexpires today!?\b[\s\S]{0,200}\bpaytm\.me\b|\bcashback credits in your [\s\S]{0,80}wallet[\s\S]{0,40}\bexpir|\bKnow more\b[\s\S]{0,60}\binbl\.in\b|\bhdfcbk\.io\/a\/\S+|\bPepperfry\b[\s\S]{0,100}\bwallet\b[\s\S]{0,40}\bexpir"#
+        #"\bOTP\s+(?:is|:|for)\b|\bPIN\s+(?:on|for|could)\b|\bblocked\b.*\bcard\b|\bcard\b.*\bblocked\b|\bset\s+(?:the\s+)?UPI\s+PIN\b|\bverify\s+your\s+mobile\b|\bIPIN\s*\(|\bregistered\s+your\s+new\s+device\b|\bpassbook\s+balance\b|\bstatement\s+for\b.*\bCard\b.*\b(?:generated|due)\b|\bStatement\s+is\s+sent\b|\bcreated\s+your\s+one\s+time\s+payment\s+mandate\b|\bpre.?approved\b|\bcredit\s+facility\b|\bloan\s+on\s+credit\s+card\b|\bZype\b.*(?:\blakh\b|acl\.cc)|\bGrab\s+\d+X\s+Reward\s+Points\b|\bexpires today!?\b[\s\S]{0,200}\bpaytm\.me\b|\bcashback credits in your [\s\S]{0,80}wallet[\s\S]{0,40}\bexpir|\bKnow more\b[\s\S]{0,60}\binbl\.in\b|\bhdfcbk\.io\/a\/\S+|\bPepperfry\b[\s\S]{0,100}\bwallet\b[\s\S]{0,40}\bexpir|\b(?:transaction|payment|txn|trans)\s+(?:was\s+)?(?:failed|declined|unsuccessful|cancelled|abandoned|not\s+successful|could\s+not\s+be\s+(?:completed|processed))\b|\bunable\s+to\s+(?:process|complete)\s+your\s+(?:transaction|payment)\b"#
     )
 
     private static let nonTransaction = rx(
@@ -660,7 +689,19 @@ enum SMSBankParser {
             }
         }
         let sid = sender.uppercased().filter { $0.isLetter || $0.isNumber }
+        // Direct match — works for senders that are exactly the bank
+        // shortcode (e.g. "HDFCBK").
         if let b = senderBankMap[sid] { return b }
+        // Indian DLT senders prefix the shortcode with a 2-char operator
+        // tag (VK / JK / AX / VM …) and suffix it with `S`/`T`/`P`/`G`,
+        // so a real sender looks like `VK-HDFCBK-S` → after stripping
+        // non-alphanumerics: `VKHDFCBKS`. The direct map lookup misses
+        // it; substring search catches it without a separate map.
+        if sid.count >= 5 {
+            for (code, bank) in senderBankMap where sid.contains(code) {
+                return bank
+            }
+        }
         return "Unknown Bank"
     }
 
