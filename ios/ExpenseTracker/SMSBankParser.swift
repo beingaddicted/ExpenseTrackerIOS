@@ -75,6 +75,11 @@ enum SMSBankParser {
         rx(#"(?:VPA|UPI)\s*:?\s*([a-zA-Z0-9._\-]+@[a-zA-Z]+)"#),
         rx(#"info:\s*([^\n.]+)"#),
         rx(#"to\s+VPA\s+([^\s]+)"#),
+        // "to handle@bank" without an explicit "VPA"/"UPI" prefix —
+        // common in modern Indian UPI SMS, e.g. `... to 9876543210@ybl
+        // on 04-11-25`. saurabhgupta's canonical fixture #6 fails
+        // without this.
+        rx(#"\bto\s+([a-zA-Z0-9._\-]+@[a-zA-Z]+)\b"#),
         rx(#"(?:merchant|payee|beneficiary)\s*:?\s*([^\n.]+)"#),
     ]
 
@@ -169,7 +174,7 @@ enum SMSBankParser {
         (rx(#"(?:your\s+)?payment\(?[^)]*\)?\s*(?:of\s+)?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:for|is)"#), "debit"),
         (rx(#"thank\s+you\s+for\s+(?:your\s+)?payment\s+of\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)"#), "debit"),
         (rx(#"refund\s+of\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:has\s+been\s+)?initiated"#), "credit"),
-        (rx(#"(?:avl?\s*bal|available\s*balance|balance)\s*(?:is|:)\s*(?:Rs\.?|INR|₹|USD|\$)\s*([\d,]+\.?\d*)"#), "balance"),
+        (rx(#"(?:av(?:bl|l)?\s*bal|available\s*balance|balance)\s*(?:is|:)\s*(?:Rs\.?|INR|₹|USD|\$)\s*([\d,]+\.?\d*)"#), "balance"),
     ]
 
     private static let modeGroups: [(String, [NSRegularExpression])] = [
@@ -757,8 +762,14 @@ enum SMSBankParser {
         // whitespace and silently dropped balances when the bank used a
         // dash (e.g. saurabhgupta's canonical sample
         // "Avl Bal- INR 2343.23").
+        //
+        // Also: Indian banks routinely abbreviate "Available" as either
+        // `Avl` OR `Avbl` (less common but real — appears in MabudAlam's
+        // canonical fixtures `Avbl bal Rs.10000.00`). The original
+        // `avl?\s*bal` only covered "Av" / "Avl", silently dropping the
+        // `Avbl` form. `av(?:bl|l)?` covers all three.
         let p = rx(
-            #"(?:avl?\s*bal|available\s*balance|balance|bal)[\s\-:.]*(?:Rs\.?|INR|₹|USD|\$|EUR|GBP|AED|SGD|AUD|CAD|HKD)\s*([\d,]+\.?\d*)"#
+            #"(?:av(?:bl|l)?\s*bal|available\s*balance|balance|bal)[\s\-:.]*(?:Rs\.?|INR|₹|USD|\$|EUR|GBP|AED|SGD|AUD|CAD|HKD)\s*([\d,]+\.?\d*)"#
         )
         let ns = text as NSString
         guard let m = p.firstMatch(in: text, options: [], range: NSRange(location: 0, length: ns.length)),

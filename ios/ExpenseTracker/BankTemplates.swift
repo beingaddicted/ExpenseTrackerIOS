@@ -1938,7 +1938,14 @@ private enum KeTemplates {
         region: "KE",
         bank: "M-Pesa",
         regex: H.rx(
-            #"([A-Z0-9]{8,12})\s+Confirmed\.\s+Ksh\s*([\d,]+\.?\d*)\s+sent\s+to\s+(.+?)(?:\s+(?:for\s+account|account\s+number|0?\d[\d\s]{6,})|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
+            // `Confirmed\.?\s*` accepts "Confirmed." OR "Confirmed.You"
+            // (no space — older Safaricom forms, e.g.
+            // `MCG8AU052I Confirmed.You have received Ksh5,850.00...`).
+            // Stop the merchant capture at any of: phone number (with or
+            // without spaces), the literal "for account"/"account number"
+            // (paybill), the literal "via X" (`Diaspora Friend via XYZ
+            // on...`), or a trailing period.
+            #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*Ksh\s*([\d,]+\.?\d*)\s+sent\s+to\s+(.+?)(?:\s+(?:for\s+account|account\s+number|via\s+\S+|0?\d[\d\s]{6,})|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
         ),
         parse: { m, ns in
             guard m.numberOfRanges >= 5,
@@ -1966,7 +1973,12 @@ private enum KeTemplates {
         region: "KE",
         bank: "M-Pesa",
         regex: H.rx(
-            #"([A-Z0-9]{8,12})\s+Confirmed\.\s+You\s+have\s+received\s+Ksh\s*([\d,]+\.?\d*)\s+from\s+(.+?)(?:\s+0?\d[\d\s]{6,}|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
+            // Same Confirmed.You fix as the sent template, plus "via X"
+            // stop (real `XYZ123 Confirmed. You have received Ksh2,400
+            // from CHAMAA HANDSAM 254711234245 on 30/2/11` and `G68EG702
+            // confirmed. You have received Ksh5,000 from Diaspora Friend
+            // via XYZ on 24/4/14`).
+            #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*You\s+have\s+received\s+Ksh\s*([\d,]+\.?\d*)\s+from\s+(.+?)(?:\s+(?:via\s+\S+|0?\d[\d\s]{6,})|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
         ),
         parse: { m, ns in
             guard m.numberOfRanges >= 5,
@@ -1994,7 +2006,7 @@ private enum KeTemplates {
         region: "KE",
         bank: "M-Pesa",
         regex: H.rx(
-            #"([A-Z0-9]{8,12})\s+Confirmed\.\s+Ksh\s*([\d,]+\.?\d*)\s+paid\s+to\s+(.+?)\.?\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
+            #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*Ksh\s*([\d,]+\.?\d*)\s+paid\s+to\s+(.+?)\.?\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
         ),
         parse: { m, ns in
             guard m.numberOfRanges >= 5,
@@ -2022,7 +2034,7 @@ private enum KeTemplates {
         region: "KE",
         bank: "M-Pesa",
         regex: H.rx(
-            #"([A-Z0-9]{8,12})\s+Confirmed\.\s+Ksh\s*([\d,]+\.?\d*)\s+transferred\s+to\s+(.+?)(?:\s+account)?(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
+            #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*Ksh\s*([\d,]+\.?\d*)\s+transferred\s+to\s+(.+?)(?:\s+account)?(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
         parse: { m, ns in
             guard m.numberOfRanges >= 4,
@@ -2562,7 +2574,46 @@ private enum BrTemplates {
         }
     )
 
-    /// Nubank: `Nubank: Compra de R$ X,XX em MERCHANT, cartão final XXXX no dia DD/MM`
+    /// Nubank "Nu Informa" alert form — the canonical Nubank notification
+    /// observed in real messages. The form looks like:
+    ///   `Nu Informa, compra Credito em andamento Em seu cartao em 13/10
+    ///   valor R$2.324,00 Se nao reconhece contate e cancele: 4003-5920`
+    /// This intentionally does NOT include a merchant name; Nubank surfaces
+    /// the merchant in the app rather than the SMS, so we capture amount +
+    /// date and leave merchant as "Unknown".
+    ///
+    /// Match this BEFORE the older "Nubank: Compra…" template so the real
+    /// form wins when both could in theory match.
+    static let nubankInforma = BankTemplate(
+        id: "br_nubank_informa",
+        region: "BR",
+        bank: "Nubank",
+        regex: H.rx(
+            #"Nu\s*Informa\b[^\n]*?compra[^\n]*?em\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)[^\n]*?valor\s+R\$\s*([\d.,]+)"#
+        ),
+        parse: { m, ns in
+            guard m.numberOfRanges >= 3,
+                  let amt = H.cleanEuroAmount(ns.substring(with: m.range(at: 2))), amt > 0
+            else { return nil }
+            let dateStr = H.optionalDate(m, ns, at: 1, with: H.parseSlashDayFirst)
+            return SMSMiniTemplates.Match(
+                amount: amt, type: "debit", currency: "BRL",
+                bank: "Nubank",
+                account: nil,
+                merchant: "Unknown",
+                mode: "Credit Card",
+                date: dateStr,
+                refNumber: nil,
+                templateId: "br_nubank_informa"
+            )
+        }
+    )
+
+    /// Older / alternate Nubank form that DOES include a merchant — kept
+    /// as a fallback for SMS like
+    ///   `Nubank: Compra de R$ X,XX em MERCHANT, cartão final XXXX no dia DD/MM`.
+    /// (This form is rare in production but appears in some app push→SMS
+    /// pipelines and saved fixtures, so we keep both.)
     static let nubank = BankTemplate(
         id: "br_nubank_compra",
         region: "BR",
@@ -2616,7 +2667,7 @@ private enum BrTemplates {
         }
     )
 
-    static let all: [BankTemplate] = [itau, nubank, bradesco]
+    static let all: [BankTemplate] = [itau, nubankInforma, nubank, bradesco]
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -3775,7 +3826,7 @@ private enum TzTemplates {
         region: "TZ",
         bank: "M-Pesa Tanzania",
         regex: H.rx(
-            #"([A-Z0-9]{8,12})\s+Confirmed\.\s+(?:Tsh|TSh|TZS)\s*([\d,]+\.?\d*)\s+sent\s+to\s+(.+?)(?:\s+(?:for\s+account|account\s+number|0?\d[\d\s]{6,})|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
+            #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*(?:Tsh|TSh|TZS)\s*([\d,]+\.?\d*)\s+sent\s+to\s+(.+?)(?:\s+(?:for\s+account|account\s+number|via\s+\S+|0?\d[\d\s]{6,})|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
         ),
         parse: { m, ns in
             guard m.numberOfRanges >= 5,
@@ -3800,7 +3851,7 @@ private enum TzTemplates {
         region: "TZ",
         bank: "M-Pesa Tanzania",
         regex: H.rx(
-            #"([A-Z0-9]{8,12})\s+Confirmed\.\s+You\s+have\s+received\s+(?:Tsh|TSh|TZS)\s*([\d,]+\.?\d*)\s+from\s+(.+?)(?:\s+0?\d[\d\s]{6,}|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
+            #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*You\s+have\s+received\s+(?:Tsh|TSh|TZS)\s*([\d,]+\.?\d*)\s+from\s+(.+?)(?:\s+(?:via\s+\S+|0?\d[\d\s]{6,})|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
         ),
         parse: { m, ns in
             guard m.numberOfRanges >= 5,

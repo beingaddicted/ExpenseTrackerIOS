@@ -98,6 +98,38 @@ final class BankTemplatesTests: XCTestCase {
         XCTAssertEqual(p.bank, "J&K Bank")
     }
 
+    /// MabudAlam canonical fixture: balance abbreviated as "Avbl bal" (b
+    /// before l). The v1 `avl?\s*bal` regex only matched "Av" / "Avl",
+    /// silently dropping the balance for the "Avbl" variant. Fix makes
+    /// `av(?:bl|l)?\s*bal` cover all three forms.
+    func testIndiaBalanceAvblForm() {
+        guard let p = parse(
+            "Rs.500.00 debited from card 1234 on 01-Jan-23. Avbl bal Rs.10000.00",
+            regionCode: "IN"
+        ) else {
+            XCTFail("Avbl-bal SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.balance ?? -1, 10000, accuracy: 0.001, "Avbl bal must extract balance")
+    }
+
+    /// MabudAlam canonical fixture #6: bare "to handle@bank" VPA without a
+    /// `VPA`/`UPI` prefix. v1 dropped the merchant (defaulted to Unknown);
+    /// the new merchantPattern catches it.
+    func testIndiaBareVPAMerchant() {
+        guard let p = parse(
+            "Rs 150.00 debited from account ending 1234 to 9876543210@ybl on 04-11-25. UPI Ref: 432198765",
+            regionCode: "IN"
+        ) else {
+            XCTFail("bare-VPA SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.amount, 150, accuracy: 0.001)
+        // The upiStrip helper removes the `@ybl` suffix; we just want a
+        // non-Unknown merchant here.
+        XCTAssertNotEqual(p.merchant, "Unknown", "bare to-VPA must produce a merchant")
+    }
+
     /// Real saurabhgupta canonical sample: balance with a dash separator.
     /// The v1 regex required `:` or `is` or whitespace and silently dropped
     /// the balance for "Avl Bal- INR 2343.23". This regression test locks
@@ -436,6 +468,39 @@ final class BankTemplatesTests: XCTestCase {
         )
     }
 
+    /// Older Safaricom form with NO space between "Confirmed." and "You":
+    /// `MCG8AU052I Confirmed.You have received Ksh5,850.00...`. The v1
+    /// regex `Confirmed\.\s+You` required a space and silently dropped
+    /// these. Fix uses `Confirmed\.?\s*`.
+    func testKenyaMpesaConfirmedNoSpace() {
+        assertTxn(
+            "MCG8AU052I Confirmed.You have received Ksh5,850.00 from SYLVESTER OJUMA 0717061230 on 16/3/18. New M-PESA balance is Ksh1,000.00.",
+            region: "KE",
+            amount: 5850,
+            currency: "KES",
+            type: "credit",
+            bank: "M-Pesa",
+            templateId: "ke_mpesa_received"
+        )
+    }
+
+    /// Real Safaricom form with a "via X" sender (international remittance):
+    /// `G68EG702 confirmed. You have received Ksh5,000 from Diaspora
+    /// Friend via XYZ on 24/4/14`. v1 had no `via` stop boundary, so the
+    /// merchant capture would consume "Diaspora Friend via XYZ" or fail
+    /// entirely; v2 adds `via\s+\S+` to the stop set.
+    func testKenyaMpesaReceivedViaForm() {
+        guard let p = parse(
+            "G68EG702 confirmed. You have received Ksh5,000 from Diaspora Friend via XYZ on 24/4/14 at 3:56PM.",
+            regionCode: "KE"
+        ) else {
+            XCTFail("via-form M-Pesa SMS did not parse")
+            return
+        }
+        XCTAssertEqual(p.amount, 5000, accuracy: 0.001)
+        XCTAssertEqual(p.merchant, "Diaspora Friend", "merchant must stop before \"via\"")
+    }
+
     /// Real-world receive with the optional transaction-cost trailer.
     func testKenyaMpesaReceivedWithCost() {
         assertTxn(
@@ -515,6 +580,22 @@ final class BankTemplatesTests: XCTestCase {
             region: "BR",
             amount: 19.90,
             currency: "BRL"
+        )
+    }
+
+    /// Real-world Nubank "Nu Informa" alert (the canonical SMS Nubank
+    /// actually sends). No merchant name is included — just amount + date,
+    /// then a "tap-to-cancel" 0800 number. v1 didn't match this form
+    /// because it required the literal "Nubank:" prefix and a "em
+    /// MERCHANT" capture group.
+    func testBrazilNubankInformaForm() {
+        assertTxn(
+            "Nu Informa, compra Credito em andamento Em seu cartao em 13/10 valor R$2.324,00 Se nao reconhece contate e cancele: 4003-5920",
+            region: "BR",
+            amount: 2324,
+            currency: "BRL",
+            bank: "Nubank",
+            templateId: "br_nubank_informa"
         )
     }
 
