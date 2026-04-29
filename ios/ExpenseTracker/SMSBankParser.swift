@@ -736,11 +736,30 @@ enum SMSBankParser {
         if text.range(of: #"\bMYR\b|\bRM\b"#, options: .regularExpression) != nil { return "MYR" }
         if text.range(of: #"\bNPR\b|\bNRs\.?\b"#, options: .regularExpression) != nil { return "NPR" }
         if text.range(of: #"\bPKR\b"#, options: .regularExpression) != nil { return "PKR" }
+        if text.range(of: #"\bKES\b|\bKSh\b|\bKsh\b"#, options: .regularExpression) != nil { return "KES" }
+        if text.range(of: #"₦|\bNGN\b"#, options: .regularExpression) != nil { return "NGN" }
+        if text.range(of: #"\bZAR\b"#, options: .regularExpression) != nil { return "ZAR" }
+        if text.range(of: #"\bSAR\b|ر\.س|\bSR\b"#, options: .regularExpression) != nil { return "SAR" }
+        if text.range(of: #"\bEGP\b|E£|ج\.م"#, options: .regularExpression) != nil { return "EGP" }
+        if text.range(of: #"R\$|\bBRL\b"#, options: .regularExpression) != nil { return "BRL" }
+        if text.range(of: #"\bMXN\b"#, options: .regularExpression) != nil { return "MXN" }
+        if text.range(of: #"\bARS\b"#, options: .regularExpression) != nil { return "ARS" }
+        if text.range(of: #"₩|\bKRW\b|원"#, options: .regularExpression) != nil { return "KRW" }
+        if text.range(of: #"¥|\bJPY\b|円"#, options: .regularExpression) != nil { return "JPY" }
         if text.range(of: #"\bRs\.?\b"#, options: .regularExpression) != nil {
             // Multiple South Asian currencies use "Rs" — defer to the region.
             return region.currency
         }
-        if text.range(of: #"\$|\bUSD\b"#, options: .regularExpression) != nil { return "USD" }
+        // Plain `$` is ambiguous: USD vs MXN vs ARS. If the active region
+        // uses `$` as its primary symbol, prefer the region's own currency
+        // (Mexicans see `$1,000` and mean MXN, not USD). Fall through to USD
+        // only when the active region doesn't use `$`.
+        let hasExplicitUSD = text.range(of: #"\bUSD\b"#, options: .regularExpression) != nil
+        if hasExplicitUSD { return "USD" }
+        if text.range(of: #"\$"#, options: .regularExpression) != nil {
+            if region.currencySymbol == "$" { return region.currency }
+            return "USD"
+        }
         return region.currency
     }
 }

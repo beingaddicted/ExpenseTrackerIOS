@@ -167,11 +167,147 @@ enum Regions {
         localeCodes: ["pk"]
     )
 
+    static let kenya = Region(
+        code: "KE",
+        name: "Kenya",
+        flag: "🇰🇪",
+        currency: "KES",
+        currencySymbol: "KSh",
+        currencyTokens: ["KES", "KSh", "Ksh", "Sh"],
+        timeZones: ["Africa/Nairobi"],
+        mcc: ["639"],
+        localeCodes: ["ke"]
+    )
+
+    static let nigeria = Region(
+        code: "NG",
+        name: "Nigeria",
+        flag: "🇳🇬",
+        currency: "NGN",
+        currencySymbol: "₦",
+        currencyTokens: ["NGN", "₦", "N"],
+        timeZones: ["Africa/Lagos"],
+        mcc: ["621"],
+        localeCodes: ["ng"]
+    )
+
+    static let southAfrica = Region(
+        code: "ZA",
+        name: "South Africa",
+        flag: "🇿🇦",
+        currency: "ZAR",
+        currencySymbol: "R",
+        currencyTokens: ["ZAR", "R"],
+        timeZones: ["Africa/Johannesburg"],
+        mcc: ["655"],
+        localeCodes: ["za"]
+    )
+
+    static let saudiArabia = Region(
+        code: "SA",
+        name: "Saudi Arabia",
+        flag: "🇸🇦",
+        currency: "SAR",
+        currencySymbol: "SR",
+        currencyTokens: ["SAR", "SR", "ر.س"],
+        timeZones: ["Asia/Riyadh"],
+        mcc: ["420"],
+        localeCodes: ["sa"]
+    )
+
+    static let egypt = Region(
+        code: "EG",
+        name: "Egypt",
+        flag: "🇪🇬",
+        currency: "EGP",
+        currencySymbol: "E£",
+        currencyTokens: ["EGP", "E£", "ج.م"],
+        timeZones: ["Africa/Cairo"],
+        mcc: ["602"],
+        localeCodes: ["eg"]
+    )
+
+    static let brazil = Region(
+        code: "BR",
+        name: "Brazil",
+        flag: "🇧🇷",
+        currency: "BRL",
+        currencySymbol: "R$",
+        currencyTokens: ["BRL", "R$"],
+        timeZones: [
+            "America/Sao_Paulo", "America/Manaus", "America/Recife",
+            "America/Fortaleza", "America/Bahia", "America/Belem",
+        ],
+        mcc: ["724"],
+        localeCodes: ["br"]
+    )
+
+    /// Mexico — `$` symbol overlaps with USD. The parser disambiguates by
+    /// preferring the region's own currency when the body has only `$` and
+    /// no explicit "USD".
+    static let mexico = Region(
+        code: "MX",
+        name: "Mexico",
+        flag: "🇲🇽",
+        currency: "MXN",
+        currencySymbol: "$",
+        currencyTokens: ["MXN", "MXN$", "$"],
+        timeZones: [
+            "America/Mexico_City", "America/Cancun", "America/Tijuana",
+            "America/Hermosillo", "America/Monterrey",
+        ],
+        mcc: ["334"],
+        localeCodes: ["mx"]
+    )
+
+    /// Argentina — same `$` overlap as Mexico; same disambiguation rule.
+    static let argentina = Region(
+        code: "AR",
+        name: "Argentina",
+        flag: "🇦🇷",
+        currency: "ARS",
+        currencySymbol: "$",
+        currencyTokens: ["ARS", "AR$", "$"],
+        timeZones: [
+            "America/Argentina/Buenos_Aires", "America/Argentina/Cordoba",
+            "America/Argentina/Salta", "America/Argentina/Mendoza",
+            "America/Argentina/Tucuman",
+        ],
+        mcc: ["722"],
+        localeCodes: ["ar"]
+    )
+
+    static let korea = Region(
+        code: "KR",
+        name: "South Korea",
+        flag: "🇰🇷",
+        currency: "KRW",
+        currencySymbol: "₩",
+        currencyTokens: ["KRW", "₩"],
+        timeZones: ["Asia/Seoul"],
+        mcc: ["450"],
+        localeCodes: ["kr"]
+    )
+
+    static let japan = Region(
+        code: "JP",
+        name: "Japan",
+        flag: "🇯🇵",
+        currency: "JPY",
+        currencySymbol: "¥",
+        currencyTokens: ["JPY", "¥", "円"],
+        timeZones: ["Asia/Tokyo"],
+        mcc: ["440", "441"],
+        localeCodes: ["jp"]
+    )
+
     /// Order users see in the picker — the recently-detected one is pinned to
     /// the top by the picker view, this is just the underlying catalog.
     static let all: [Region] = [
         india, usa, uk, uae, singapore,
         thailand, indonesia, philippines, malaysia, nepal, pakistan,
+        kenya, nigeria, southAfrica, saudiArabia, egypt,
+        brazil, mexico, argentina, korea, japan,
     ]
 
     static func byCode(_ code: String) -> Region? {
