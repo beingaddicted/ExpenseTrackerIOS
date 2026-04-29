@@ -377,7 +377,7 @@ struct SettingsView: View {
     private func importSMSMessages(_ messages: [[String: Any]]) throws -> (added: Int, skipped: Int, failed: Int) {
         let ctx = Persistence.makeContext()
         let existing = try ctx.fetch(FetchDescriptor<TransactionRecord>())
-        var batch: [ParsedTransaction] = []
+        var dupIndex = DuplicateIndex(records: existing)
         var added = 0, skipped = 0, failed = 0
 
         for msg in messages {
@@ -391,11 +391,11 @@ struct SettingsView: View {
                 failed += 1
                 continue
             }
-            if SMSBankParser.isDuplicate(p, existing: existing) || SMSBankParser.isDuplicate(p, batch: batch) {
+            if dupIndex.contains(p) {
                 skipped += 1
                 continue
             }
-            batch.append(p)
+            dupIndex.insert(parsed: p)
             ctx.insert(TransactionRecord(
                 id: p.id, amount: p.amount, type: p.type, currency: p.currency,
                 date: p.date, bank: p.bank, account: p.account, merchant: p.merchant,

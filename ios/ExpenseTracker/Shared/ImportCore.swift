@@ -26,7 +26,8 @@ enum ImportCore {
         let rules = RulesStore.load()
         let startDate = ImportStartDateStore.load()
 
-        var parsedBatch: [ParsedTransaction] = []
+        // O(1) duplicate index — see ImportCoordinator for the rationale.
+        var dupIndex = DuplicateIndex(records: existing)
         var added = 0, skipped = 0, failed = 0
         var latest: Date? = nil
 
@@ -54,12 +55,12 @@ enum ImportCore {
                 p = RulesEngine.apply(to: p, rules: rules)
             }
 
-            if SMSBankParser.isDuplicate(p, existing: existing) || SMSBankParser.isDuplicate(p, batch: parsedBatch) {
+            if dupIndex.contains(p) {
                 skipped += 1
                 continue
             }
 
-            parsedBatch.append(p)
+            dupIndex.insert(parsed: p)
             context.insert(makeRecord(from: p))
             added += 1
         }

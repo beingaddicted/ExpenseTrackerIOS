@@ -55,7 +55,11 @@ enum ImportCoordinator {
         let chunks = BankSMSChunker.splitCombinedText(text)
         let rules = RulesStore.load()
         let startDate = ImportStartDateStore.load()
-        var parsedBatch: [ParsedTransaction] = []
+        // Build the duplicate index ONCE from existing records. As we parse
+        // new transactions we insert them here too, so within-batch
+        // duplicates also resolve in O(1). Replaces the legacy O(N×M)
+        // `isDuplicate(p, existing:)` + `isDuplicate(p, batch:)` calls.
+        var dupIndex = DuplicateIndex(records: existing)
         var added = 0, skipped = 0, failed = 0
         var latest: Date? = nil
 
@@ -83,11 +87,11 @@ enum ImportCoordinator {
             if !rules.isEmpty {
                 p = RulesEngine.apply(to: p, rules: rules)
             }
-            if SMSBankParser.isDuplicate(p, existing: existing) || SMSBankParser.isDuplicate(p, batch: parsedBatch) {
+            if dupIndex.contains(p) {
                 skipped += 1
                 continue
             }
-            parsedBatch.append(p)
+            dupIndex.insert(parsed: p)
             ctx.insert(makeRecord(from: p))
             added += 1
         }

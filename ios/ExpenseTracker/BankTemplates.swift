@@ -10,12 +10,42 @@ struct BankTemplate {
     let id: String
     let region: String   // ISO‑3166 alpha‑2
     let bank: String
+    /// Cheap substring prefilter, evaluated before the regex. If non-nil,
+    /// `tryMatch` returns nil immediately when the SMS doesn't contain
+    /// this string (case-insensitive). Set it to a token that's
+    /// guaranteed to appear in every match — usually the bank's name
+    /// keyword, e.g. "HDFC", "Chase", "Confirmed" (M-Pesa). This cuts
+    /// the per-SMS work from N regex matches (155 currently) to O(N
+    /// substring checks + only a handful of regex matches). Skip the
+    /// prefilter on bilingual templates where the keyword shape varies
+    /// across scripts (Cyrillic/Hangul/Persian).
+    let requires: String?
     let regex: NSRegularExpression
     /// Closure returning a `Match` from the regex result, or nil if extra
     /// validation fails (e.g. amount couldn't be parsed).
     let parse: (NSTextCheckingResult, NSString) -> SMSMiniTemplates.Match?
 
+    init(
+        id: String,
+        region: String,
+        bank: String,
+        requires: String? = nil,
+        regex: NSRegularExpression,
+        parse: @escaping (NSTextCheckingResult, NSString) -> SMSMiniTemplates.Match?
+    ) {
+        self.id = id
+        self.region = region
+        self.bank = bank
+        self.requires = requires
+        self.regex = regex
+        self.parse = parse
+    }
+
     func tryMatch(_ text: String) -> SMSMiniTemplates.Match? {
+        if let req = requires,
+           text.range(of: req, options: .caseInsensitive) == nil {
+            return nil
+        }
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)
         guard let m = regex.firstMatch(in: text, options: [], range: full) else { return nil }
@@ -269,6 +299,7 @@ private enum InTemplates {
         id: "hdfc_upi_sent",
         region: "IN",
         bank: "HDFC Bank",
+        requires: "HDFC",
         regex: H.rx(
             #"Sent\s+Rs\.?([\d,]+\.?\d*)\s*(?:\|\s*)?[Ff]rom\s+HDFC\s+Bank\s+A\/[Cc]\s*[*x]?(\d+)\s*(?:\|\s*)?To\s+(.+?)\s+(?:\|\s*)?(?:On\s+)?(\d{2}\/\d{2}\/\d{2,4})\s*(?:\|\s*)?Ref\s+(\d+)"#
         ),
@@ -293,6 +324,7 @@ private enum InTemplates {
         id: "hdfc_upi_received",
         region: "IN",
         bank: "HDFC Bank",
+        requires: "HDFC",
         regex: H.rx(
             #"Received\s+Rs\.?([\d,]+\.?\d*)\s*(?:\|\s*)?In\s+HDFC\s+Bank\s+A\/C\s*\*(\d+)\s*(?:\|\s*)?From\s+(.+?)\s+(?:\|\s*)?On\s+(\d{2}\/\d{2}\/\d{2,4})\s*(?:\|\s*)?Ref\s+(\d+)"#
         ),
@@ -318,6 +350,7 @@ private enum InTemplates {
         id: "in_jiopay_paid",
         region: "IN",
         bank: "JioPay",
+        requires: "JioPay",
         regex: H.rx(
             #"JioPay\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:paid|sent|debited)\s+to\s+(.+?)(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?(?:[\s.,]+Ref\s*(?:no\.?\s*)?([A-Za-z0-9]+))?"#
         ),
@@ -349,6 +382,7 @@ private enum InTemplates {
         id: "in_onecard_spent",
         region: "IN",
         bank: "OneCard",
+        requires: "OneCard",
         regex: H.rx(
             #"OneCard\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+spent\s+on\s+OneCard\s+(?:X+)?(\d{4})\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}[-\s]\w{3}[-\s]?\d{0,4}))?"#
         ),
@@ -376,6 +410,7 @@ private enum InTemplates {
         id: "in_lazypay_spent",
         region: "IN",
         bank: "LazyPay",
+        requires: "LazyPay",
         regex: H.rx(
             #"LazyPay\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:spent|charged|paid|debited)\s+(?:at|to)\s+(.+?)(?:\s+on\s+(\d{1,2}[-\s]\w{3}[-\s]?\d{0,4}))?"#
         ),
@@ -403,6 +438,7 @@ private enum InTemplates {
         id: "in_slice_spent",
         region: "IN",
         bank: "Slice",
+        requires: "Slice",
         regex: H.rx(
             #"\bSlice\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:spent|charged|paid)\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}[-\s]\w{3}[-\s]?\d{0,4}))?[^\n]*?(?:Card\s+(\d{4}))?"#
         ),
@@ -431,6 +467,7 @@ private enum InTemplates {
         id: "in_cred_payment",
         region: "IN",
         bank: "Cred",
+        requires: "Cred",
         regex: H.rx(
             #"\bCred\b[^\n]*?(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+(?:paid|payment)\s+(?:towards|for|to)\s+(.+?)(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -458,6 +495,7 @@ private enum InTemplates {
         id: "in_juspay_payment",
         region: "IN",
         bank: "Juspay",
+        requires: "Juspay",
         regex: H.rx(
             #"Juspay\b[^\n]*?Payment\s+of\s+(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)\s+via\s+(?:Card|UPI)\s*(?:X+)?(\d{4})?\s+(?:at|to)\s+(.+?)(?:\s+(?:was\s+successful|successful))?(?:[\s.,]+Txn\s*(?:ID|no\.?)\s*:?\s*([A-Za-z0-9]+))?"#
         ),
@@ -507,6 +545,7 @@ private enum UsTemplates {
         id: "us_chase_purchase",
         region: "US",
         bank: "Chase",
+        requires: "Chase",
         regex: H.rx(
             #"Chase\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+at\s+(.+?)\s+\(?\s*Card\s+ending\s+(?:in\s+)?(\d{4})\s*\)?(?:\s+on\s+(\d{1,2}/\d{1,2}(?:/\d{2,4})?))?"#
         ),
@@ -533,6 +572,7 @@ private enum UsTemplates {
         id: "us_bofa_purchase",
         region: "US",
         bank: "Bank of America",
+        requires: "BofA",
         regex: H.rx(
             #"(?:BofA|Bank\s+of\s+America)\b[^\n]*?(?:Debit|Credit)\s*Card\s+(?:purchase|charge|transaction)\s+of\s+\$\s*([\d,]+\.?\d*)\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}/\d{1,2}(?:/\d{2,4})?))?(?:[^\d]+(\d{4}))?"#
         ),
@@ -560,6 +600,7 @@ private enum UsTemplates {
         id: "us_capitalone_purchase",
         region: "US",
         bank: "Capital One",
+        requires: "Capital One",
         regex: H.rx(
             #"Capital\s*One\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:transaction|charge|purchase)\s+at\s+(.+?)\s+(?:was\s+)?(?:authorized|posted|approved)[^\d]*(?:ending\s+(?:in\s+)?(\d{4}))?"#
         ),
@@ -586,6 +627,7 @@ private enum UsTemplates {
         id: "us_amex_purchase",
         region: "US",
         bank: "American Express",
+        requires: "AMEX",
         regex: H.rx(
             #"(?:AMEX|American\s+Express)\b[^\n]*?Card\s+ending\s+(?:in\s+)?(\d{4,5})[^\$]*?\$\s*([\d,]+\.?\d*)\s+at\s+(.+?)(?:[.\n]|$)"#
         ),
@@ -611,6 +653,7 @@ private enum UsTemplates {
         id: "us_wellsfargo_purchase",
         region: "US",
         bank: "Wells Fargo",
+        requires: "Wells Fargo",
         regex: H.rx(
             #"Wells\s*Fargo\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:purchase|charge|debit)[^\d]*(\d{4})[^\n]*?at\s+(.+?)(?:\s+on\s+(\d{1,2}/\d{1,2}(?:/\d{2,4})?))?(?:[.\n]|$)"#
         ),
@@ -637,6 +680,7 @@ private enum UsTemplates {
         id: "us_citi_purchase",
         region: "US",
         bank: "Citibank",
+        requires: "Citi",
         regex: H.rx(
             #"Citi\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:charged|spent|debited)\s+at\s+(.+?)\s+on\s+Card\s+(?:ending\s+(?:in\s+)?)?(\d{4})"#
         ),
@@ -663,6 +707,7 @@ private enum UsTemplates {
         id: "us_discover_purchase",
         region: "US",
         bank: "Discover",
+        requires: "Discover",
         regex: H.rx(
             #"Discover\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:at|@)\s+(.+?)(?:\s+(?:on|was\s+approved\s+on)\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?"#
         ),
@@ -690,6 +735,7 @@ private enum UsTemplates {
         id: "us_schwab_debit",
         region: "US",
         bank: "Charles Schwab",
+        requires: "Schwab",
         regex: H.rx(
             #"Schwab\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:debit|spent|charged|purchase)\s+at\s+(.+?)(?:[\s,]+on\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?(?:[\s,]+card\s+(\d{4}))?"#
         ),
@@ -744,6 +790,7 @@ private enum UsTemplates {
         id: "us_huntington_purchase",
         region: "US",
         bank: "Huntington Bank",
+        requires: "Huntington",
         regex: H.rx(
             #"Huntington\b[^\n]*?\$\s*([\d,]+\.?\d*)\s+(?:purchase|debit|spent|charged)\s+at\s+(.+?)(?:[\s,]+card\s+(\d{4}))?(?:[\s,]+on\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?"#
         ),
@@ -786,6 +833,7 @@ private enum GbTemplates {
         id: "gb_barclays_payment",
         region: "GB",
         bank: "Barclays",
+        requires: "Barclays",
         regex: H.rx(
             #"Barclays\b[^\n]*?(?:payment|debit|transfer)\s+of\s+£\s*([\d,]+\.?\d*)\s+to\s+(.+?)\s+(?:was\s+)?(?:made|sent|debited)\s+from\s+(?:a\/c|account)\s+ending\s+(\d{4})(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -904,6 +952,7 @@ private enum AeTemplates {
         id: "ae_enbd_purchase",
         region: "AE",
         bank: "Emirates NBD",
+        requires: "ENBD",
         regex: H.rx(
             #"(?:ENBD|Emirates\s+NBD)\b[^\n]*?AED\s*([\d,]+\.?\d*)\s+(?:paid|spent|debited|purchase)\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?[^\d]*(?:ending\s+(\d{4}))?"#
         ),
@@ -931,6 +980,7 @@ private enum AeTemplates {
         id: "ae_adcb_debit",
         region: "AE",
         bank: "ADCB",
+        requires: "ADCB",
         regex: H.rx(
             #"ADCB\b[^\n]*?AED\s*([\d,]+\.?\d*)\s+(?:debited|spent|charged)[^\d]*(?:a\/c|account|card)[^\d]*?(\d{4})\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -1101,6 +1151,7 @@ private enum SgTemplates {
         id: "sg_dbs_purchase",
         region: "SG",
         bank: "DBS Bank",
+        requires: "DBS",
         regex: H.rx(
             #"DBS\b[^\n]*?Card\s+ending\s+(?:in\s+)?(\d{4})[^\n]*?(?:SGD|S\$)\s*([\d,]+\.?\d*)\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}\s+\w{3}\s*\d{0,4}))?"#
         ),
@@ -1579,6 +1630,7 @@ private enum MyTemplates {
         id: "my_maybank_purchase",
         region: "MY",
         bank: "Maybank",
+        requires: "Maybank",
         regex: H.rx(
             #"Maybank\b[^\n]*?(?:RM|MYR)\s*([\d,]+\.?\d*)\s+(?:trans|spent|debited|charged|paid)\s+at\s+(.+?)\s+on\s+Card\s+(\d{4})(?:[, ]+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}))?"#
         ),
@@ -1937,6 +1989,7 @@ private enum KeTemplates {
         id: "ke_mpesa_sent",
         region: "KE",
         bank: "M-Pesa",
+        requires: "Confirmed",
         regex: H.rx(
             // `Confirmed\.?\s*` accepts "Confirmed." OR "Confirmed.You"
             // (no space — older Safaricom forms, e.g.
@@ -1972,6 +2025,7 @@ private enum KeTemplates {
         id: "ke_mpesa_received",
         region: "KE",
         bank: "M-Pesa",
+        requires: "Confirmed",
         regex: H.rx(
             // Same Confirmed.You fix as the sent template, plus "via X"
             // stop (real `XYZ123 Confirmed. You have received Ksh2,400
@@ -2005,6 +2059,7 @@ private enum KeTemplates {
         id: "ke_mpesa_paid",
         region: "KE",
         bank: "M-Pesa",
+        requires: "Confirmed",
         regex: H.rx(
             #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*Ksh\s*([\d,]+\.?\d*)\s+paid\s+to\s+(.+?)\.?\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
         ),
@@ -2033,6 +2088,7 @@ private enum KeTemplates {
         id: "ke_mpesa_transferred",
         region: "KE",
         bank: "M-Pesa",
+        requires: "Confirmed",
         regex: H.rx(
             #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*Ksh\s*([\d,]+\.?\d*)\s+transferred\s+to\s+(.+?)(?:\s+account)?(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -2062,6 +2118,7 @@ private enum KeTemplates {
         id: "ke_mpesa_withdraw",
         region: "KE",
         bank: "M-Pesa",
+        requires: "Confirmed",
         regex: H.rx(
             #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*(?:on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+at\s+[^\s]+\s+(?:AM|PM)\s+)?Withdraw\s+Ksh\s*([\d,]+\.?\d*)\s+from\s+(.+?)(?:\s+New\s+M-PESA|$)"#
         ),
@@ -2091,6 +2148,7 @@ private enum KeTemplates {
         id: "ke_equity_purchase",
         region: "KE",
         bank: "Equity Bank",
+        requires: "Equity",
         regex: H.rx(
             #"Equity\b[^\n]*?Ksh\s*([\d,]+\.?\d*)\s+(?:charged|spent|debited)\s+at\s+(.+?)\s+on\s+Card\s+(\d{4})(?:[, ]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -2159,6 +2217,7 @@ private enum NgTemplates {
         id: "ng_gtb_dr",
         region: "NG",
         bank: "GTBank",
+        requires: "GTB",
         regex: H.rx(
             #"GTB\b[^\n]*?Acct:\s*(\d+)[^\n]*?Amt:\s*NGN\s*([\d,]+\.?\d*)\s*\((DR|CR)\)[^\n]*?Desc:\s*(.+?);[^\n]*?Date:\s*(\d{1,2}[-\s]\w{3}[-\s]?\d{0,4})"#
         ),
@@ -2187,6 +2246,7 @@ private enum NgTemplates {
         id: "ng_access_debit",
         region: "NG",
         bank: "Access Bank",
+        requires: "Access",
         regex: H.rx(
             #"Access\b[^\n]*?NGN\s*([\d,]+\.?\d*)\s+(?:debited|spent|charged)\s+from\s+(?:a\/c|account)\s+(?:X+)?(\d{4})\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -2252,6 +2312,7 @@ private enum ZaTemplates {
         id: "za_fnb_pos",
         region: "ZA",
         bank: "FNB",
+        requires: "FNB",
         regex: H.rx(
             #"FNB\b[^\n]*?Acc\s*nr\s*[.\s]*(\d{4})[^\n]*?(?:POS\s+)?(?:purchase|debit)\s+R\s*([\d,]+\.?\d*)\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}\s+\w{3}))?"#
         ),
@@ -2278,6 +2339,7 @@ private enum ZaTemplates {
         id: "za_capitec_debit",
         region: "ZA",
         bank: "Capitec Bank",
+        requires: "Capitec",
         regex: H.rx(
             #"Capitec\b[^\n]*?R\s*([\d,]+\.?\d*)\s+(?:debited|spent|charged)\s+from\s+(?:a\/c|account)\s+(?:X+)?(\d{4})\s+at\s+(.+?)(?:\s+on\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}))?"#
         ),
@@ -2552,6 +2614,7 @@ private enum BrTemplates {
         id: "br_itau_compra",
         region: "BR",
         bank: "Itaú",
+        requires: "Ita",
         regex: H.rx(
             #"Ita[uú]\b[^\n]*?Compra\s+(?:aprovada\s+)?(?:de\s+)?R\$\s*([\d.,]+)\s+(?:no|em)\s+(.+?)(?:\s+em\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?[^\n]*?(?:Cart(?:ã|a)o\s+(?:final\s+)?(\d{4}))?"#
         ),
@@ -2588,6 +2651,7 @@ private enum BrTemplates {
         id: "br_nubank_informa",
         region: "BR",
         bank: "Nubank",
+        requires: "Nu Informa",
         regex: H.rx(
             #"Nu\s*Informa\b[^\n]*?compra[^\n]*?em\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)[^\n]*?valor\s+R\$\s*([\d.,]+)"#
         ),
@@ -2618,6 +2682,7 @@ private enum BrTemplates {
         id: "br_nubank_compra",
         region: "BR",
         bank: "Nubank",
+        requires: "Nubank",
         regex: H.rx(
             #"Nubank\b[^\n]*?Compra\s+(?:de\s+)?R\$\s*([\d.,]+)\s+em\s+(.+?)(?:[,.\s]+cart(?:ã|a)o\s+(?:final\s+)?(\d{4}))?(?:[^\n]*?dia\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?))?"#
         ),
@@ -2645,6 +2710,7 @@ private enum BrTemplates {
         id: "br_bradesco_debito",
         region: "BR",
         bank: "Bradesco",
+        requires: "Bradesco",
         regex: H.rx(
             #"Bradesco\b[^\n]*?R\$\s*([\d.,]+)\s+(?:debitado|debit|trans|pago)\s+em\s+(.+?)(?:[,.\s]+Cart(?:ã|a)o\s+(\d{4}))?(?:\s+em\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -2685,6 +2751,7 @@ private enum MxTemplates {
         id: "mx_bbva_compra",
         region: "MX",
         bank: "BBVA México",
+        requires: "BBVA",
         regex: H.rx(
             #"BBVA\b[^\n]*?Compra\s+(?:de\s+)?\$\s*([\d,]+\.?\d*)\s+en\s+(.+?)\s+con\s+tarjeta\s+(?:terminaci(?:o|ó)n\s+)?(\d{4})(?:\s+el\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}))?"#
         ),
@@ -2711,6 +2778,7 @@ private enum MxTemplates {
         id: "mx_banorte_cargo",
         region: "MX",
         bank: "Banorte",
+        requires: "Banorte",
         regex: H.rx(
             #"Banorte\b[^\n]*?(?:Cargo|Compra)\s+\$\s*([\d,]+\.?\d*)\s+en\s+(.+?)(?:[,.\s]+tarjeta\s+(\d{4}))?(?:\s+el\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -2990,6 +3058,7 @@ private enum JpTemplates {
         id: "jp_mufg_riyo",
         region: "JP",
         bank: "MUFG Bank",
+        requires: "MUFG",
         regex: H.rx(
             #"MUFG\b[^\n]*?(?:¥|JPY)\s*([\d,]+)\s*(?:利用|at\s+|@\s+)?(.+?)(?:[\s,]+(?:カード末尾|Card)\s+(\d{4}))(?:[\s,]+(\d{1,2}(?:[/月]\d{1,2})(?:日)?))?"#
         ),
@@ -3022,6 +3091,7 @@ private enum JpTemplates {
         id: "jp_smbc_riyo",
         region: "JP",
         bank: "Sumitomo Mitsui Banking",
+        requires: "SMBC",
         regex: H.rx(
             #"SMBC\b[^\n]*?(?:¥|JPY)\s*([\d,]+)\s*(?:利用|at\s+|@\s+)?(.+?)(?:[\s,]+(?:カード末尾|Card)\s+(\d{4}))(?:[\s,]+(\d{1,2}(?:[/月]\d{1,2})(?:日)?))?"#
         ),
@@ -3068,6 +3138,7 @@ private enum EuTemplates {
         id: "eu_deutsche_buchung",
         region: "EU",
         bank: "Deutsche Bank",
+        requires: "Deutsche",
         regex: H.rx(
             #"Deutsche\s*Bank\b[^\n]*?€\s*([\d.,]+)\s+(?:gebucht|abgebucht|belastet)\s+bei\s+(.+?)(?:[,.\s]+Konto\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\.\d{1,2}\.\d{2,4}))?"#
         ),
@@ -3095,6 +3166,7 @@ private enum EuTemplates {
         id: "eu_bnp_paribas",
         region: "EU",
         bank: "BNP Paribas",
+        requires: "BNP",
         regex: H.rx(
             #"BNP\b[^\n]*?€\s*([\d.,]+)\s+(?:prélevé|payé|débité)\s+(?:chez|à)\s+(.+?)(?:\s*\(?\s*carte\s+(\d{4})\s*\)?)?(?:\s+le\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -3149,6 +3221,7 @@ private enum EuTemplates {
         id: "eu_ing_afschrijving",
         region: "EU",
         bank: "ING",
+        requires: "ING",
         regex: H.rx(
             #"\bING\b[^\n]*?€\s*([\d.,]+)\s+(?:afgeschreven|betaald|geboekt)\s+bij\s+(.+?)(?:[,.\s]+kaart\s+(\d{4}))?(?:[,.\s]+(\d{1,2}-\d{1,2}-\d{2,4}))?"#
         ),
@@ -3178,6 +3251,7 @@ private enum EuTemplates {
         id: "eu_revolut",
         region: "EU",
         bank: "Revolut",
+        requires: "Revolut",
         regex: H.rx(
             #"Revolut\b[^\n]*?€\s*([\d,]+\.?\d*)\s+(?:at|@)\s+(.+?)(?:[,.\s]+card\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\s+\w{3}\s*\d{0,4}))?"#
         ),
@@ -3218,6 +3292,7 @@ private enum AuTemplates {
         id: "au_cba_purchase",
         region: "AU",
         bank: "CommBank",
+        requires: "CBA",
         regex: H.rx(
             #"\bCBA\b[^\n]*?(?:AUD|A\$|\$)\s*([\d,]+\.?\d*)\s+(?:at|@)\s+(.+?)(?:[\s,]+(\d{4}))?(?:\s+on\s+(\d{1,2}\s+\w{3}\s*\d{0,4}))?"#
         ),
@@ -3245,6 +3320,7 @@ private enum AuTemplates {
         id: "au_westpac_debit",
         region: "AU",
         bank: "Westpac",
+        requires: "Westpac",
         regex: H.rx(
             #"Westpac\b[^\n]*?(?:AUD|A\$|\$)\s*([\d,]+\.?\d*)\s+(?:debit|trans|spent|purchase)\s+at\s+(.+?)(?:[,.\s]+card\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -3311,6 +3387,7 @@ private enum CaTemplates {
         id: "ca_rbc_trans",
         region: "CA",
         bank: "RBC",
+        requires: "RBC",
         regex: H.rx(
             #"\bRBC\b[^\n]*?(?:CAD|C\$|\$)\s*([\d,]+\.?\d*)\s+(?:trans|debit|spent|purchase|charged)\s+at\s+(.+?)(?:[,.\s]+card\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\s+\w{3}\s*\d{0,4}))?"#
         ),
@@ -3365,6 +3442,7 @@ private enum CaTemplates {
         id: "ca_scotia_debit",
         region: "CA",
         bank: "Scotiabank",
+        requires: "Scotia",
         regex: H.rx(
             #"(?:Scotia|Scotiabank)\b[^\n]*?(?:CAD|C\$|\$)\s*([\d,]+\.?\d*)\s+(?:debit|trans|spent|purchase|charged)\s+at\s+(.+?)(?:[,.\s]+card\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\s+\w{3}\s*\d{0,4}))?"#
         ),
@@ -3498,6 +3576,7 @@ private enum VnTemplates {
         id: "vn_vcb_gd",
         region: "VN",
         bank: "Vietcombank",
+        requires: "VCB",
         regex: H.rx(
             #"VCB\b[^\n]*?(?:GD|GiaoDich)\s+([\d,]+)\s*(?:VND|đ|₫)\s+(?:tại|at|@)\s+(.+?)(?:\s+(?:thẻ|card)\s+(\d{4}))?(?:[\s,]+(?:ngày\s+)?(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -3525,6 +3604,7 @@ private enum VnTemplates {
         id: "vn_tcb_chitieu",
         region: "VN",
         bank: "Techcombank",
+        requires: "TCB",
         regex: H.rx(
             #"TCB\b[^\n]*?([\d,]+)\s*(?:VND|đ|₫)\s+(?:chi\s*tiêu|spent|debited)\s+(?:tại|at)\s+(.+?)(?:\s+(?:thẻ|card)\s+(\d{4}))?(?:[\s,]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -3552,6 +3632,7 @@ private enum VnTemplates {
         id: "vn_bidv_gd",
         region: "VN",
         bank: "BIDV",
+        requires: "BIDV",
         regex: H.rx(
             #"BIDV\b[^\n]*?(?:GD|GiaoDich)\s+([\d,]+)\s*(?:VND|đ|₫)\s+(?:tại|at|@)\s+(.+?)(?:\s+(?:thẻ|card)\s+(\d{4}))?(?:[\s,]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -3592,6 +3673,7 @@ private enum TrTemplates {
         id: "tr_garanti_harcama",
         region: "TR",
         bank: "Garanti BBVA",
+        requires: "Garanti",
         regex: H.rx(
             #"Garanti\b[^\n]*?(?:TL|TRY|₺)\s*([\d.,]+)\s+(?:harcama|alışveriş|işlem)\s+(.+?)(?:\s+(?:kart|card)\s+(\d{4}))?(?:[\s,]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -3619,6 +3701,7 @@ private enum TrTemplates {
         id: "tr_akbank_harcama",
         region: "TR",
         bank: "Akbank",
+        requires: "Akbank",
         regex: H.rx(
             #"Akbank\b[^\n]*?([\d.,]+)\s*(?:TL|TRY|₺)\s+(?:harcama|alışveriş|işlem)\s+(.+?)(?:\s+(?:kart|card)\s+(\d{4}))?(?:[\s,]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -3825,6 +3908,7 @@ private enum TzTemplates {
         id: "tz_mpesa_sent",
         region: "TZ",
         bank: "M-Pesa Tanzania",
+        requires: "Confirmed",
         regex: H.rx(
             #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*(?:Tsh|TSh|TZS)\s*([\d,]+\.?\d*)\s+sent\s+to\s+(.+?)(?:\s+(?:for\s+account|account\s+number|via\s+\S+|0?\d[\d\s]{6,})|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
         ),
@@ -3850,6 +3934,7 @@ private enum TzTemplates {
         id: "tz_mpesa_received",
         region: "TZ",
         bank: "M-Pesa Tanzania",
+        requires: "Confirmed",
         regex: H.rx(
             #"([A-Z0-9]{8,12})\s+Confirmed\.?\s*You\s+have\s+received\s+(?:Tsh|TSh|TZS)\s*([\d,]+\.?\d*)\s+from\s+(.+?)(?:\s+(?:via\s+\S+|0?\d[\d\s]{6,})|\s*\.)\s*[^\n]*?on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})"#
         ),
@@ -4133,6 +4218,7 @@ private enum CoTemplates {
         id: "co_bancolombia_compra",
         region: "CO",
         bank: "Bancolombia",
+        requires: "Bancolombia",
         regex: H.rx(
             #"Bancolombia\b[^\n]*?(?:Compra|Pago|Cargo)\s+(?:de\s+)?\$\s*([\d.,]+)\s+en\s+(.+?)\s+con\s+tarjeta\s+(\d{4})(?:\s+el\s+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
@@ -4162,6 +4248,7 @@ private enum CoTemplates {
         id: "co_davivienda_compra",
         region: "CO",
         bank: "Davivienda",
+        requires: "Davivienda",
         regex: H.rx(
             #"Davivienda\b[^\n]*?(?:Compra|Pago|Cargo)\s+\$\s*([\d.,]+)\s+en\s+(.+?)(?:[,.\s]+tarjeta\s+(\d{4}))?(?:[,.\s]+(\d{1,2}\/\d{1,2}\/\d{2,4}))?"#
         ),
