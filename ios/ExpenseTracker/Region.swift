@@ -301,13 +301,159 @@ enum Regions {
         localeCodes: ["jp"]
     )
 
+    /// Eurozone is treated as one logical region. Several countries share
+    /// EUR as legal tender (DE, FR, ES, IT, NL, BE, AT, PT, IE, FI, GR, LU,
+    /// SK, SI, EE, LV, LT, MT, CY, HR). Locale + TZ + MCC entries cover the
+    /// majors only — that's enough for auto-detection. Code "EU" is not an
+    /// ISO 3166-1 alpha-2 country code, but it is the established EU group
+    /// code and we use it as the bundle key.
+    static let eurozone = Region(
+        code: "EU",
+        name: "Eurozone",
+        flag: "🇪🇺",
+        currency: "EUR",
+        currencySymbol: "€",
+        currencyTokens: ["EUR", "€"],
+        timeZones: [
+            "Europe/Berlin", "Europe/Paris", "Europe/Madrid", "Europe/Rome",
+            "Europe/Amsterdam", "Europe/Brussels", "Europe/Vienna",
+            "Europe/Lisbon", "Europe/Athens", "Europe/Helsinki",
+            "Europe/Dublin", "Europe/Luxembourg",
+        ],
+        mcc: [
+            "262", "208", "214", "222", "204", "232", "204", "268", "272",
+            "244", "270", "202", "230",
+        ],
+        localeCodes: ["de", "fr", "es", "it", "nl", "at", "be", "pt", "ie", "fi", "gr", "lu"]
+    )
+
+    static let australia = Region(
+        code: "AU",
+        name: "Australia",
+        flag: "🇦🇺",
+        currency: "AUD",
+        currencySymbol: "A$",
+        currencyTokens: ["AUD", "A$", "AU$"],
+        timeZones: [
+            "Australia/Sydney", "Australia/Melbourne", "Australia/Brisbane",
+            "Australia/Perth", "Australia/Adelaide", "Australia/Hobart",
+            "Australia/Darwin", "Australia/Canberra",
+        ],
+        mcc: ["505"],
+        localeCodes: ["au"]
+    )
+
+    static let canada = Region(
+        code: "CA",
+        name: "Canada",
+        flag: "🇨🇦",
+        currency: "CAD",
+        currencySymbol: "C$",
+        currencyTokens: ["CAD", "C$", "CA$"],
+        timeZones: [
+            "America/Toronto", "America/Vancouver", "America/Montreal",
+            "America/Edmonton", "America/Halifax", "America/Winnipeg",
+            "America/Regina", "America/St_Johns",
+        ],
+        mcc: ["302"],
+        localeCodes: ["ca"]
+    )
+
+    static let hongKong = Region(
+        code: "HK",
+        name: "Hong Kong",
+        flag: "🇭🇰",
+        currency: "HKD",
+        currencySymbol: "HK$",
+        currencyTokens: ["HKD", "HK$"],
+        timeZones: ["Asia/Hong_Kong"],
+        mcc: ["454", "455"],
+        localeCodes: ["hk"]
+    )
+
+    static let vietnam = Region(
+        code: "VN",
+        name: "Vietnam",
+        flag: "🇻🇳",
+        currency: "VND",
+        currencySymbol: "₫",
+        currencyTokens: ["VND", "₫", "đ"],
+        timeZones: ["Asia/Ho_Chi_Minh"],
+        mcc: ["452"],
+        localeCodes: ["vn"]
+    )
+
+    static let turkey = Region(
+        code: "TR",
+        name: "Turkey",
+        flag: "🇹🇷",
+        currency: "TRY",
+        currencySymbol: "₺",
+        currencyTokens: ["TRY", "₺", "TL"],
+        timeZones: ["Europe/Istanbul"],
+        mcc: ["286"],
+        localeCodes: ["tr"]
+    )
+
+    static let bangladesh = Region(
+        code: "BD",
+        name: "Bangladesh",
+        flag: "🇧🇩",
+        currency: "BDT",
+        currencySymbol: "Tk",
+        currencyTokens: ["BDT", "Tk.", "Tk", "৳"],
+        timeZones: ["Asia/Dhaka"],
+        mcc: ["470"],
+        localeCodes: ["bd"]
+    )
+
+    static let sriLanka = Region(
+        code: "LK",
+        name: "Sri Lanka",
+        flag: "🇱🇰",
+        currency: "LKR",
+        currencySymbol: "Rs",
+        currencyTokens: ["LKR", "LKRs.", "Rs."],
+        timeZones: ["Asia/Colombo"],
+        mcc: ["413"],
+        localeCodes: ["lk"]
+    )
+
+    static let tanzania = Region(
+        code: "TZ",
+        name: "Tanzania",
+        flag: "🇹🇿",
+        currency: "TZS",
+        currencySymbol: "TSh",
+        currencyTokens: ["TZS", "TSh", "Sh"],
+        timeZones: ["Africa/Dar_es_Salaam"],
+        mcc: ["640"],
+        localeCodes: ["tz"]
+    )
+
+    static let ethiopia = Region(
+        code: "ET",
+        name: "Ethiopia",
+        flag: "🇪🇹",
+        currency: "ETB",
+        currencySymbol: "Br",
+        currencyTokens: ["ETB", "Br", "ብር"],
+        timeZones: ["Africa/Addis_Ababa"],
+        mcc: ["636"],
+        localeCodes: ["et"]
+    )
+
     /// Order users see in the picker — the recently-detected one is pinned to
     /// the top by the picker view, this is just the underlying catalog.
     static let all: [Region] = [
-        india, usa, uk, uae, singapore,
+        india, usa, uk, eurozone, uae, singapore,
         thailand, indonesia, philippines, malaysia, nepal, pakistan,
-        kenya, nigeria, southAfrica, saudiArabia, egypt,
-        brazil, mexico, argentina, korea, japan,
+        bangladesh, sriLanka, vietnam,
+        kenya, nigeria, southAfrica, saudiArabia, egypt, turkey,
+        tanzania, ethiopia,
+        brazil, mexico, argentina,
+        korea, japan, hongKong,
+        australia, canada,
     ]
 
     static func byCode(_ code: String) -> Region? {

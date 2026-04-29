@@ -730,17 +730,26 @@ enum SMSBankParser {
         if text.range(of: #"€|\bEUR\b"#, options: .regularExpression) != nil { return "EUR" }
         if text.range(of: #"\bAED\b|\bDhs\.?\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return "AED" }
         if text.range(of: #"\bSGD\b|S\$"#, options: [.regularExpression, .caseInsensitive]) != nil { return "SGD" }
+        if text.range(of: #"\bAUD\b|A\$|AU\$"#, options: .regularExpression) != nil { return "AUD" }
+        if text.range(of: #"\bCAD\b|C\$|CA\$"#, options: .regularExpression) != nil { return "CAD" }
+        if text.range(of: #"\bHKD\b|HK\$"#, options: .regularExpression) != nil { return "HKD" }
         if text.range(of: #"฿|\bTHB\b|\bBaht\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return "THB" }
         if text.range(of: #"\bIDR\b|\bRp\b"#, options: .regularExpression) != nil { return "IDR" }
         if text.range(of: #"₱|\bPHP\b"#, options: .regularExpression) != nil { return "PHP" }
         if text.range(of: #"\bMYR\b|\bRM\b"#, options: .regularExpression) != nil { return "MYR" }
         if text.range(of: #"\bNPR\b|\bNRs\.?\b"#, options: .regularExpression) != nil { return "NPR" }
         if text.range(of: #"\bPKR\b"#, options: .regularExpression) != nil { return "PKR" }
+        if text.range(of: #"\bLKR\b"#, options: .regularExpression) != nil { return "LKR" }
+        if text.range(of: #"₫|\bVND\b"#, options: .regularExpression) != nil { return "VND" }
+        if text.range(of: #"\bBDT\b|৳|\bTk\.?\b"#, options: .regularExpression) != nil { return "BDT" }
+        if text.range(of: #"₺|\bTRY\b|\bTL\b"#, options: .regularExpression) != nil { return "TRY" }
         if text.range(of: #"\bKES\b|\bKSh\b|\bKsh\b"#, options: .regularExpression) != nil { return "KES" }
         if text.range(of: #"₦|\bNGN\b"#, options: .regularExpression) != nil { return "NGN" }
         if text.range(of: #"\bZAR\b"#, options: .regularExpression) != nil { return "ZAR" }
         if text.range(of: #"\bSAR\b|ر\.س|\bSR\b"#, options: .regularExpression) != nil { return "SAR" }
         if text.range(of: #"\bEGP\b|E£|ج\.م"#, options: .regularExpression) != nil { return "EGP" }
+        if text.range(of: #"\bTZS\b|\bTSh\b"#, options: .regularExpression) != nil { return "TZS" }
+        if text.range(of: #"\bETB\b|ብር"#, options: .regularExpression) != nil { return "ETB" }
         if text.range(of: #"R\$|\bBRL\b"#, options: .regularExpression) != nil { return "BRL" }
         if text.range(of: #"\bMXN\b"#, options: .regularExpression) != nil { return "MXN" }
         if text.range(of: #"\bARS\b"#, options: .regularExpression) != nil { return "ARS" }
@@ -750,14 +759,20 @@ enum SMSBankParser {
             // Multiple South Asian currencies use "Rs" — defer to the region.
             return region.currency
         }
-        // Plain `$` is ambiguous: USD vs MXN vs ARS. If the active region
-        // uses `$` as its primary symbol, prefer the region's own currency
-        // (Mexicans see `$1,000` and mean MXN, not USD). Fall through to USD
-        // only when the active region doesn't use `$`.
+        // `Br` alone is ambiguous (Birr in Ethiopia, Brazilian initials in
+        // some templates). Only honour it as ETB if the active region is ET.
+        if text.range(of: #"\bBr\b"#, options: .regularExpression) != nil, region.code == "ET" {
+            return "ETB"
+        }
+        // Plain `$` is ambiguous: USD vs MXN vs ARS vs CAD/AUD/HKD/SGD when
+        // those banks omit the local prefix. If the active region uses `$`
+        // as its primary symbol, prefer the region's own currency (Mexicans
+        // see `$1,000` and mean MXN, not USD). Fall through to USD only
+        // when the active region doesn't use `$`.
         let hasExplicitUSD = text.range(of: #"\bUSD\b"#, options: .regularExpression) != nil
         if hasExplicitUSD { return "USD" }
         if text.range(of: #"\$"#, options: .regularExpression) != nil {
-            if region.currencySymbol == "$" { return region.currency }
+            if region.currencySymbol.contains("$") { return region.currency }
             return "USD"
         }
         return region.currency

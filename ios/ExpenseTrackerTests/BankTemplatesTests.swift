@@ -333,6 +333,147 @@ final class BankTemplatesTests: XCTestCase {
         )
     }
 
+    // MARK: - Eurozone (European decimals)
+
+    func testEurozoneDeutscheEuroAmount() {
+        // € 1.234,56 — dot is thousands, comma is decimal.
+        assertTxn(
+            "Deutsche Bank: € 1.234,56 gebucht bei AMAZON, Konto 1234, 29.04.2026",
+            region: "EU",
+            amount: 1234.56,
+            currency: "EUR"
+        )
+    }
+
+    func testEurozoneRevolutUsStyleAmount() {
+        // Revolut keeps US-style decimals even in EU markets.
+        assertTxn(
+            "Revolut: €25.50 at MERCHANT, card 1234, 29 Apr 2026",
+            region: "EU",
+            amount: 25.50,
+            currency: "EUR",
+            bank: "Revolut"
+        )
+    }
+
+    // MARK: - Australia
+
+    func testAustraliaCommBank() {
+        assertTxn(
+            "CBA: A$45.00 at COLES SUPERMARKET 1234 on 29 Apr 2026",
+            region: "AU",
+            amount: 45,
+            currency: "AUD",
+            bank: "CommBank"
+        )
+    }
+
+    /// Bare `$` on AU active region must NOT be classified as USD.
+    func testAustraliaDollarSignNotUsd() {
+        let sms = "Charge of $45.00 on a Westpac purchase"
+        guard let p = parse(sms, regionCode: "AU") else { return }
+        XCTAssertEqual(p.currency, "AUD", "AU region should treat bare $ as AUD, not USD")
+    }
+
+    // MARK: - Canada
+
+    func testCanadaRBC() {
+        assertTxn(
+            "RBC: C$45.00 trans at TIM HORTONS, card 1234, 29 Apr 2026",
+            region: "CA",
+            amount: 45,
+            currency: "CAD",
+            bank: "RBC"
+        )
+    }
+
+    // MARK: - Hong Kong
+
+    func testHongKongHSBC() {
+        assertTxn(
+            "HSBC: HKD 250.00 spent at PARKnSHOP, Card 1234, 29/04/2026",
+            region: "HK",
+            amount: 250,
+            currency: "HKD",
+            bank: "HSBC Hong Kong"
+        )
+    }
+
+    // MARK: - Vietnam
+
+    func testVietnamVCB() {
+        assertTxn(
+            "VCB: GD 1,500,000 VND tại HIGHLANDS COFFEE thẻ 1234 ngày 29/04/2026",
+            region: "VN",
+            amount: 1_500_000,
+            currency: "VND",
+            bank: "Vietcombank"
+        )
+    }
+
+    // MARK: - Turkey (European decimals)
+
+    func testTurkeyGarantiEuroAmount() {
+        // 1.234,56 TL — dot thousands, comma decimal.
+        assertTxn(
+            "Garanti: TL 1.234,56 harcama MIGROS kart 1234 29/04/2026",
+            region: "TR",
+            amount: 1234.56,
+            currency: "TRY",
+            bank: "Garanti BBVA"
+        )
+    }
+
+    // MARK: - Bangladesh (bKash)
+
+    func testBangladeshBKashCashOut() {
+        assertTxn(
+            "bKash: Cash Out Tk 5,000 to JOHN DOE TrxID ABC123XYZ 29/04/2026 14:30",
+            region: "BD",
+            amount: 5000,
+            currency: "BDT",
+            bank: "bKash",
+            templateId: "bd_bkash_cashout"
+        )
+    }
+
+    // MARK: - Sri Lanka
+
+    func testSriLankaCommercialBank() {
+        assertTxn(
+            "ComBank: LKR 5,000.00 spent at KEELLS, Card 1234, 29/04/2026",
+            region: "LK",
+            amount: 5000,
+            currency: "LKR",
+            bank: "Commercial Bank of Ceylon"
+        )
+    }
+
+    // MARK: - Tanzania (M-Pesa TZ)
+
+    func testTanzaniaMpesa() {
+        assertTxn(
+            "ABC123XYZ Confirmed. Tsh1,500 sent to JANE DOE 0712345678 on 29/04/26 at 14:30",
+            region: "TZ",
+            amount: 1500,
+            currency: "TZS",
+            bank: "M-Pesa Tanzania",
+            templateId: "tz_mpesa_sent"
+        )
+    }
+
+    // MARK: - Ethiopia
+
+    func testEthiopiaCBE() {
+        assertTxn(
+            "CBE: Birr 5,000.00 debited from a/c XXXX1234 at SHOLA MARKET on 29/04/2026",
+            region: "ET",
+            amount: 5000,
+            currency: "ETB",
+            bank: "Commercial Bank of Ethiopia"
+        )
+    }
+
     // MARK: - Cross-cutting
 
     func testRegistryHasAllRegions() {
@@ -342,6 +483,8 @@ final class BankTemplatesTests: XCTestCase {
             "TH", "ID", "PH", "MY", "NP", "PK",
             "KE", "NG", "ZA", "SA", "EG",
             "BR", "MX", "AR", "KR", "JP",
+            "EU", "AU", "CA", "HK", "VN",
+            "TR", "BD", "LK", "TZ", "ET",
         ]
         XCTAssertEqual(codes, expected, "Every region in Regions.all should have at least one template")
     }
