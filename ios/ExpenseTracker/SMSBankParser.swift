@@ -335,11 +335,16 @@ enum SMSBankParser {
 
     // MARK: - Public API
 
-    static func parse(_ smsText: String, sender: String = "", timestamp: String? = nil) -> ParsedTransaction? {
+    /// Region defaults to the user's selection (or auto-detected on first
+    /// run). Callers can pass an override when parsing a one-off SMS that
+    /// doesn't belong to the active region.
+    static func parse(_ smsText: String, sender: String = "", timestamp: String? = nil, region: Region? = nil) -> ParsedTransaction? {
         let text = smsText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, isBankSMS(text) else { return nil }
 
-        if let mini = SMSMiniTemplates.tryMatch(text) {
+        let activeRegion = region ?? RegionStore.current
+
+        if let mini = SMSMiniTemplates.tryMatch(text, region: activeRegion) {
             let date = coerceTxnDate(timestamp) ?? mini.date ?? parseDate(text)
             var merchant = mini.merchant
             if merchant == "Unknown", let m = extractMerchant(text) { merchant = m }
@@ -376,7 +381,7 @@ enum SMSBankParser {
         let bank = detectBank(text, sender: sender)
         let account = parseAccount(text)
         let mode = detectMode(text)
-        let currency = detectCurrency(text)
+        let currency = detectCurrency(text, region: activeRegion)
         let category = detectCategory(text, merchant: merchant)
         let refNumber = extractRefNumber(text)
         let balance = extractBalance(text)
@@ -707,13 +712,18 @@ enum SMSBankParser {
         return Double(s)
     }
 
-    private static func detectCurrency(_ text: String) -> String {
-        if text.range(of: #"\$|USD"#, options: .regularExpression) != nil { return "USD" }
-        if text.range(of: #"€|EUR"#, options: .regularExpression) != nil { return "EUR" }
-        if text.range(of: #"£|GBP"#, options: .regularExpression) != nil { return "GBP" }
-        if text.range(of: #"AED"#, options: .caseInsensitive) != nil { return "AED" }
-        if text.range(of: #"SGD"#, options: .caseInsensitive) != nil { return "SGD" }
-        return "INR"
+    /// Currency for a parsed transaction. We prefer explicit symbols/codes in
+    /// the SMS body (so a Niyo-style USD spend on an Indian bank's SMS still
+    /// reads as USD); only when the body has no clear currency token do we
+    /// fall back to the active region's default.
+    private static func detectCurrency(_ text: String, region: Region) -> String {
+        if text.range(of: #"₹|\bINR\b|\bRs\.?\b"#, options: .regularExpression) != nil { return "INR" }
+        if text.range(of: #"£|\bGBP\b"#, options: .regularExpression) != nil { return "GBP" }
+        if text.range(of: #"€|\bEUR\b"#, options: .regularExpression) != nil { return "EUR" }
+        if text.range(of: #"\bAED\b|\bDhs\.?\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return "AED" }
+        if text.range(of: #"\bSGD\b|S\$"#, options: [.regularExpression, .caseInsensitive]) != nil { return "SGD" }
+        if text.range(of: #"\$|\bUSD\b"#, options: .regularExpression) != nil { return "USD" }
+        return region.currency
     }
 }
 

@@ -128,7 +128,7 @@ struct ParseSMSView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(Theme.textPrimary)
             row("Type", p.type == "credit" ? "Income" : "Expense")
-            row("Amount", "₹\(format(p.amount))")
+            row("Amount", "\(currencySymbol(for: p.currency))\(format(p.amount))")
             row("Merchant", p.merchant)
             row("Category", p.category)
             row("Date", p.date)
@@ -223,6 +223,20 @@ struct ParseSMSView: View {
     private func format(_ v: Double) -> String {
         if v.truncatingRemainder(dividingBy: 1) == 0 { return String(Int(v)) }
         return String(format: "%.2f", v)
+    }
+
+    /// Symbol for an ISO‑4217 code (matches the catalog in [Region.swift](Region.swift)).
+    /// Falls back to the bare code when we don't know a glyph for it.
+    private func currencySymbol(for code: String) -> String {
+        switch code {
+        case "INR": return "₹"
+        case "USD": return "$"
+        case "GBP": return "£"
+        case "EUR": return "€"
+        case "SGD": return "S$"
+        case "AED": return "AED "
+        default: return "\(code) "
+        }
     }
 
     private func parseNow() {

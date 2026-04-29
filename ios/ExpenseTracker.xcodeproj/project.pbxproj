@@ -48,6 +48,9 @@
 		C10000000000000000000038 /* ImportCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000038 /* ImportCore.swift */; };
 		C10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition */; };
 		C10000000000000000000041 /* ICloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000042 /* ICloudSyncService.swift */; };
+		C10000000000000000000043 /* Region.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000043 /* Region.swift */; };
+		C10000000000000000000044 /* BankTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000044 /* BankTemplates.swift */; };
+		C10000000000000000000045 /* RegionPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000045 /* RegionPickerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -93,6 +96,9 @@
 		B10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition */ = {isa = PBXFileReference; lastKnownFileType = file.intentdefinition; path = ExpenseTrackerIntents.intentdefinition; sourceTree = "<group>"; };
 		B10000000000000000000041 /* ExpenseTracker.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ExpenseTracker.entitlements; sourceTree = "<group>"; };
 		B10000000000000000000042 /* ICloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudSyncService.swift; sourceTree = "<group>"; };
+		B10000000000000000000043 /* Region.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Region.swift; sourceTree = "<group>"; };
+		B10000000000000000000044 /* BankTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BankTemplates.swift; sourceTree = "<group>"; };
+		B10000000000000000000045 /* RegionPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegionPickerView.swift; sourceTree = "<group>"; };
 		B20000000000000000000001 /* ExpenseTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ExpenseTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -163,6 +169,9 @@
 				B10000000000000000000038 /* ImportCore.swift */,
 				B10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition */,
 				B10000000000000000000042 /* ICloudSyncService.swift */,
+				B10000000000000000000043 /* Region.swift */,
+				B10000000000000000000044 /* BankTemplates.swift */,
+				B10000000000000000000045 /* RegionPickerView.swift */,
 				B10000000000000000000041 /* ExpenseTracker.entitlements */,
 				B10000000000000000000040 /* Assets.xcassets */,
 				1A0000000000000000000004 /* Intents */,
@@ -289,6 +298,9 @@
 				C10000000000000000000038 /* ImportCore.swift in Sources */,
 				C10000000000000000000039 /* ExpenseTrackerIntents.intentdefinition in Sources */,
 				C10000000000000000000041 /* ICloudSyncService.swift in Sources */,
+				C10000000000000000000043 /* Region.swift in Sources */,
+				C10000000000000000000044 /* BankTemplates.swift in Sources */,
+				C10000000000000000000045 /* RegionPickerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

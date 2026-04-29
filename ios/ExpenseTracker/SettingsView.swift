@@ -19,6 +19,8 @@ struct SettingsView: View {
     @State private var showMailUnavailableAlert = false
     @State private var isExportingICloud = false
     @State private var supportAttachmentData: Data = Data()
+    @State private var showRegionPicker = false
+    @State private var currentRegion: Region = RegionStore.current
     @AppStorage("appTheme") private var appTheme = "dark"
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage(ImportStartDateStore.selectedKey) private var hasSelectedImportStartDate = false
@@ -42,6 +44,18 @@ struct SettingsView: View {
                         Label("Set Up Guide", systemImage: "arrow.counterclockwise")
                     }
                     .foregroundStyle(Theme.accentLight)
+
+                    Button {
+                        showRegionPicker = true
+                    } label: {
+                        HStack {
+                            Label("Region", systemImage: "globe")
+                            Spacer()
+                            Text("\(currentRegion.flag) \(currentRegion.name)")
+                                .foregroundStyle(Theme.textMuted)
+                                .font(.caption)
+                        }
+                    }
 
                     HStack {
                         Label("Shortcut Name", systemImage: "flowchart")
@@ -207,6 +221,12 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This removes all \(allRows.count) local transactions. Choose whether iCloud backup should also be deleted.")
+            }
+            .sheet(isPresented: $showRegionPicker) {
+                RegionPickerView(selected: currentRegion) { region in
+                    RegionStore.set(region)
+                    currentRegion = region
+                }
             }
             .sheet(isPresented: $showExport) { ExportView() }
             .fileImporter(isPresented: $showImportFile, allowedContentTypes: [.json, .plainText, .commaSeparatedText]) { result in

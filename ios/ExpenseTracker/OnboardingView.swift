@@ -5,6 +5,8 @@ struct OnboardingView: View {
     @AppStorage("hasSetupShortcut") private var hasSetupShortcut = false
     @State private var shortcutInstalled = false
     @State private var showSkipConfirm = false
+    @State private var showRegionPicker = false
+    @State private var selectedRegion: Region = RegionStore.current
 
     private let shortcutURL = "https://www.icloud.com/shortcuts/dca0bcfd90524403bfdf8327c52cb1f0"
 
@@ -58,7 +60,30 @@ struct OnboardingView: View {
 
                     // Steps
                     VStack(spacing: 14) {
-                        stepRow(icon: "iphone", number: "1", title: "Install the Shortcut",
+                        stepRow(icon: "globe", number: "1", title: "Confirm your region",
+                                desc: "We pick the right bank-SMS parser based on your country. Detected from your iPhone settings — tap to change.") {
+                            Button {
+                                showRegionPicker = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(selectedRegion.flag).font(.body)
+                                    Text(selectedRegion.name)
+                                    Text("·")
+                                    Text(selectedRegion.currency)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2.weight(.bold))
+                                }
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .foregroundStyle(Theme.accentLight)
+                                .background(Theme.accentPrimary.opacity(0.15))
+                                .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 4)
+                        }
+                        stepRow(icon: "iphone", number: "2", title: "Install the Shortcut",
                                 desc: "A free iOS Shortcut reads your bank SMS and sends it to this app. This is a one-time setup, and not required if you already did it.") {
                             Button(action: installShortcut) {
                                 HStack(spacing: 8) {
@@ -75,11 +100,11 @@ struct OnboardingView: View {
                             .buttonStyle(.plain)
                             .padding(.top, 4)
                         }
-                        stepRow(icon: "arrow.down.doc", number: "2", title: "Restore iCloud backup, then Sync SMS",
+                        stepRow(icon: "arrow.down.doc", number: "3", title: "Restore iCloud backup, then Sync SMS",
                                 desc: "If you already have an iCloud backup, import it first. Then run Sync SMS to bring only new bank SMS into the app.")
-                        stepRow(icon: "rectangle.and.hand.point.up.left", number: "3", title: "Swipe left to set Valid/Invalid",
+                        stepRow(icon: "rectangle.and.hand.point.up.left", number: "4", title: "Swipe left to set Valid/Invalid",
                                 desc: "On any transaction, swipe left to set Valid/Invalid. Invalid transactions remain visible in the All tab.")
-                        stepRow(icon: "ruler", number: "4", title: "Use Classification Rules",
+                        stepRow(icon: "ruler", number: "5", title: "Use Classification Rules",
                                 desc: "Add rules from Settings > Classification Rules, or directly from any transaction using Create Rule. These rules auto categorise your incoming SMS in future.")
                     }
                     .padding(.horizontal, 24)
@@ -166,6 +191,21 @@ struct OnboardingView: View {
         } message: {
             Text("You can always add the Shortcut later from Settings > Set Up.")
         }
+        .sheet(isPresented: $showRegionPicker) {
+            RegionPickerView(selected: selectedRegion) { region in
+                selectedRegion = region
+                RegionStore.set(region)
+            }
+        }
+        .onAppear {
+            // Seed the picker preselection from auto-detect on very first
+            // launch so the user doesn't have to think about it. If they've
+            // already chosen something, that wins.
+            if !RegionStore.hasUserSelection,
+               let detected = RegionDetector.detectAndCacheIfFirstLaunch() {
+                selectedRegion = detected
+            }
+        }
     }
 
     // MARK: - Actions
@@ -185,6 +225,11 @@ struct OnboardingView: View {
     private func complete() {
         if shortcutInstalled {
             hasSetupShortcut = true
+        }
+        // Persist the (possibly auto-detected) region so the parser uses it
+        // even if the user never opened the picker.
+        if !RegionStore.hasUserSelection {
+            RegionStore.set(selectedRegion)
         }
         hasCompletedOnboarding = true
     }
