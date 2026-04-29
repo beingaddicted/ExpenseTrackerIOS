@@ -753,16 +753,24 @@ enum SMSBankParser {
         if text.range(of: #"R\$|\bBRL\b"#, options: .regularExpression) != nil { return "BRL" }
         if text.range(of: #"\bMXN\b"#, options: .regularExpression) != nil { return "MXN" }
         if text.range(of: #"\bARS\b"#, options: .regularExpression) != nil { return "ARS" }
+        if text.range(of: #"\bCOP\b|\bCOL\$"#, options: .regularExpression) != nil { return "COP" }
         if text.range(of: #"₩|\bKRW\b|원"#, options: .regularExpression) != nil { return "KRW" }
         if text.range(of: #"¥|\bJPY\b|円"#, options: .regularExpression) != nil { return "JPY" }
+        if text.range(of: #"NT\$|\bTWD\b"#, options: .regularExpression) != nil { return "TWD" }
+        if text.range(of: #"₽|\bRUB\b"#, options: .regularExpression) != nil { return "RUB" }
+        if text.range(of: #"Kč|\bCZK\b"#, options: .regularExpression) != nil { return "CZK" }
+        if text.range(of: #"\bBYN\b|\bBYR\b"#, options: .regularExpression) != nil { return "BYN" }
+        if text.range(of: #"﷼|\bIRR\b|ریال|\bRial\b"#, options: .regularExpression) != nil { return "IRR" }
         if text.range(of: #"\bRs\.?\b"#, options: .regularExpression) != nil {
             // Multiple South Asian currencies use "Rs" — defer to the region.
             return region.currency
         }
-        // `Br` alone is ambiguous (Birr in Ethiopia, Brazilian initials in
-        // some templates). Only honour it as ETB if the active region is ET.
-        if text.range(of: #"\bBr\b"#, options: .regularExpression) != nil, region.code == "ET" {
-            return "ETB"
+        // `Br` alone is ambiguous: Ethiopian Birr (ETB) and Belarusian Ruble
+        // (BYN) both use it as a symbol. Resolve by the active region —
+        // there's no other in-body signal that disambiguates.
+        if text.range(of: #"\bBr\b"#, options: .regularExpression) != nil {
+            if region.code == "ET" { return "ETB" }
+            if region.code == "BY" { return "BYN" }
         }
         // Plain `$` is ambiguous: USD vs MXN vs ARS vs CAD/AUD/HKD/SGD when
         // those banks omit the local prefix. If the active region uses `$`

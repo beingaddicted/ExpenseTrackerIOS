@@ -443,6 +443,91 @@ enum Regions {
         localeCodes: ["et"]
     )
 
+    static let russia = Region(
+        code: "RU",
+        name: "Russia",
+        flag: "🇷🇺",
+        currency: "RUB",
+        currencySymbol: "₽",
+        currencyTokens: ["RUB", "₽", "руб"],
+        timeZones: [
+            "Europe/Moscow", "Europe/Kaliningrad", "Europe/Samara",
+            "Asia/Yekaterinburg", "Asia/Omsk", "Asia/Krasnoyarsk",
+            "Asia/Irkutsk", "Asia/Yakutsk", "Asia/Vladivostok",
+            "Asia/Magadan", "Asia/Kamchatka",
+        ],
+        mcc: ["250"],
+        localeCodes: ["ru"]
+    )
+
+    /// Colombia — `$` shared with USD/MXN/AR/CA/AU; the active-region rule
+    /// in detectCurrency tips bare "$" back to COP when CO is selected.
+    static let colombia = Region(
+        code: "CO",
+        name: "Colombia",
+        flag: "🇨🇴",
+        currency: "COP",
+        currencySymbol: "$",
+        currencyTokens: ["COP", "COL$", "$"],
+        timeZones: ["America/Bogota"],
+        mcc: ["732"],
+        localeCodes: ["co"]
+    )
+
+    static let czechia = Region(
+        code: "CZ",
+        name: "Czechia",
+        flag: "🇨🇿",
+        currency: "CZK",
+        currencySymbol: "Kč",
+        currencyTokens: ["CZK", "Kč"],
+        timeZones: ["Europe/Prague"],
+        mcc: ["230"],
+        localeCodes: ["cz"]
+    )
+
+    /// Belarus — uses "Br" as currency symbol, identical to Ethiopian Birr.
+    /// detectCurrency disambiguates by active region.
+    static let belarus = Region(
+        code: "BY",
+        name: "Belarus",
+        flag: "🇧🇾",
+        currency: "BYN",
+        currencySymbol: "Br",
+        currencyTokens: ["BYN", "BYR", "Br", "руб"],
+        timeZones: ["Europe/Minsk"],
+        mcc: ["257"],
+        localeCodes: ["by"]
+    )
+
+    /// Iran — IRR amounts are typically large (no decimals), and the SMS is
+    /// written in Persian/Farsi RTL. We seed the English transliterated
+    /// shape for now; Persian-Arabic numerals (۰–۹) need a separate
+    /// digit-normalisation pass that's out of scope for this seed.
+    static let iran = Region(
+        code: "IR",
+        name: "Iran",
+        flag: "🇮🇷",
+        currency: "IRR",
+        currencySymbol: "﷼",
+        currencyTokens: ["IRR", "﷼", "ریال", "Rial"],
+        timeZones: ["Asia/Tehran"],
+        mcc: ["432"],
+        localeCodes: ["ir"]
+    )
+
+    static let taiwan = Region(
+        code: "TW",
+        name: "Taiwan",
+        flag: "🇹🇼",
+        currency: "TWD",
+        currencySymbol: "NT$",
+        currencyTokens: ["TWD", "NT$"],
+        timeZones: ["Asia/Taipei"],
+        mcc: ["466"],
+        localeCodes: ["tw"]
+    )
+
     /// Order users see in the picker — the recently-detected one is pinned to
     /// the top by the picker view, this is just the underlying catalog.
     static let all: [Region] = [
@@ -451,9 +536,10 @@ enum Regions {
         bangladesh, sriLanka, vietnam,
         kenya, nigeria, southAfrica, saudiArabia, egypt, turkey,
         tanzania, ethiopia,
-        brazil, mexico, argentina,
-        korea, japan, hongKong,
+        brazil, mexico, argentina, colombia,
+        korea, japan, hongKong, taiwan,
         australia, canada,
+        russia, belarus, czechia, iran,
     ]
 
     static func byCode(_ code: String) -> Region? {

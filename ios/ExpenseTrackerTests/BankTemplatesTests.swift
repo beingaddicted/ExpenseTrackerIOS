@@ -474,6 +474,93 @@ final class BankTemplatesTests: XCTestCase {
         )
     }
 
+    // MARK: - Russia (Cyrillic + European decimals)
+
+    func testRussiaSberbank() {
+        // 1 234,56 — space thousands, comma decimal.
+        assertTxn(
+            "Сбербанк: Покупка 1 234,56 ₽ PYATEROCHKA карта *1234 29.04.2026",
+            region: "RU",
+            amount: 1234.56,
+            currency: "RUB",
+            bank: "Sberbank"
+        )
+    }
+
+    // MARK: - Colombia ($ disambiguated to COP)
+
+    func testColombiaBancolombia() {
+        assertTxn(
+            "Bancolombia: Compra de $50.000 en EXITO con tarjeta 1234 el 29/04/2026",
+            region: "CO",
+            amount: 50000,
+            currency: "COP",
+            bank: "Bancolombia"
+        )
+    }
+
+    /// Bare `$` on CO active region must NOT classify as USD.
+    func testColombiaDollarSignNotUsd() {
+        let sms = "Compra de $50.000 en EXITO"
+        guard let p = parse(sms, regionCode: "CO") else { return }
+        XCTAssertEqual(p.currency, "COP", "CO region should treat bare $ as COP, not USD")
+    }
+
+    // MARK: - Czechia (European decimals)
+
+    func testCzechiaCSOB() {
+        assertTxn(
+            "ČSOB: Platba 1.234,56 Kč ALBERT karta 1234 29.04.2026",
+            region: "CZ",
+            amount: 1234.56,
+            currency: "CZK",
+            bank: "ČSOB"
+        )
+    }
+
+    // MARK: - Belarus (Br ambiguity)
+
+    func testBelarusBelarusbank() {
+        assertTxn(
+            "Беларусбанк: Покупка 12,34 BYN EUROOPT карта *1234 29.04.2026",
+            region: "BY",
+            amount: 12.34,
+            currency: "BYN",
+            bank: "Belarusbank"
+        )
+    }
+
+    /// Critical regression: `Br` on BY active region resolves to BYN, not ETB.
+    func testBelarusBareBrIsBYN() {
+        let sms = "Some test transaction with Br 100"
+        guard let p = parse(sms, regionCode: "BY") else { return }
+        XCTAssertEqual(p.currency, "BYN", "BY region should treat bare Br as BYN, not ETB")
+    }
+
+    // MARK: - Iran
+
+    func testIranMellat() {
+        assertTxn(
+            "Mellat: IRR 1,500,000 spent at DIGIKALA, Card 1234, 29/04/2026",
+            region: "IR",
+            amount: 1_500_000,
+            currency: "IRR",
+            bank: "Bank Mellat"
+        )
+    }
+
+    // MARK: - Taiwan
+
+    func testTaiwanCathay() {
+        assertTxn(
+            "Cathay: NT$1,500 at FAMILYMART Card 1234 29/04/2026",
+            region: "TW",
+            amount: 1500,
+            currency: "TWD",
+            bank: "Cathay United Bank"
+        )
+    }
+
     // MARK: - Cross-cutting
 
     func testRegistryHasAllRegions() {
@@ -485,6 +572,7 @@ final class BankTemplatesTests: XCTestCase {
             "BR", "MX", "AR", "KR", "JP",
             "EU", "AU", "CA", "HK", "VN",
             "TR", "BD", "LK", "TZ", "ET",
+            "RU", "CO", "CZ", "BY", "IR", "TW",
         ]
         XCTAssertEqual(codes, expected, "Every region in Regions.all should have at least one template")
     }
