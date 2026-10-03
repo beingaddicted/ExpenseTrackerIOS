@@ -14,7 +14,7 @@
 
 1. Install **[Scriptable](https://apps.apple.com/app/scriptable/id1405459188)** from the App Store (free)
 2. Create a new script in Scriptable named **BankSMS**, paste the contents of `data/ShortCuts/BankSMS.js`
-3. Install the Bulk Export Shortcut: [Install Shortcut](https://www.icloud.com/shortcuts/9f91949ca6244224ad56d0cd25419877)
+3. Install the Bulk Export Shortcut: [Install Shortcut](https://www.icloud.com/shortcuts/2518685c436f48bf8e6aa6fc0dd79e2f)
 4. Run it once — it processes every day from 2020 to today
 5. Output: **Files → iCloud Drive → Scriptable → expense tracker → exportSms.txt**
 
